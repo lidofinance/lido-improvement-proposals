@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>
+    Depools Improvement Proposals
+  </title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<title>Depools Improvement Proposals | depools-improvement-proposals</title>
+<meta name="generator" content="Jekyll v3.9.0" />
+<meta property="og:title" content="Depools Improvement Proposals" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Depools Improvement Proposals (DIPs) describe standards for the depools platform, including core protocol specifications, client APIs, and contract standards." />
+<meta property="og:description" content="Depools Improvement Proposals (DIPs) describe standards for the depools platform, including core protocol specifications, client APIs, and contract standards." />
+<link rel="canonical" href="http://localhost:4000/" />
+<meta property="og:url" content="http://localhost:4000/" />
+<meta property="og:site_name" content="depools-improvement-proposals" />
+<meta property="og:image" content="http://localhost:4000/assets/og_image.png" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:image" content="http://localhost:4000/assets/og_image.png" />
+<meta property="twitter:title" content="Depools Improvement Proposals" />
+<meta name="twitter:site" content="@iearnfinance" />
+<script type="application/ld+json">
+{"description":"Depools Improvement Proposals (DIPs) describe standards for the depools platform, including core protocol specifications, client APIs, and contract standards.","@type":"WebSite","headline":"Depools Improvement Proposals","url":"http://localhost:4000/","image":"http://localhost:4000/assets/og_image.png","name":"depools-improvement-proposals","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css">
+  <link rel="shortcut icon" type="image/png" href="/favicon.ico" /><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/feed.xml" title="depools-improvement-proposals" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">depools-improvement-proposals</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/all-dip">All DIPs</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <h1 class="page-heading">
+  Depools Improvement Proposals
+<!--  <a href="https://discordapp.com/channels/734804446353031319/" rel="nofollow"-->
+<!--    ><img-->
+<!--      src="https://img.shields.io/discord/734804446353031319.svg?color=768AD4&label=discord&logo=https%3A%2F%2Fdiscordapp.com%2Fassets%2F8c9701b98ad4372b58f13fd9f65f966e.svg"-->
+<!--      alt="Discord"-->
+<!--      data-canonical-src="https://img.shields.io/discord/734804446353031319.svg?color=768AD4&amp;label=discord&amp;logo=https%3A%2F%2Fdiscordapp.com%2Fassets%2F8c9701b98ad4372b58f13fd9f65f966e.svg"-->
+<!--      style="max-width:100%;"-->
+<!--  /></a>-->
+</h1>
+<p>
+  Depools Improvement Proposals (DIPs) describe standards for the Depools
+  platform, including core protocol specifications, client APIs, and contract
+  standards.
+</p>
+
+<h2>Contributing</h2>
+<ol>
+  <li>Review <a href="DIPS/yip-0">YIP-0</a>.</li>
+  <li>Fork the repository by clicking "Fork" in the top right.</li>
+  <li>
+    Add your YIP to your fork of the repository. There is a
+    <a href="https://github.com/iearn-finance/YIPS/blob/master/yip-X.md"
+      >template YIP here</a
+    >.
+  </li>
+  <li>
+    Submit a Pull Request to Depools's
+    <a href="https://github.com/iearn-finance/YIPS">DIPs repository</a>.
+  </li>
+</ol>
+
+<p>
+  Your first PR should be a first draft of the final YIP. It must meet the
+  formatting criteria enforced by the build (largely, correct metadata in the
+  header). An editor will manually review the first PR for a new YIP and assign
+  it a number before merging it. Make sure you include a
+  <code>discussions-to</code> header with the URL to a discussion forum or open
+  GitHub issue where people can discuss the YIP as a whole.
+</p>
+<p>
+  If your YIP requires images, the image files should be included in a
+  subdirectory of the `assets` folder for that YIP as follow:
+  <code>assets/yip-X</code> (for yip <b>X</b>). When linking to an image in the
+  YIP, use relative links such as <code>../assets/yip-X/image.png</code>.
+</p>
+<p>
+  When you believe your YIP is mature and ready to progress past the WIP phase,
+  you should ask to have your issue added to the next governance call where it
+  can be discussed for inclusion in a future platform upgrade. If the community
+  agrees to include it, the YIP editors will update the state of your YIP to
+  <code>Approved</code>.
+</p>
+
+<h2>YIP status terms</h2>
+<ul>
+  <li><strong>WIP</strong> - a YIP that is still being developed.</li>
+  <li>
+    <strong>Proposed</strong> - a YIP that is ready to be reviewed in a
+    governance call.
+  </li>
+  <li>
+    <strong>Approved</strong> - a YIP that has been accepted for implementation
+    by the yEarn community.
+  </li>
+  <li>
+    <strong>Implemented</strong> - a YIP that has been released to mainnet.
+  </li>
+  <li><strong>Rejected</strong> - a YIP that has been rejected.</li>
+</ul>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">depools-improvement-proposals</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">depools-improvement-proposals</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/iearn-finance/YIPS"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">iearn-finance/YIPS</span></a></li><li><a href="https://twitter.com/P2Pvalidator"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#twitter"></use></svg> <span class="username">P2Pvalidator</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Depools Improvement Proposals (DIPs) describe standards for the depools platform, including core protocol specifications, client APIs, and contract standards.</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

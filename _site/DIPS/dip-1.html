@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>
+    YIP-1:
+    First DIP
+  </title><!-- Begin Jekyll SEO tag v2.6.1 -->
+<title>First DIP | depools-improvement-proposals</title>
+<meta name="generator" content="Jekyll v3.9.0" />
+<meta property="og:title" content="First DIP" />
+<meta name="author" content="Danil Sitdikov (@andrecronje)" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Depools Improvement Proposals (DIPs) describe standards for the depools platform, including core protocol specifications, client APIs, and contract standards." />
+<meta property="og:description" content="Depools Improvement Proposals (DIPs) describe standards for the depools platform, including core protocol specifications, client APIs, and contract standards." />
+<link rel="canonical" href="http://localhost:4000/DIPS/dip-1" />
+<meta property="og:url" content="http://localhost:4000/DIPS/dip-1" />
+<meta property="og:site_name" content="depools-improvement-proposals" />
+<meta property="og:image" content="http://localhost:4000/assets/og_image.png" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:image" content="http://localhost:4000/assets/og_image.png" />
+<meta property="twitter:title" content="First DIP" />
+<meta name="twitter:site" content="@iearnfinance" />
+<meta name="twitter:creator" content="@Danil Sitdikov (@andrecronje)" />
+<script type="application/ld+json">
+{"description":"Depools Improvement Proposals (DIPs) describe standards for the depools platform, including core protocol specifications, client APIs, and contract standards.","@type":"WebPage","headline":"First DIP","url":"http://localhost:4000/DIPS/dip-1","image":"http://localhost:4000/assets/og_image.png","author":{"@type":"Person","name":"Danil Sitdikov (@andrecronje)"},"@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css">
+  <link rel="shortcut icon" type="image/png" href="/favicon.ico" /><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/feed.xml" title="depools-improvement-proposals" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">depools-improvement-proposals</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/all-dip">All DIPs</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <link rel="stylesheet" href="/assets/additional-styles.css">
+<div class="home">
+    <h1 class="page-heading">
+        YIP 1: First DIP
+        <a href="https://github.com/depools/depools-improvement-proposals/blob/master/DIPS/dip-1.md">
+            <svg role="img" aria-label="Source" xmlns="https://www.w3.org/2000/svg" width="14" height="16"
+                 viewBox="0 0 14 16"><title>Source</title>
+                <path fill-rule="evenodd"
+                      d="M9.5 3L8 4.5 11.5 8 8 11.5 9.5 13 14 8 9.5 3zm-5 0L0 8l4.5 5L6 11.5 2.5 8 6 4.5 4.5 3z"/>
+            </svg>
+        </a>
+    </h1>
+    <table>
+        <tr>
+            <th>Author</th>
+            <td><a href="https://github.com/andrecronje">Danil Sitdikov</a></td>
+        </tr>
+        
+        <tr>
+            <th>Discussions-To</th>
+            <td><a href="">https://gov.yearn.finance/t/proposal-0-yfi-supply/24</a></td>
+        </tr>
+        
+        <tr>
+            <th>Status</th>
+            <td>Implemented
+                
+            </td>
+        </tr>
+        
+        <tr>
+            <th>Created</th>
+            <td>2020-07-19</td>
+        </tr>
+        
+        
+        
+        
+        
+    </table>
+
+    <h2 id="simple-summary">Simple Summary</h2>
+
+<p><strong>FOR</strong>: Allows weekly distribution of YFI. A second proposal will be submitted to decide how much would be printed weekly.</p>
+
+<p><strong>AGAINST</strong>: No more YFI tokens will be distributed. Global supply is locked at 30000 YFI permanently.</p>
+
+<p><em>NOTE: This was proposal 0 on-chain.</em></p>
+
+<h2 id="metadata">Metadata</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Proposed by</td>
+      <td>0x473afAb58B2C5D4DbC5FAD5D236f6658AD84E83b</td>
+    </tr>
+    <tr>
+      <td>Total for votes</td>
+      <td>7734007.4689 (61.02%)</td>
+    </tr>
+    <tr>
+      <td>Total against votes</td>
+      <td>4939315.7347 (38.97%)</td>
+    </tr>
+    <tr>
+      <td>Quorum</td>
+      <td>62.68% ✔</td>
+    </tr>
+    <tr>
+      <td>Start block</td>
+      <td>10490942</td>
+    </tr>
+    <tr>
+      <td>End block</td>
+      <td>10508222</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Source: <a href="https://yieldfarming.info/yearn/vote/">yieldfarming.info YFI Governance Information</a></p>
+
+<h2 id="copyright">Copyright</h2>
+<p>Copyright and related rights waived via <a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>.</p>
+
+
+    <script src="../mathjax-config.js" defer></script>
+    <script type="text/javascript" id="MathJax-script" async
+            src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+    </script>
+</div>
+
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">depools-improvement-proposals</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">depools-improvement-proposals</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/iearn-finance/YIPS"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">iearn-finance/YIPS</span></a></li><li><a href="https://twitter.com/P2Pvalidator"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#twitter"></use></svg> <span class="username">P2Pvalidator</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Depools Improvement Proposals (DIPs) describe standards for the depools platform, including core protocol specifications, client APIs, and contract standards.</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
