@@ -46,25 +46,25 @@ layout: default
         {% if page.implementation != undefined %}
         <tr>
             <th>Implementation</th>
-            <td>{% include yipnums.html yips=page.implementation %}</td>
+            <td>{% include dipnums.html yips=page.implementation %}</td>
         </tr>
         {% endif %}
         {% if page.requires != undefined %}
         <tr>
             <th>Requires</th>
-            <td>{% include yipnums.html yips=page.requires %}</td>
+            <td>{% include dipnums.html yips=page.requires %}</td>
         </tr>
         {% endif %}
         {% if page.replaces != undefined %}
         <tr>
             <th>Replaces</th>
-            <td>{% include yipnums.html yips=page.replaces %}</td>
+            <td>{% include dipnums.html yips=page.replaces %}</td>
         </tr>
         {% endif %}
         {% if page["superseded-by"] != undefined %}
         <tr>
             <th>Superseded by</th>
-            <td>{% include yipnums.html yips=page.superseded-by %}</td>
+            <td>{% include dipnums.html yips=page.superseded-by %}</td>
         </tr>
         {% endif %}
         {% if page.resolution != undefined %}

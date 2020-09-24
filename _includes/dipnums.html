@@ -1,0 +1,4 @@
+{% assign yips=include.yips|split:"," %}
+{% for dipnum in yips %}
+  <a href="{{dipnum|strip|downcase}}">{{dipnum|strip}}</a>{% if forloop.last == false %}, {% endif %}
+{% endfor %}
