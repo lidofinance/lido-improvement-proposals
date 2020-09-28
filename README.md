@@ -4,9 +4,9 @@ Deepol Improvement Proposals (DIPs) describe standards for the yEarn platform, i
  
 ## Contributing
 
- 1. Review [DIP-0](DIPS/Dip-0.md).
+ 1. Review [DIP-0](https://github.com/depools/depool-improvement-proposals/blob/develop/DIPS/dip-0.md).
  2. Fork the repository by clicking "Fork" in the top right.
- 3. Add your DIP to your fork of the repository. There is a [template DIP here](Dip-X.md).
+ 3. Add your DIP to your fork of the repository. There is a [template DIP here](https://github.com/depools/depool-improvement-proposals/blob/develop/dip-X.md).
  4. Submit a Pull Request to yEarn's [DIPs repository](https://github.com/depools/depools-improvement-proposals).
 
 Your first PR should be a first draft of the final DIP. It must meet the formatting criteria enforced by the build (largely, correct metadata in the header). An editor will manually review the first PR for a new DIP and assign it a number before merging it. Make sure you include a `discussions-to` header with the URL to a new thread on [forum.depool.com](https://forum.depool.com/) where people can discuss the DIP as a whole.
