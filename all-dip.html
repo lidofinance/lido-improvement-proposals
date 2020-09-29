@@ -3,5 +3,5 @@ layout: page
 title: All DIPs
 ---
 
-{% assign yips=site.pages|where_exp:"page","page.yip > -1" %} {% include
-diptable.html yips=yips %}
+{% assign dips=site.pages|where_exp:"page","page.dip > -1" %} {% include
+diptable.html dips=dips %}

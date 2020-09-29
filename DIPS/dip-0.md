@@ -1,5 +1,5 @@
 ---
-yip: 0
+dip: 0
 title: DIP Purpose and Guidelines
 status: WIP
 author: Depools Community

@@ -1,13 +1,13 @@
-# DIPs [![Discord](https://img.shields.io/discord/734804446353031319.svg?color=768AD4&label=discord&logo=https%3A%2F%2Fdiscordapp.com%2Fassets%2F8c9701b98ad4372b58f13fd9f65f966e.svg)](https://discordapp.com/channels/734804446353031319/) [![Telegram](https://img.shields.io/badge/chat-on%20Telegram-blue.svg)](https://t.me/yearnfinance) [![Twitter Follow](https://img.shields.io/twitter/follow/iearnfinance.svg?label=iearnfinance&style=social)](https://twitter.com/iearnfinance)
+# DIPs 
 
-Deepol Improvement Proposals (DIPs) describe standards for the yEarn platform, including core protocol specifications, client APIs, and contract standards.
+Deepol Improvement Proposals (DIPs) describe standards for the Depool platform, including core protocol specifications, client APIs, and contract standards.
  
 ## Contributing
 
  1. Review [DIP-0](https://github.com/depools/depool-improvement-proposals/blob/develop/DIPS/dip-0.md).
  2. Fork the repository by clicking "Fork" in the top right.
  3. Add your DIP to your fork of the repository. There is a [template DIP here](https://github.com/depools/depool-improvement-proposals/blob/develop/dip-X.md).
- 4. Submit a Pull Request to yEarn's [DIPs repository](https://github.com/depools/depools-improvement-proposals).
+ 4. Submit a Pull Request to depool's [DIPs repository](https://github.com/depools/depools-improvement-proposals).
 
 Your first PR should be a first draft of the final DIP. It must meet the formatting criteria enforced by the build (largely, correct metadata in the header). An editor will manually review the first PR for a new DIP and assign it a number before merging it. Make sure you include a `discussions-to` header with the URL to a new thread on [forum.depool.com](https://forum.depool.com/) where people can discuss the DIP as a whole.
 
@@ -19,7 +19,7 @@ When you believe your DIP is mature and ready to progress past the WIP phase, yo
 
 * **WIP** - a DIP that is still being developed.
 * **Proposed** - a DIP that is ready to be reviewed in a governance call.
-* **Approved** - a DIP that has been accepted for implementation by the yEarn community.
+* **Approved** - a DIP that has been accepted for implementation by the Depool community.
 * **Implemented** - a DIP that has been released to mainnet.
 * **Rejected** - a DIP that has been rejected.
 * **Withdrawn** - a DIP that has been withdrawn by the author(s).
@@ -28,12 +28,12 @@ When you believe your DIP is mature and ready to progress past the WIP phase, yo
 
 ## Validation
 
-DIPs must pass some validation tests.  The DIP repository ensures this by running tests using [html-proofer](https://rubygems.org/gems/html-proofer) and [yip_validator](https://rubygems.org/gems/yip_validator).
+DIPs must pass some validation tests.  The DIP repository ensures this by running tests using [html-proofer](https://rubygems.org/gems/html-proofer) and [dip_validator](https://rubygems.org/gems/dip_validator).
 
 It is possible to run the DIP validator locally:
 ```
-gem install yip_validator
-yip_validator <INPUT_FILES>
+gem install dip_validator
+dip_validator <INPUT_FILES>
 ```
 
 ## Copyright

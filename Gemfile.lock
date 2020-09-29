@@ -20,6 +20,9 @@ GEM
     commonmarker (0.17.13)
       ruby-enum (~> 0.5)
     concurrent-ruby (1.1.7)
+    dip_validator (1.0.1)
+      activemodel
+      front_matter_parser (~> 0.1.1)
     dnsruby (1.61.4)
       simpleidn (~> 0.1)
     em-websocket (0.5.1)
@@ -263,21 +266,18 @@ GEM
     unf_ext (0.0.7.7)
     unicode-display_width (1.7.0)
     yell (2.2.2)
-    yip_validator (1.1.0)
-      activemodel
-      front_matter_parser (~> 0.1.1)
 
 PLATFORMS
   ruby
 
 DEPENDENCIES
+  dip_validator (>= 1.0.0)
   github-pages
   html-proofer (>= 3.3.1)
   jekyll (~> 3.9.0)
   jekyll-feed (~> 0.13)
   minima (~> 2.5)
   tzinfo-data
-  yip_validator (>= 1.1.0)
 
 BUNDLED WITH
    2.1.4
