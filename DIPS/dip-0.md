@@ -3,7 +3,7 @@ dip: 0
 title: DIP Purpose and Guidelines
 status: WIP
 author: Depools Community
-discussions-to: -
+discussions-to: https://forum.depool.com/t/dip-0-what-is-an-dip/13
 created: 2020-07-22
 updated: 2020-09-03
 ---

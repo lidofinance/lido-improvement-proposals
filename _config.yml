@@ -17,15 +17,15 @@ description: >-
   Depools Improvement Proposals (DIPs) describe standards for the depools
   platform, including core protocol specifications, client APIs, and contract
   standards.
-url: "https://yips.yearn.finance"
+url: "https://forum.depool.com/"
 repository: depools/depools-improvement-proposals
-twitter_username: P2Pvalidator
-github_username: p2p-org
+twitter_username: depool
+github_username: depool
 header_pages:
   - all-dip.html
 twitter:
   card: summary
-  username: iearnfinance
+  username: depool
 
 # Build settings
 markdown: kramdown
@@ -53,4 +53,4 @@ exclude:
   - vendor/cache/
   - vendor/gems/
   - vendor/ruby/
-  - yip-X.md
+  - dip-X.md
