@@ -10,7 +10,7 @@ updated: 2020-09-03
 
 ## What is an DIP?
 
-DIP stands for Depools Improvement Proposal, it has been adapted from the SIP (Synthetix Improvement Proposal). The purpose of this process is to ensure changes to Depool are transparent and well governed. An DIP is a design document providing information to the Depool community about a proposed change to the system. The author is responsible for building consensus within the community and documenting dissenting opinions.
+DIP stands for Depools Improvement Proposal, it has been adapted from the YIP (Yearn Improvement Proposal). The purpose of this process is to ensure changes to Depool are transparent and well governed. An DIP is a design document providing information to the Depool community about a proposed change to the system. The author is responsible for building consensus within the community and documenting dissenting opinions.
 
 ## DIP Rationale
 
@@ -136,7 +136,7 @@ The editors don't pass judgment on DIPs. We merely do the administrative & edito
 
 ## History
 
-The DIP document was derived heavily from the SIP Synthetix Improvement Proposal document in many places text was simply copied and modified. Any comments about the DIP document should be directed to the DIP editors.
+The DIP document was derived heavily from the YIP Yearn Improvement Proposal document in many places text was simply copied and modified. Any comments about the DIP document should be directed to the DIP editors.
 
 ## Copyright
 
