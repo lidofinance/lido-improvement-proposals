@@ -8,17 +8,17 @@
   }
 </style>
 {% for status in site.data.statuses %}
-  {% assign dips = include.dips|where:"status",status|sort:"dip" %}
-  {% assign count = dips|size %}
+  {% assign lips = include.lips|where:"status",status|sort:"lip" %}
+  {% assign count = lips|size %}
   {% if count > 0 %}
     <h2>{{status}}</h2>
     <table class="yiptable">
       <thead>
         <tr><th class="yipnum">Number</th><th class="title">Title</th><th class="author">Author</th></tr>
       </thead>
-      {% for page in dips %}
+      {% for page in lips %}
         <tr>
-          <td class="yipnum"><a href="{{page.url|relative_url}}">{{page.dip|xml_escape}}</a></td>
+          <td class="yipnum"><a href="{{page.url|relative_url}}">{{page.lip|xml_escape}}</a></td>
           <td class="title">{{page.title|xml_escape}}</td>
           <td class="author">{% include authorlist.html authors=page.author %}</td>
         </tr>

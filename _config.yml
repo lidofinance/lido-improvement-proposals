@@ -14,7 +14,7 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 description: >-
-  Depools Improvement Proposals (DIPs) describe standards for the depools
+  Depools Improvement Proposals (LIPs) describe standards for the depools
   platform, including core protocol specifications, client APIs, and contract
   standards.
 url: "https://forum.depool.com/"
@@ -22,7 +22,7 @@ repository: depools/depools-improvement-proposals
 twitter_username: depool
 github_username: depool
 header_pages:
-  - all-dip.html
+  - all-lip.html
 twitter:
   card: summary
   username: depool
@@ -37,9 +37,9 @@ permalink: /:slug
 
 defaults:
   - scope:
-      path: "DIPS"
+      path: "LIPS"
     values:
-      layout: "dip"
+      layout: "lip"
   - scope:
       path: ""
     values:
@@ -53,4 +53,4 @@ exclude:
   - vendor/cache/
   - vendor/gems/
   - vendor/ruby/
-  - dip-X.md
+  - lip-X.md

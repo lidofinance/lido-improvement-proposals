@@ -1,4 +1,4 @@
-{% assign dips=include.dips|split:"," %}
-{% for dipnum in dips %}
-  <a href="{{dipnum|strip|downcase}}">{{dipnum|strip}}</a>{% if forloop.last == false %}, {% endif %}
+{% assign lips=include.lips|split:"," %}
+{% for lipnum in lips %}
+  <a href="{{lipnum|strip|downcase}}">{{lipnum|strip}}</a>{% if forloop.last == false %}, {% endif %}
 {% endfor %}

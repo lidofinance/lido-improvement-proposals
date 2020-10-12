@@ -5,7 +5,7 @@ layout: default
 <link rel="stylesheet" href="/assets/additional-styles.css">
 <div class="home">
     <h1 class="page-heading">
-        DIP {{ page.dip | xml_escape }}: {{ page.title | xml_escape }}
+        LIP {{ page.lip | xml_escape }}: {{ page.title | xml_escape }}
         <a href="{{site.github.repository_url}}/blob/master/{{page.path}}">
             <svg role="img" aria-label="Source" xmlns="https://www.w3.org/2000/svg" width="14" height="16"
                  viewBox="0 0 14 16"><title>Source</title>
@@ -46,25 +46,25 @@ layout: default
         {% if page.implementation != undefined %}
         <tr>
             <th>Implementation</th>
-            <td>{% include dipnums.html dips=page.implementation %}</td>
+            <td>{% include lipnums.html lips=page.implementation %}</td>
         </tr>
         {% endif %}
         {% if page.requires != undefined %}
         <tr>
             <th>Requires</th>
-            <td>{% include dipnums.html dips=page.requires %}</td>
+            <td>{% include lipnums.html lips=page.requires %}</td>
         </tr>
         {% endif %}
         {% if page.replaces != undefined %}
         <tr>
             <th>Replaces</th>
-            <td>{% include dipnums.html dips=page.replaces %}</td>
+            <td>{% include lipnums.html lips=page.replaces %}</td>
         </tr>
         {% endif %}
         {% if page["superseded-by"] != undefined %}
         <tr>
             <th>Superseded by</th>
-            <td>{% include dipnums.html dips=page.superseded-by %}</td>
+            <td>{% include lipnums.html lips=page.superseded-by %}</td>
         </tr>
         {% endif %}
         {% if page.resolution != undefined %}
