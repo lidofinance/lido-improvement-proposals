@@ -14,18 +14,18 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 description: >-
-  Depools Improvement Proposals (LIPs) describe standards for the depools
+  Lidos Improvement Proposals (LIPs) describe standards for the lidos
   platform, including core protocol specifications, client APIs, and contract
   standards.
-url: "https://forum.depool.com/"
-repository: depools/depools-improvement-proposals
-twitter_username: depool
-github_username: depool
+url: "https://forum.lido.fi/"
+repository: depools/lido-improvement-proposals
+twitter_username: lido
+github_username: lido
 header_pages:
   - all-lip.html
 twitter:
   card: summary
-  username: depool
+  username: lido
 
 # Build settings
 markdown: kramdown

@@ -2,18 +2,18 @@
 lip: 0
 title: LIP Purpose and Guidelines
 status: WIP
-author: Depools Community
-discussions-to: https://forum.depool.com/t/lip-0-what-is-an-lip/13
+author: Lidos Community
+discussions-to: https://forum.lido.com/t/lip-0-what-is-an-lip/13
 created: 2020-07-22
 updated: 2020-09-03
 ---
 
 ## What is an LIP?
 
-LIP stands for Depools Improvement Proposal, it has been adapted from the YIP (Yearn Improvement Proposal). The purpose of this process is to ensure changes to Depool are transparent and well governed. An LIP is a design document providing information to the Depool community about a proposed change to the system. The author is responsible for building consensus within the community and documenting dissenting opinions.
+LIP stands for Lidos Improvement Proposal, it has been adapted from the YIP (Yearn Improvement Proposal). The purpose of this process is to ensure changes to Lido are transparent and well governed. An LIP is a design document providing information to the Lido community about a proposed change to the system. The author is responsible for building consensus within the community and documenting dissenting opinions.
 
 ## LIP Rationale
-We intend LIPs to be the primary mechanisms for proposing new features, collecting community input on an issue, and for documenting the design decisions for changes to Depool. Because they are maintained as text files in a versioned repository, their revision history is the historical record of the feature proposal.
+We intend LIPs to be the primary mechanisms for proposing new features, collecting community input on an issue, and for documenting the design decisions for changes to Lido. Because they are maintained as text files in a versioned repository, their revision history is the historical record of the feature proposal.
 
 It is highly recommended that a single LIP contain a single key proposal or new idea. The more focused the LIP, the more successful it is likely to be.
 
@@ -21,7 +21,7 @@ An LIP must meet certain minimum criteria. It must be a clear and complete descr
 
 ## LIP Work Flow
 
-:warning: Before you begin, vet your idea, this will save you time. Ask the Depool community first if an idea is original to avoid wasting time on something that will be rejected based on prior research (searching the Internet does not always do the trick). It also helps to make sure the idea is applicable to the entire community and not just the author. Just because an idea sounds good to the author does not mean it will have the intend effect.
+:warning: Before you begin, vet your idea, this will save you time. Ask the Lido community first if an idea is original to avoid wasting time on something that will be rejected based on prior research (searching the Internet does not always do the trick). It also helps to make sure the idea is applicable to the entire community and not just the author. Just because an idea sounds good to the author does not mean it will have the intend effect.
 
 Your role as the champion is to write the LIP using the style and format described below, shepherd the discussions in the appropriate forums, and build community consensus around the idea. Following is the process that a successful LIP will move along:
 
@@ -37,7 +37,7 @@ Deferred
 
 Each status change is requested by the LIP author and reviewed by the LIP editors. Use a pull request to update the status. Please include a link to where people should continue discussing your LIP. The LIP editors will process these requests as per the conditions below.
 
-* **Work in progress (WIP)** -- Once the champion has asked the Depool community whether an idea has any chance of support, they will write a draft LIP as a [pull request]. Consider including an implementation if this will aid people in studying the LIP.
+* **Work in progress (WIP)** -- Once the champion has asked the Lido community whether an idea has any chance of support, they will write a draft LIP as a [pull request]. Consider including an implementation if this will aid people in studying the LIP.
 * **Proposed** If agreeable, LIP editor will assign the LIP a number (generally the issue or PR number related to the LIP) and merge your pull request. The LIP editor will not unreasonably deny an LIP. Proposed LIPs will be discussed on governance calls and in Discord. If there is a reasonable level of consensus around the change on the governance call the change will be moved to approved. If the change is contentious a vote of token holders may be held to resolve the issue or approval may be delayed until consensus is reached.
 * **Approved** -- This LIP has passed community governance and is now being prioritised for development.
 * **Implemented** -- This LIP has been implemented and deployed to mainnet.
@@ -53,7 +53,7 @@ Each LIP should have the following parts:
 - Preamble - RFC 822 style headers containing metadata about the LIP, including the LIP number, a short descriptive title (limited to a maximum of 44 characters), and the author details.
 - Simple Summary - “If you can’t explain it simply, you don’t understand it well enough.” Provide a simplified and layman-accessible explanation of the LIP.
 - Abstract - a short (~200 word) description of the technical issue being addressed.
-- Motivation (*optional) - The motivation is critical for LIPs that want to change Depool. It should clearly explain why the existing specification is inadequate to address the problem that the LIP solves. LIP submissions without sufficient motivation may be rejected outright.
+- Motivation (*optional) - The motivation is critical for LIPs that want to change Lido. It should clearly explain why the existing specification is inadequate to address the problem that the LIP solves. LIP submissions without sufficient motivation may be rejected outright.
 - Specification - The technical specification should describe the syntax and semantics of any new feature.
 - Rationale - The rationale fleshes out the specification by describing what motivated the design and why particular design decisions were made. It should describe alternate designs that were considered and related work, e.g. how the feature is supported in other languages. The rationale may also provide evidence of consensus within the community, and should discuss important objections or concerns raised during discussion.
 - Test Cases - Test cases may be added during the implementation phase but are required before implementation.
@@ -74,7 +74,7 @@ Each LIP must begin with an [RFC 822](https://www.ietf.org/rfc/rfc822.txt) style
 
 ` author:` <a list of the author's or authors' name(s) and/or username(s), or name(s) and email(s). Details are below.>
 
-` * discussions-to:` \<a url pointing to the official discussion thread at forum.depool.com \>
+` * discussions-to:` \<a url pointing to the official discussion thread at forum.lido.fi \>
 
 ` status:` < WIP | PROPOSED | APPROVED | IMPLEMENTED >
 
@@ -93,7 +93,7 @@ Headers requiring dates will always do so in the format of ISO 8601 (yyyy-mm-dd)
 
 #### `discussions-to` header
 
-While an LIP is in WIP or Proposed status, a `discussions-to` header will indicate the URL at [forum.depool.com/](https://forum.depool.com/) where the LIP is being discussed.
+While an LIP is in WIP or Proposed status, a `discussions-to` header will indicate the URL at [forum.lido.fi/](https://forum.lido.fi/) where the LIP is being discussed.
 
 #### `created` header
 
