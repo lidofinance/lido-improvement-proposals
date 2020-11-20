@@ -139,4 +139,4 @@ The LIP document was derived heavily from the YIP Yearn Improvement Proposal doc
 
 ## Copyright
 
-Copyright and related rights waived via [YIPS](https://github.com/iearn-finance/YIPS/).
+Copyright and related rights waived via [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
