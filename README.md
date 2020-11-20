@@ -4,10 +4,10 @@ Lido Improvement Proposals (LIPs) describe standards for the Lido platform, incl
  
 ## Contributing
 
- 1. Review [LIP-0](https://github.com/depool/lido-improvement-proposals/blob/develop/LIPS/lip-0.md).
+ 1. Review [LIP-0](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-0.md).
  2. Fork the repository by clicking "Fork" in the top right.
- 3. Add your LIP to your fork of the repository. There is a [template LIP here](https://github.com/depools/lido-improvement-proposals/blob/develop/lip-X.md).
- 4. Submit a Pull Request to lido's [LIPs repository](https://github.com/depools/lido-improvement-proposals).
+ 3. Add your LIP to your fork of the repository. There is a [template LIP here](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/lip-X.md).
+ 4. Submit a Pull Request to lido's [LIPs repository](https://github.com/lidofinance/lido-improvement-proposals).
 
 Your first PR should be a first draft of the final LIP. It must meet the formatting criteria enforced by the build (largely, correct metadata in the header). An editor will manually review the first PR for a new LIP and assign it a number before merging it. Make sure you include a `discussions-to` header with the URL to a new thread on [forum.lido.com](https://forum.lido.com/) where people can discuss the LIP as a whole.
 
@@ -38,4 +38,4 @@ lip_validator <INPUT_FILES>
 
 ## Copyright
 
-Copyright and related rights waived via [YIPS](https://github.com/iearn-finance/YIPS/).
+Copyright and related rights waived via [CC0](https://creativecommons.org/publicdomain/zero/1.0/)..
