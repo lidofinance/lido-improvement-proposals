@@ -52,4 +52,4 @@ The technical specification should outline the public API of the changes propose
 Test cases for an implementation are mandatory for LIPs but can be included with the implementation.
 
 ## Copyright
-Copyright and related rights waived via [YIPS](https://github.com/iearn-finance/YIPS/).
+Copyright and related rights waived via [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
