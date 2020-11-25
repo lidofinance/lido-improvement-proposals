@@ -1,5 +1,5 @@
 ---
-lip: 3
+lip: 1
 title: Oracle interface and reward algorithm specification
 status: WIP
 author: Kirill Varlamov
