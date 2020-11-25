@@ -3,7 +3,7 @@ lip: 0
 title: LIP Purpose and Guidelines
 status: WIP
 author: Lidos Community
-discussions-to: https://forum.lido.com/t/lip-0-what-is-an-lip/13
+discussions-to: https://research.lido.fi/t/lido-improvement-proposal-process/16
 created: 2020-07-22
 updated: 2020-09-03
 ---
