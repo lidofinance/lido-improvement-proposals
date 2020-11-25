@@ -9,7 +9,7 @@ Lido Improvement Proposals (LIPs) describe standards for the Lido platform, incl
  3. Add your LIP to your fork of the repository. There is a [template LIP here](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/lip-X.md).
  4. Submit a Pull Request to lido's [LIPs repository](https://github.com/lidofinance/lido-improvement-proposals).
 
-Your first PR should be a first draft of the final LIP. It must meet the formatting criteria enforced by the build (largely, correct metadata in the header). An editor will manually review the first PR for a new LIP and assign it a number before merging it. Make sure you include a `discussions-to` header with the URL to a new thread on [forum.lido.com](https://forum.lido.com/) where people can discuss the LIP as a whole.
+Your first PR should be a first draft of the final LIP. It must meet the formatting criteria enforced by the build (largely, correct metadata in the header). An editor will manually review the first PR for a new LIP and assign it a number before merging it. Make sure you include a `discussions-to` header with the URL to a new thread on [research.lido.fi](https://research.lido.fi/) where people can discuss the LIP as a whole.
 
 If your LIP requires images, the image files should be included in a subdirectory of the `assets` folder for that LIP as follow: `assets/Lip-X` (for Lip **X**). When linking to an image in the LIP, use relative links such as `../assets/Lip-X/image.png`.
 
