@@ -3,7 +3,7 @@ lip: 1
 title: Oracle interface and reward algorithm specification
 status: WIP
 author: Kirill Varlamov
-discussions-to: TBD
+discussions-to: none
 created: 2020-11-10
 updated: 2020-11-10
 ---
