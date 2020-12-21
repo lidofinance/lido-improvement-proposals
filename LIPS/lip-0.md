@@ -21,7 +21,7 @@ An LIP must meet certain minimum criteria. It must be a clear and complete descr
 
 ## LIP Work Flow
 
-:warning: Before you begin, vet your idea, this will save you time. Ask the Lido community first if an idea is original to avoid wasting time on something that will be rejected based on prior research (searching the Internet does not always do the trick). It also helps to make sure the idea is applicable to the entire community and not just the author. Just because an idea sounds good to the author does not mean it will have the intend effect.
+:warning: Before you begin, vet your idea, this will save you time. Ask the Lido community first if an idea is original to avoid wasting time on something that will be rejected based on prior research (searching the Internet does not always do the trick). It also helps to make sure the idea is applicable to the entire community and not just the author. Just because an idea sounds good to the author does not mean it will have the intended effect.
 
 Your role as the champion is to write the LIP using the style and format described below, shepherd the discussions in the appropriate forums, and build community consensus around the idea. Following is the process that a successful LIP will move along:
 
