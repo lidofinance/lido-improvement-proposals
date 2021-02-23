@@ -25,6 +25,33 @@ way to update the quorum value is with its mutator:
     function setQuorum(uint256 _quorum) external auth(MANAGE_QUORUM)
 
 
+## Use only one epoch per frame for oracles voting.
+
+In the first version of the contract, we used "min/max reportable epoch" pair to determine the range
+of epochs that the contract currently accepts. This led to the overly-complicated logic. In
+particular, we were keeping all votings for epochs of the current frame until one of them reaches
+quorum. And in case of oracle members updates or quorum value changes, we just invalidated all
+epochs except the last one (to avoid iterating over all epochs within the frame).
+
+So now we found it reasonable to use only the latest reported epoch for oracle reportings: when an
+oracle reports a more recent epoch, we erase the current reporting (even if it did not reach a
+quorum) and move to the new epoch.
+
+One more to note here is that we only allow the first epoch of the frame for reporting
+(`_epochId.mod(epochsPerFrame) == 0`). This is done to prevent a malicious oracle from spoiling the
+quorum by continuously reporting a new epoch.
+
+The major change here is that we removed `gatheredEpochData` mapping. Instead, we keep
+`gatheredReportsKind` array that keeps different report "kinds" gathered for the current "reportable
+epoch". The report kind is a report with a counter - how many times this report was pushed by
+oracles. This heavily simplified logic of `_getQuorumReport`: in the majority of cases, we only have
+1 kind of report so we just make sure that its counter exceeded the quorum value. `Algorighm.sol`,
+which used to find the majority element for the reporting, was completely removed.
+
+
+## Add calculation of rewards APR.
+
+
 ## Sanity checks the oracles reports by configurable values.
 
 In order to limit the misbehaving oracles impact, we want to limit oracles report change by 0.1 APR
@@ -56,12 +83,6 @@ after reporting the quorum report, and
   below, reverts the transaction with `ALLOWED_BEACON_BALANCE_DECREASE` code.
 
 [1]: https://en.wikipedia.org/wiki/Annual_percentage_rate
-
-
-## Use only one epoch per frame to simplify vote accounting.
-
-
-## Add calculation of rewards APR.
 
 
 ## Callback function to be invoked every time the quorum is reached among oracle daemons data.
