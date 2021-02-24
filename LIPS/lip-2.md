@@ -210,7 +210,7 @@ to the current reporting state.
 
     function getCurrentOraclesReportStatus() public view returns(uint256)
 
-    function getCurrentReportKindSize() public view returns(uint256)
+    function getCurrentReportKindsSize() public view returns(uint256)
 
     function getCurrentReportKind(uint256 index)
         public view
