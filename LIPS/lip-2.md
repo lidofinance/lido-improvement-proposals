@@ -212,7 +212,7 @@ to the current reporting state.
 
     function getCurrentReportKindSize() public view returns(uint256)
 
-    function getCurrentReortKind(uint256 index)
+    function getCurrentReportKind(uint256 index)
         public view
         returns(
             uint128 beaconBalance,
