@@ -16,7 +16,7 @@ The following new features are added to the first version of the oracle contract
 ## Allow the number of oracle members to be less than the quorum value.
 
 The most likely reason for removing an oracle member is a malicious oracle. It's better to have an
-oracle with no quorum (as members are added or quorum value lowered by the voting process) than an
+oracle with no quorum (as members are added or quorum value lowered by the governance) than an
 oracle with a quorum but a malicious member in it.
 
 We implemented this by updating the restrictions (were `members.length >= _quorum`). Now the only
@@ -25,13 +25,13 @@ way to update the quorum value is with its mutator (untouched since v1):
     function setQuorum(uint256 _quorum) external auth(MANAGE_QUORUM)
 
 
-## Use only one epoch per frame for oracles voting.
+## Use only one epoch per frame for oracles reporting.
 
 In the first version of the contract, we used "min/max reportable epoch" pair to determine the range
 of epochs that the contract currently accepts. This led to the overly complicated logic. In
-particular, we were keeping all votings for epochs of the current frame until one of them reaches
-quorum. And in case of oracle members updates or quorum value changes, we just invalidated all
-epochs except the last one (to avoid iterating over all epochs within the frame).
+particular, we were keeping all report pushes for epochs of the current frame until one of them
+reaches quorum. And in case of oracle members updates or quorum value changes, we just invalidated
+all epochs except the last one (to avoid iterating over all epochs within the frame).
 
 So now we found it reasonable to use only the latest reported epoch for oracle reportings: when an
 oracle reports a more recent epoch, we erase the current reporting (even if it did not reach a
@@ -46,7 +46,7 @@ The major change here is that we removed `gatheredEpochData` mapping. Instead, w
 epoch". The report kind is a report with a counter - how many times this report was pushed by
 oracles. This heavily simplified logic of `_getQuorumReport`, because in the majority of cases, we
 only have 1 kind of report so we just make sure that its counter exceeded the quorum value.
-`Algorighm.sol`, which used to find the majority element for the reporting, was completely removed.
+`Algorithm.sol`, which used to find the majority element for the reporting, was completely removed.
 
 The following contract storage variables are used to keep the information.
 
@@ -85,7 +85,7 @@ The following contract storage variables are used to keep the information.
 
 Public function was added to provide data for calculating the rewards of [stETH][2] holders.
 
-    function getLastCompletedReports()
+    function getLastCompletedReportDelta()
         public view
         returns (
             uint256 postTotalPooledEther,
@@ -97,7 +97,7 @@ Public function was added to provide data for calculating the rewards of [stETH]
 ## Sanity checks the oracles reports by configurable values.
 
 In order to limit the misbehaving oracles impact, we want to limit oracles report change by 0.1 APR
-increase in stake and 15% decrease in stake. Both values are configurable by DAO voting in case of
+increase in stake and 15% decrease in stake. Both values are configurable by the governance in case of
 extremely unusual circumstances.
 
 Note that the change is evaluated after the quorum of oracles reports is reached, and not on the
