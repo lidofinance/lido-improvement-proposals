@@ -20,7 +20,7 @@ oracle with no quorum (as members are added or quorum value lowered by the votin
 oracle with a quorum but a malicious member in it.
 
 We implemented this by updating the restrictions (were `members.length >= _quorum`). Now the only
-way to update the quorum value is with its mutator:
+way to update the quorum value is with its mutator (untouched since v1):
 
     function setQuorum(uint256 _quorum) external auth(MANAGE_QUORUM)
 
@@ -28,7 +28,7 @@ way to update the quorum value is with its mutator:
 ## Use only one epoch per frame for oracles voting.
 
 In the first version of the contract, we used "min/max reportable epoch" pair to determine the range
-of epochs that the contract currently accepts. This led to the overly-complicated logic. In
+of epochs that the contract currently accepts. This led to the overly complicated logic. In
 particular, we were keeping all votings for epochs of the current frame until one of them reaches
 quorum. And in case of oracle members updates or quorum value changes, we just invalidated all
 epochs except the last one (to avoid iterating over all epochs within the frame).
@@ -48,8 +48,50 @@ oracles. This heavily simplified logic of `_getQuorumReport`: in the majority of
 1 kind of report so we just make sure that its counter exceeded the quorum value. `Algorighm.sol`,
 which used to find the majority element for the reporting, was completely removed.
 
+The following contract storage variables are used to keep the information.
 
-## Add calculation of rewards APR.
+    bytes32 internal constant REPORTABLE_EPOCH_ID_POSITION =
+        keccak256("lido.LidoOracle.reportableEpochId");
+    bytes32 internal constant REPORTS_BITMASK_POSITION =
+        keccak256("lido.LidoOracle.reoirtsBitMask");
+    ReportKind[] private gatheredReportKinds;  // in place of gatheredEpochData mapping in v1
+
+
+## Add calculation of staker rewards [APR][1].
+
+To calculate the percentage of rewards for stakers, we store and provide the following data:
+
+* `preTotalPooledEther` - total pooled ether mount, queried right before every report push to the
+  Lido contract,
+* `postTotalPooledEther` - the same, but queried right after the push,
+* `lastCompletedEpochId` - the last epoch that we pushed the report to the Lido,
+* `timeElapsed` - the time in seconds between the current epoch of push and the
+  `lastCompletedEpochId`. Usually, it should be a frame long: 32 * 12 * 225 = 86400, but maybe
+  multiples more in case that the previous frame didn't reach the quorum.
+
+It is important to note here, that we collect post/pre pair (not current/last), to avoid the
+influence of new staking during the epoch.
+
+The following contract storage variables are used to keep the information.
+
+    bytes32 internal constant POST_COMPLETED_TOTAL_POOLED_ETHER_POSITION =
+        keccak256("lido.LidoOracle.postCompletedTotalPooledEther");
+    bytes32 internal constant PRE_COMPLETED_TOTAL_POOLED_ETHER_POSITION =
+        keccak256("lido.LidoOracle.preCompletedTotalPooledEther");
+    bytes32 internal constant LAST_COMPLETED_EPOCH_ID_POSITION =
+        keccak256("lido.LidoOracle.lastCompletedEpochId");
+    bytes32 internal constant TIME_ELAPSED_POSITION =
+        keccak256("lido.LidoOracle.timeElapsed");
+
+Public function was added to provide data for calculating the rewards of [stETH][2] holders.
+
+    function getLastCompletedReports()
+        public view
+        returns (
+            uint256 postTotalPooledEther,
+            uint256 preTotalPooledEther,
+            uint256 timeElapsed
+        )
 
 
 ## Sanity checks the oracles reports by configurable values.
@@ -82,10 +124,12 @@ after reporting the quorum report, and
 * if there is a loss, calculates relative decrease and compares it with the lower bound. If was
   below, reverts the transaction with `ALLOWED_BEACON_BALANCE_DECREASE` code.
 
-[1]: https://en.wikipedia.org/wiki/Annual_percentage_rate
-
 
 ## Callback function to be invoked every time the quorum is reached among oracle daemons data.
 
 
 ## Add events to cover all states change and getters for accessing the current state details.
+
+
+[1]: https://en.wikipedia.org/wiki/Annual_percentage_rate
+[2]: https://lido.fi/faq
