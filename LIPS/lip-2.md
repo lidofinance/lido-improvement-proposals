@@ -16,7 +16,8 @@ The following changes are to be made to the first mainnet version of the oracle 
 ## Change the meaning of 'quorum'.
 
 In the first version, the quorum value denoted the minimum number of oracles needed to perform
-results. We decided to change this.
+results. Current oracle removal lever (`removeOracleMember`) doesn't allow to remove oracle members
+if it puts a number of members below quorum.
 
 Because the most likely reason for removing an oracle member is a malicious or faulty oracle
 member. It's better to have an oracle with no quorum (as members are added or quorum value lowered
@@ -25,9 +26,9 @@ by the governance) than an oracle with a quorum but a malicious member in it.
 So now, the governance-controlled 'quorum' value means the minimum number of exactly the same
 reports needed to finalize this epoch and report this report to Lido.
 
-For example, if the quorum value is `5` and oracles report: `100`, `100`, `101`, `0`, `100`, `100`,
-`100`: after that, the report `100` wins because it was pushed 5 times. So it is pushed to Lido,
-epoch closes and no more reports for this epoch are accepted.
+For example, if the quorum value is `5` and suppose the oracles report consequently: `100`, `100`,
+`101`, `0`, `100`, `100`, `100`: after the last, the report `100` wins because it was pushed 5
+times. So it is pushed to Lido, epoch closes and no more reports for this epoch are accepted.
 
 
 ## Use only one epoch per frame for oracles reporting.
