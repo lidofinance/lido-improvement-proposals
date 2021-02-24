@@ -5,7 +5,7 @@ status: Work in progress
 author: Denis Glotov
 discussions-to: none
 created: 2021-02-22
-updated: 2021-12-24
+updated: 2021-02-24
 ---
 
 # Oracle contract upgrade to v2
@@ -18,9 +18,9 @@ The following changes are to be made to the first mainnet version of the oracle 
 In the first version, the quorum value denoted the minimum number of oracles needed to perform
 results. We decided to change this.
 
-Because the most likely reason for removing an oracle member is a malicious oracle. It's better to
-have an oracle with no quorum (as members are added or quorum value lowered by the governance) than
-an oracle with a quorum but a malicious member in it.
+Because the most likely reason for removing an oracle member is a malicious or faulty oracle
+member. It's better to have an oracle with no quorum (as members are added or quorum value lowered
+by the governance) than an oracle with a quorum but a malicious member in it.
 
 So now, the governance-controlled 'quorum' value means the minimum number of exactly the same
 reports needed to finalize this epoch and report this report to Lido.
@@ -57,6 +57,13 @@ epoch". The report kind is a report with a counter - how many times this report 
 oracles. This heavily simplified logic of `_getQuorumReport`, because in the majority of cases, we
 only have 1 kind of report so we just make sure that its counter exceeded the quorum value.
 `Algorithm.sol`, which used to find the majority element for the reporting, was completely removed.
+
+This change does not impact fair weather operations at all; the only setting where it is inferior to
+the origninal procedure is a very specific kind of theoretical long-term eth2 turbulence where eth2
+finality makes progress but lags behind last slot and that lag is 24h+ for a long time. It's been
+never observed in the testnets and experts on eth2 consensus say it's a very convoluted scenario. So
+we decided to axe it, and if it happens in the wild (which it won't), we can upgrade oracle back to
+handle it better.
 
 The following contract storage variables are used to keep the information.
 
@@ -106,8 +113,8 @@ Public function was added to provide data for calculating the rewards of [stETH]
 
 ## Sanity checks the oracles reports by configurable values.
 
-In order to limit the misbehaving oracles impact, we want to limit oracles report change by 0.1 APR
-increase in stake and 15% decrease in stake. Both values are configurable by the governance in case of
+In order to limit the misbehaving oracles impact, we want to limit oracles report change by 10% APR
+increase in stake and 5% decrease in stake. Both values are configurable by the governance in case of
 extremely unusual circumstances.
 
 :warning: Note that the change is evaluated after the quorum of oracles reports is reached, and not
