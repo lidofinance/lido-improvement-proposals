@@ -37,12 +37,12 @@ So now we found it reasonable to use only the latest reported epoch for oracle r
 oracle reports a more recent epoch, we erase the current reporting (even if it did not reach a
 quorum) and move to the new epoch.
 
-The important note here is that when we remove an oracle (with `removeOracleMember`), we also need
-to remove her vote from the currently accepted reports. As of now, we do not keep a mapping between
-members and their reports, we just clean all existing reports and wait for the remaining oracles to
-push the same epoch again.
+⚠️ The important note here is that when we remove an oracle (with `removeOracleMember`), we also need
+to remove her report from the currently accepted reports. As of now, we do not keep a mapping
+between members and their reports, we just clean all existing reports and wait for the remaining
+oracles to push the same epoch again.
 
-One more to note here is that we only allow the first epoch of the frame for reporting
+⚠️ One more to note here is that we only allow the first epoch of the frame for reporting
 (`_epochId.mod(epochsPerFrame) == 0`). This is done to prevent a malicious oracle from spoiling the
 quorum by continuously reporting a new epoch.
 
@@ -74,7 +74,7 @@ To calculate the percentage of rewards for stakers, we store and provide the fol
   `lastCompletedEpochId`. Usually, it should be a frame long: 32 * 12 * 225 = 86400, but maybe
   multiples more in case that the previous frame didn't reach the quorum.
 
-It is important to note here, that we collect post/pre pair (not current/last), to avoid the
+⚠️ It is important to note here, that we collect post/pre pair (not current/last), to avoid the
 influence of new staking during the epoch.
 
 The following contract storage variables are used to keep the information.
@@ -105,7 +105,7 @@ In order to limit the misbehaving oracles impact, we want to limit oracles repor
 increase in stake and 15% decrease in stake. Both values are configurable by the governance in case of
 extremely unusual circumstances.
 
-Note that the change is evaluated after the quorum of oracles reports is reached, and not on the
+⚠️ Note that the change is evaluated after the quorum of oracles reports is reached, and not on the
 individual report.
 
 For this, we have added the following accessors and mutators:
@@ -132,9 +132,11 @@ following. It compares the `preTotalPooledEther` and `postTotalPooledEther` (see
 ## Callback function to be invoked on report pushes.
 
 To provide the external contract with updates on report pushes (every time the quorum is reached
-among oracle daemons data), we provide the following setter.
+among oracle daemons data), we provide the following setter and getter functions.
 
     function setQuorumCallback(address _addr) external auth(SET_QUORUM_CALLBACK)
+
+    function getQuorumCallback() public view returns(address)
 
 And when the callback is set, the following function will be invoked on every report push.
 
@@ -183,6 +185,10 @@ section above for other arguments.
 Reports the updates of the threshold limits by the governance. 
 See [Sanity checks the oracles reports by configurable values][4] section above for details.
 
+    event QuorumCallbackSet(address callback);
+
+Reports the updates of the quorum callback, [Callback function to be invoked on report pushes][5].
+
 
 ## Add getters for accessing the current state details.
 
@@ -199,3 +205,4 @@ initialized for the first time, that happened in v1.
 [2]: https://lido.fi/faq
 [3]: #add-calculation-of-staker-rewards-apr
 [4]: #sanity-checks-the-oracles-reports-by-configurable-values
+[5]: #callback-function-to-be-invoked-on-report-pushes
