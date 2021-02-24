@@ -143,8 +143,51 @@ And when the callback is set, the following function will be invoked on every re
 The arguments provided are the same as described in sections above.
 
 
-## Add events to cover all states change and getters for accessing the current state details.
+## Add events to cover all states change
+
+The goal was to cover every state change and have access to every storage variable. This is why we
+added the following events.
+
+    event ReportableEpochIdUpdated(uint256 epochId)
+    
+Reports the new epoch that the contract is ready to accept from oracles. This happens as a result of
+either successfull quorum or when some oracle reported later epoch.
+    
+    event BeaconReported(
+        uint256 epochId,
+        uint128 beaconBalance,
+        uint128 beaconValidators,
+        address caller
+    )
+    
+Reports the data that the oracle pushed to the contract with `reportBeacon` call.
+    
+    event PostTotalShares(
+         uint256 postTotalPooledEther,
+         uint256 preTotalPooledEther,
+         uint256 timeElapsed,
+         uint256 totalShares)
+
+Reports stat data when the quorum happened and the resulting report was pushed to Lido. Here,
+`totalShares` is grabed from the Lido contract, see [Add calculation of staker rewards APR][3]
+section above for other arguments.
+         
+    event AllowedBeaconBalanceAnnualRelativeIncreaseSet(uint256 value)
+    event AllowedBeaconBalanceRelativeDecreaseSet(uint256 value)
+
+Reports the updates of the threshold limits by the governance. 
+See [Sanity checks the oracles reports by configurable values][4] section above for details.
+
+
+## Add getters for accessing the current state details.
+
+## Other changes.
+
+Public function `initialize` was removed from v2 because it is not needed once the contract is
+initialized for the first time, that happened in v1.
 
 
 [1]: https://en.wikipedia.org/wiki/Annual_percentage_rate
 [2]: https://lido.fi/faq
+[3]: #add-calculation-of-staker-rewards-apr
+[4]: #sanity-checks-the-oracles-reports-by-configurable-values
