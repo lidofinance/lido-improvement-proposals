@@ -149,11 +149,24 @@ And when the callback is set, the following function will be invoked on every re
 
 The arguments provided are the same as described in sections above.
 
+The following contract storage variables are used to keep the information.
+
+    bytes32 internal constant QUORUM_CALLBACK_POSITION = keccak256("lido.LidoOracle.quorumCallback");
+
 
 ## Add events to cover all states change
 
 The goal was to cover every state change and have access to every storage variable. This is why we
 added the following events.
+
+    event BeaconSpecSet(
+        uint64 epochsPerFrame,
+        uint64 slotsPerEpoch,
+        uint64 secondsPerSlot,
+        uint64 genesisTime
+    );
+
+Reports beacon specification update by governance.
 
     event ReportableEpochIdUpdated(uint256 epochId)
     
@@ -192,7 +205,21 @@ Reports the updates of the quorum callback, [Callback function to be invoked on 
 
 ## Add getters for accessing the current state details.
 
-TODO: https://github.com/lidofinance/lido-dao/issues/230
+In addition to the getters listed in sections above, the following functions provide public access
+to the current reporting state.
+
+    function getCurrentOraclesReportStatus() public view returns(uint256)
+
+    function getCurrentReportKindSize() public view returns(uint256)
+
+    function getCurrentReortKind(uint256 index)
+        public view
+        returns(
+            uint128 beaconBalance,
+            uint128 beaconValidators,
+            uint256 count
+        )
+
 
 
 ## Other changes.
