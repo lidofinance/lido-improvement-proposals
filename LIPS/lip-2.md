@@ -37,6 +37,11 @@ So now we found it reasonable to use only the latest reported epoch for oracle r
 oracle reports a more recent epoch, we erase the current reporting (even if it did not reach a
 quorum) and move to the new epoch.
 
+The important note here is that when we remove an oracle (with `removeOracleMember`), we also need
+to remove her vote from the currently accepted reports. As of now, we do not keep a mapping between
+members and their reports, we just clean all existing reports and wait for the remaining oracles to
+push the same epoch again.
+
 One more to note here is that we only allow the first epoch of the frame for reporting
 (`_epochId.mod(epochsPerFrame) == 0`). This is done to prevent a malicious oracle from spoiling the
 quorum by continuously reporting a new epoch.
