@@ -151,7 +151,7 @@ added the following events.
     event ReportableEpochIdUpdated(uint256 epochId)
     
 Reports the new epoch that the contract is ready to accept from oracles. This happens as a result of
-either successfull quorum or when some oracle reported later epoch.
+either a successful quorum or when some oracle reported later epoch.
     
     event BeaconReported(
         uint256 epochId,
@@ -168,8 +168,8 @@ Reports the data that the oracle pushed to the contract with `reportBeacon` call
          uint256 timeElapsed,
          uint256 totalShares)
 
-Reports stat data when the quorum happened and the resulting report was pushed to Lido. Here,
-`totalShares` is grabed from the Lido contract, see [Add calculation of staker rewards APR][3]
+Reports statistics data when the quorum happened and the resulting report was pushed to Lido. Here,
+`totalShares` is grabbed from the Lido contract, see [Add calculation of staker rewards APR][3]
 section above for other arguments.
          
     event AllowedBeaconBalanceAnnualRelativeIncreaseSet(uint256 value)
@@ -180,6 +180,9 @@ See [Sanity checks the oracles reports by configurable values][4] section above 
 
 
 ## Add getters for accessing the current state details.
+
+TODO: https://github.com/lidofinance/lido-dao/issues/230
+
 
 ## Other changes.
 
