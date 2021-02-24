@@ -5,7 +5,7 @@ status: Work in progress
 author: Denis Glotov
 discussions-to: none
 created: 2021-02-22
-updated: 2021-12-23
+updated: 2021-12-24
 ---
 
 # Oracle contract upgrade to v2
@@ -44,9 +44,9 @@ quorum by continuously reporting a new epoch.
 The major change here is that we removed `gatheredEpochData` mapping. Instead, we keep
 `gatheredReportsKind` array that keeps different report "kinds" gathered for the current "reportable
 epoch". The report kind is a report with a counter - how many times this report was pushed by
-oracles. This heavily simplified logic of `_getQuorumReport`: in the majority of cases, we only have
-1 kind of report so we just make sure that its counter exceeded the quorum value. `Algorighm.sol`,
-which used to find the majority element for the reporting, was completely removed.
+oracles. This heavily simplified logic of `_getQuorumReport`, because in the majority of cases, we
+only have 1 kind of report so we just make sure that its counter exceeded the quorum value.
+`Algorighm.sol`, which used to find the majority element for the reporting, was completely removed.
 
 The following contract storage variables are used to keep the information.
 
@@ -116,8 +116,7 @@ For this, we have added the following accessors and mutators:
         public auth(SET_REPORT_BOUNDARIES)
 
 And the logic of reporting to the Lido contract got a call to `_reportSanityChecks` that does the
-following. It compares the total pooled ether, grabbed from the Lido contract, right before and
-after reporting the quorum report, and
+following. It compares the `preTotalPooledEther` and `postTotalPooledEther` (see above) and
 
 * if there is a profit or same, calculates the [APR][1], compares it with the upper bound. If was above,
   reverts the transaction with `ALLOWED_BEACON_BALANCE_INCREASE` code.
@@ -125,7 +124,23 @@ after reporting the quorum report, and
   below, reverts the transaction with `ALLOWED_BEACON_BALANCE_DECREASE` code.
 
 
-## Callback function to be invoked every time the quorum is reached among oracle daemons data.
+## Callback function to be invoked on report pushes.
+
+To provide the external contract with updates on report pushes (every time the quorum is reached
+among oracle daemons data), we provide the following setter.
+
+    function setQuorumCallback(address _addr) external auth(SET_QUORUM_CALLBACK)
+
+And when the callback is set, the following function will be invoked on every report push.
+
+    interface IQuorumCallback {
+        function processLidoOracleReport(
+            uint256 _postTotalPooledEther,
+            uint256 _preTotalPooledEther,
+            uint256 _timeElapsed) external;
+    }
+
+The arguments provided are the same as described in sections above.
 
 
 ## Add events to cover all states change and getters for accessing the current state details.
