@@ -10,19 +10,24 @@ updated: 2021-12-24
 
 # Oracle contract upgrade to v2
 
-The following new features are added to the first version of the oracle contract.
+The following changes are to be made to the first mainnet version of the oracle contract.
 
 
-## Allow the number of oracle members to be less than the quorum value.
+## Change the meaning of 'quorum'.
 
-The most likely reason for removing an oracle member is a malicious oracle. It's better to have an
-oracle with no quorum (as members are added or quorum value lowered by the governance) than an
-oracle with a quorum but a malicious member in it.
+In the first version, the quorum value denoted the minimum number of oracles needed to perform
+results. We decided to change this.
 
-We implemented this by updating the restrictions (were `members.length >= _quorum`). Now the only
-way to update the quorum value is with its mutator (untouched since v1):
+Because the most likely reason for removing an oracle member is a malicious oracle. It's better to
+have an oracle with no quorum (as members are added or quorum value lowered by the governance) than
+an oracle with a quorum but a malicious member in it.
 
-    function setQuorum(uint256 _quorum) external auth(MANAGE_QUORUM)
+So now, the governance-controlled 'quorum' value means the minimum number of exactly the same
+reports needed to finalize this epoch and report this report to Lido.
+
+For example, if the quorum value is `5` and oracles report: `100`, `100`, `101`, `0`, `100`, `100`,
+`100`: after that, the report `100` wins because it was pushed 5 times. So it is pushed to Lido,
+epoch closes and no more reports for this epoch are accepted.
 
 
 ## Use only one epoch per frame for oracles reporting.
@@ -37,12 +42,12 @@ So now we found it reasonable to use only the latest reported epoch for oracle r
 oracle reports a more recent epoch, we erase the current reporting (even if it did not reach a
 quorum) and move to the new epoch.
 
-⚠️ The important note here is that when we remove an oracle (with `removeOracleMember`), we also need
+:warning: The important note here is that when we remove an oracle (with `removeOracleMember`), we also need
 to remove her report from the currently accepted reports. As of now, we do not keep a mapping
 between members and their reports, we just clean all existing reports and wait for the remaining
 oracles to push the same epoch again.
 
-⚠️ One more to note here is that we only allow the first epoch of the frame for reporting
+:warning: One more to note here is that we only allow the first epoch of the frame for reporting
 (`_epochId.mod(epochsPerFrame) == 0`). This is done to prevent a malicious oracle from spoiling the
 quorum by continuously reporting a new epoch.
 
@@ -74,8 +79,8 @@ To calculate the percentage of rewards for stakers, we store and provide the fol
   `lastCompletedEpochId`. Usually, it should be a frame long: 32 * 12 * 225 = 86400, but maybe
   multiples more in case that the previous frame didn't reach the quorum.
 
-⚠️ It is important to note here, that we collect post/pre pair (not current/last), to avoid the
-influence of new staking during the epoch.
+:warning: It is important to note here, that we collect post/pre pair (not current/last), to avoid
+the influence of new staking during the epoch.
 
 The following contract storage variables are used to keep the information.
 
@@ -105,8 +110,8 @@ In order to limit the misbehaving oracles impact, we want to limit oracles repor
 increase in stake and 15% decrease in stake. Both values are configurable by the governance in case of
 extremely unusual circumstances.
 
-⚠️ Note that the change is evaluated after the quorum of oracles reports is reached, and not on the
-individual report.
+:warning: Note that the change is evaluated after the quorum of oracles reports is reached, and not
+on the individual report.
 
 For this, we have added the following accessors and mutators:
 
