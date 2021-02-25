@@ -126,7 +126,7 @@ Public function was added to provide data for calculating the rewards of [stETH]
         )
 To calculate APR, use the following formula:
 
-APR = (postTotalPooledEther - preTotalPooledEther)*secondsInYear/(preTotalPooledEther*timeElapsed)
+    APR = (postTotalPooledEther - preTotalPooledEther)*secondsInYear/(preTotalPooledEther*timeElapsed)
 
 
 ## Sanity checks the oracles reports by configurable values.
