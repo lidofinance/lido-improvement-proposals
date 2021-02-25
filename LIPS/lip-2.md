@@ -15,11 +15,15 @@ The following changes are to be made to the first mainnet version of the oracle 
 
 ## Change the meaning of 'quorum'.
 
-In the first version, the quorum value denoted the minimum number of oracles needed to successfully report
-results.
+In the first version, the quorum value denoted the minimum number of oracles needed to successfully
+report results.
 
-The proposed change is that the governance-controlled 'quorum' value means the minimum number of exactly the same
-reports needed to finalize this epoch and report this report to Lido. The reason for that change is that all non-byzantine oracles need to report the exact same value and if there are conflicting reports in the frame, it means some oracles are faulty or malicious. With an old system it took a majority of quiorum of faulty oracles to push their values (e.g. 2 out of 3), with new system it takes a full quorum of them (3 out of 3). 
+The proposed change is that the governance-controlled 'quorum' value means the minimum number of
+exactly the same reports needed to finalize this epoch and report this report to Lido. The reason
+for that change is that all non-byzantine oracles need to report the exactly the same value and if
+there are conflicting reports in the frame, it means some oracles are faulty or malicious. With an
+old system it took a majority of quorum of faulty oracles to push their values (e.g. 2 out of 3),
+with new system it takes a full quorum of them (3 out of 3).
 
 
 For example, if the quorum value is `5` and suppose the oracles report consequently: `100`, `100`,
@@ -54,10 +58,10 @@ So now we found it reasonable to use only the latest reported epoch for oracle r
 oracle reports a more recent epoch, we erase the current reporting (even if it did not reach a
 quorum) and move to the new epoch.
 
-:warning: The important note here is that when we remove an oracle (with `removeOracleMember`), we also need
-to remove her report from the currently accepted reports. As of now, we do not keep a mapping
-between members and their reports, we just clean all existing reports and wait for the remaining
-oracles to push the same epoch again.
+:warning: The important note here is that when we remove an oracle (with `removeOracleMember`), we
+also need to remove her report from the currently accepted reports. As of now, we do not keep a
+mapping between members and their reports, we just clean all existing reports and wait for the
+remaining oracles to push the same epoch again.
 
 :warning: One more to note here is that we only allow the first epoch of the frame for reporting
 (`_epochId.mod(epochsPerFrame) == 0`). This is done to prevent a malicious oracle from spoiling the
@@ -162,7 +166,9 @@ following. It compares the `preTotalPooledEther` and `postTotalPooledEther` (see
 ## Callback function to be invoked on report pushes.
 
 To provide the external contract with updates on report pushes (every time the quorum is reached
-among oracle daemons data), we provide the following setter and getter functions. It might be needed to implement some updates to the external contracts that should happen at the same tx the rebase happens (e.g. adjusting uniswap v2 pools to reflect the rebase).
+among oracle daemons data), we provide the following setter and getter functions. It might be needed
+to implement some updates to the external contracts that should happen at the same tx the rebase
+happens (e.g. adjusting uniswap v2 pools to reflect the rebase).
 
     function setQuorumCallback(address _addr) external auth(SET_QUORUM_CALLBACK)
 
