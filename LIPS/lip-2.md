@@ -15,11 +15,12 @@ The following changes are to be made to the first mainnet version of the oracle 
 
 ## Change the meaning of 'quorum'.
 
-In the first version, the quorum value denoted the minimum number of oracles needed to perform
+In the first version, the quorum value denoted the minimum number of oracles needed to successfully report
 results.
 
-So now, the governance-controlled 'quorum' value means the minimum number of exactly the same
-reports needed to finalize this epoch and report this report to Lido.
+The proposed change is that the governance-controlled 'quorum' value means the minimum number of exactly the same
+reports needed to finalize this epoch and report this report to Lido. The reason for that change is that all non-byzantine oracles need to report the exact same value and if there are conflicting reports in the frame, it means some oracles are faulty or malicious. With an old system it took a majority of quiorum of faulty oracles to push their values (e.g. 2 out of 3), with new system it takes a full quorum of them (3 out of 3). 
+
 
 For example, if the quorum value is `5` and suppose the oracles report consequently: `100`, `100`,
 `101`, `0`, `100`, `100`, `100`: after the last, the report `100` wins because it was pushed 5
@@ -123,6 +124,9 @@ Public function was added to provide data for calculating the rewards of [stETH]
             uint256 preTotalPooledEther,
             uint256 timeElapsed
         )
+To calculate APR, use the following formula:
+
+APR = (postTotalPooledEther - preTotalPooledEther)*secondsInYear/(preTotalPooledEther*timeElapsed)
 
 
 ## Sanity checks the oracles reports by configurable values.
@@ -158,7 +162,7 @@ following. It compares the `preTotalPooledEther` and `postTotalPooledEther` (see
 ## Callback function to be invoked on report pushes.
 
 To provide the external contract with updates on report pushes (every time the quorum is reached
-among oracle daemons data), we provide the following setter and getter functions.
+among oracle daemons data), we provide the following setter and getter functions. It might be needed to implement some updates to the external contracts that should happen at the same tx the rebase happens (e.g. adjusting uniswap v2 pools to reflect the rebase).
 
     function setQuorumCallback(address _addr) external auth(SET_QUORUM_CALLBACK)
 
