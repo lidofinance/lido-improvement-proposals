@@ -16,12 +16,7 @@ The following changes are to be made to the first mainnet version of the oracle 
 ## Change the meaning of 'quorum'.
 
 In the first version, the quorum value denoted the minimum number of oracles needed to perform
-results. Current oracle removal lever (`removeOracleMember`) doesn't allow to remove oracle members
-if it puts a number of members below quorum.
-
-Because the most likely reason for removing an oracle member is a malicious or faulty oracle
-member. It's better to have an oracle with no quorum (as members are added or quorum value lowered
-by the governance) than an oracle with a quorum but a malicious member in it.
+results.
 
 So now, the governance-controlled 'quorum' value means the minimum number of exactly the same
 reports needed to finalize this epoch and report this report to Lido.
@@ -29,6 +24,21 @@ reports needed to finalize this epoch and report this report to Lido.
 For example, if the quorum value is `5` and suppose the oracles report consequently: `100`, `100`,
 `101`, `0`, `100`, `100`, `100`: after the last, the report `100` wins because it was pushed 5
 times. So it is pushed to Lido, epoch closes and no more reports for this epoch are accepted.
+
+
+## Allow the number of oracle members to be less than the quorum value.
+
+Current oracle removal lever (`removeOracleMember`) doesn't allow to remove oracle members if it
+puts a number of members below quorum.
+
+The most likely reason for removing an oracle member is a malicious oracle. It's better to have an
+oracle with no quorum (as members are added or quorum value lowered by the voting process) than an
+oracle with a quorum but a malicious member in it.
+
+We implemented this by updating the restrictions (were `members.length >= _quorum`). Now the only
+way to update the quorum value is with its mutator (untouched since v1):
+
+    function setQuorum(uint256 _quorum) external auth(MANAGE_QUORUM)
 
 
 ## Use only one epoch per frame for oracles reporting.
@@ -73,6 +83,9 @@ The following contract storage variables are used to keep the information.
     bytes32 internal constant REPORTS_BITMASK_POSITION =
         keccak256("lido.LidoOracle.reoirtsBitMask");
     ReportKind[] private gatheredReportKinds;  // in place of gatheredEpochData mapping in v1
+
+:warning: Note that we're removing the report mapping `gatheredEpochData` and putting `ReportKind[]
+private gatheredReportKinds;` in its place in the contract storage.
 
 
 ## Add calculation of staker rewards [APR][1].
@@ -182,19 +195,19 @@ added the following events.
 Reports beacon specification update by governance.
 
     event ReportableEpochIdUpdated(uint256 epochId)
-    
+
 Reports the new epoch that the contract is ready to accept from oracles. This happens as a result of
 either a successful quorum or when some oracle reported later epoch.
-    
+
     event BeaconReported(
         uint256 epochId,
         uint128 beaconBalance,
         uint128 beaconValidators,
         address caller
     )
-    
+
 Reports the data that the oracle pushed to the contract with `reportBeacon` call.
-    
+
     event PostTotalShares(
          uint256 postTotalPooledEther,
          uint256 preTotalPooledEther,
@@ -204,17 +217,21 @@ Reports the data that the oracle pushed to the contract with `reportBeacon` call
 Reports statistics data when the quorum happened and the resulting report was pushed to Lido. Here,
 `totalShares` is grabbed from the Lido contract, see [Add calculation of staker rewards APR][3]
 section above for other arguments.
-         
+
     event AllowedBeaconBalanceAnnualRelativeIncreaseSet(uint256 value)
     event AllowedBeaconBalanceRelativeDecreaseSet(uint256 value)
 
-Reports the updates of the threshold limits by the governance. 
+Reports the updates of the threshold limits by the governance.
 See [Sanity checks the oracles reports by configurable values][4] section above for details.
 
     event QuorumCallbackSet(address callback);
 
 Reports the updates of the quorum callback, [Callback function to be invoked on report pushes][5].
 
+It can be reasonably argued that these events and getters belong to Lido app rather than an oracle
+app. We would agree to that in a vacuum, but the reality of the situation is that the ecosystem
+needs these events and getters to build upon, and we're not upgrading the core contract anytime
+soon. So we're taking a workaround and putting some code that best belongs elsewhere in the oracle.
 
 ## Add getters for accessing the current state details.
 
