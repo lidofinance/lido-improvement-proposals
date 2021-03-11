@@ -5,7 +5,7 @@ status: Work in progress
 author: Denis Glotov
 discussions-to: none
 created: 2021-02-22
-updated: 2021-02-24
+updated: 2021-03-11
 ---
 
 # Oracle contract upgrade to v2
@@ -19,16 +19,18 @@ In the first version, the quorum value denoted the minimum number of oracles nee
 report results.
 
 The proposed change is that the governance-controlled 'quorum' value means the minimum number of
-exactly the same reports needed to finalize this epoch and report this report to Lido. The reason
-for that change is that all non-byzantine oracles need to report the exactly the same value and if
-there are conflicting reports in the frame, it means some oracles are faulty or malicious. With an
-old system it took a majority of quorum of faulty oracles to push their values (e.g. 2 out of 3),
-with new system it takes a full quorum of them (3 out of 3).
+exactly the same reports needed to *finalize* this epoch, which means that the final report is
+pushed to Lido, no more reports are accepted for this epoch and the new expected epoch is advanced
+to the next frame.
 
+The reason for that change is that all non-byzantine oracles need to report exactly the same values
+and if there are conflicting reports in the frame, it means some oracles are faulty or
+malicious. With an old system it took a majority of quorum of faulty oracles to push their values
+(e.g. 2 out of 3), with new system it takes a full quorum of them (3 out of 3).
 
 For example, if the quorum value is `5` and suppose the oracles report consequently: `100`, `100`,
 `101`, `0`, `100`, `100`, `100`: after the last, the report `100` wins because it was pushed 5
-times. So it is pushed to Lido, epoch closes and no more reports for this epoch are accepted.
+times. So it is pushed to Lido, epoch is finalized and no more reports for this epoch are accepted.
 
 
 ## Allow the number of oracle members to be less than the quorum value.
@@ -46,7 +48,7 @@ way to update the quorum value is with its mutator (untouched since v1):
     function setQuorum(uint256 _quorum) external auth(MANAGE_QUORUM)
 
 
-## Use only one epoch per frame for oracles reporting.
+## Use only the first epoch of the current frame for oracles reporting.
 
 In the first version of the contract, we used "min/max reportable epoch" pair to determine the range
 of epochs that the contract currently accepts. This led to the overly complicated logic. In
@@ -54,43 +56,67 @@ particular, we were keeping all report pushes for epochs of the current frame un
 reaches quorum. And in case of oracle members updates or quorum value changes, we just invalidated
 all epochs except the last one (to avoid iterating over all epochs within the frame).
 
-So now we found it reasonable to use only the latest reported epoch for oracle reportings: when an
-oracle reports a more recent epoch, we erase the current reporting (even if it did not reach a
-quorum) and move to the new epoch.
+So now we found it reasonable to use only one epoch for oracle reportings, the first epoch of the
+current frame. When an oracle reports a more recent epoch, we erase the current reporting data (even
+if it did not reach a quorum) and advance to the new epoch.
+
+:warning: Allowing only one epoch per frame (`_epochId % epochsPerFrame == 0`) is done to prevent a
+malicious oracle from spoiling the quorum by continuously reporting a new epoch.
+
+This change does not impact fair weather operations at all; the only setting where it is inferior to
+the original procedure is a very specific kind of theoretical long-term eth2 turbulence where eth2
+finality makes progress but lags behind last slot and that lag is 24h+ for a long time. It's been
+never observed in the testnets and experts on eth2 consensus say it's a very convoluted scenario. So
+we decided to axe it, and if it happens in the wild (which it won't), we can upgrade oracle back to
+handle it better.
+
+
+## Store the collected reports as an array.
+
+In the first version of the contract, we stored the collected reports as a map between oracle member
+and her report (`gatheredEpochData`). In this version, we found it reasonable to simplify and store
+the reports as a raw array (`currentReportVariants`).
+
+The report variant is a report with a counter - how many times this report was pushed by
+oracles. This strongly simplified logic of `_getQuorumReport`, because in the majority of cases, we
+only have 1 variant of the report so we just make sure that its counter exceeded the quorum value.
+
+So `Algorithm` library, which used to find the majority element for the reporting, was completely
+removed. Also `BitOps` library reduced to only checking whether the oracle member has already
+reported or not, and thus was removed as a separate library.
 
 :warning: The important note here is that when we remove an oracle (with `removeOracleMember`), we
 also need to remove her report from the currently accepted reports. As of now, we do not keep a
 mapping between members and their reports, we just clean all existing reports and wait for the
 remaining oracles to push the same epoch again.
 
-:warning: One more to note here is that we only allow the first epoch of the frame for reporting
-(`_epochId.mod(epochsPerFrame) == 0`). This is done to prevent a malicious oracle from spoiling the
-quorum by continuously reporting a new epoch.
-
-The major change here is that we removed `gatheredEpochData` mapping. Instead, we keep
-`gatheredReportsKind` array that keeps different report "kinds" gathered for the current "reportable
-epoch". The report kind is a report with a counter - how many times this report was pushed by
-oracles. This heavily simplified logic of `_getQuorumReport`, because in the majority of cases, we
-only have 1 kind of report so we just make sure that its counter exceeded the quorum value.
-`Algorithm.sol`, which used to find the majority element for the reporting, was completely removed.
-
-This change does not impact fair weather operations at all; the only setting where it is inferior to
-the origninal procedure is a very specific kind of theoretical long-term eth2 turbulence where eth2
-finality makes progress but lags behind last slot and that lag is 24h+ for a long time. It's been
-never observed in the testnets and experts on eth2 consensus say it's a very convoluted scenario. So
-we decided to axe it, and if it happens in the wild (which it won't), we can upgrade oracle back to
-handle it better.
-
 The following contract storage variables are used to keep the information.
 
-    bytes32 internal constant REPORTABLE_EPOCH_ID_POSITION =
-        keccak256("lido.LidoOracle.reportableEpochId");
+    bytes32 internal constant EXPECTED_EPOCH_ID_POSITION =
+        keccak256("lido.LidoOracle.expectedEpochId");
     bytes32 internal constant REPORTS_BITMASK_POSITION =
         keccak256("lido.LidoOracle.reoirtsBitMask");
-    ReportKind[] private gatheredReportKinds;  // in place of gatheredEpochData mapping in v1
+    uint256[] private currentReportVariants;  // in place of gatheredEpochData mapping
 
-:warning: Note that we're removing the report mapping `gatheredEpochData` and putting `ReportKind[]
-private gatheredReportKinds;` in its place in the contract storage.
+:warning: Note that we're removing the report mapping `gatheredEpochData` and putting
+`currentReportVariants` right in its place (slot) in the contract storage.
+
+The following accessors are added to access this data:
+
+    function getExpectedEpochId() external view returns (uint256);
+
+    function getCurrentOraclesReportStatus() external view returns (uint256);
+
+    function getCurrentReportVariantsSize() external view returns (uint256);
+
+    function getCurrentReportVariant(uint256 _index)
+        external
+        view
+        returns (
+            uint64 beaconBalance,
+            uint32 beaconValidators,
+            uint16 count
+        );
 
 
 ## Add calculation of staker rewards [APR][1].
@@ -122,15 +148,17 @@ The following contract storage variables are used to keep the information.
 Public function was added to provide data for calculating the rewards of [stETH][2] holders.
 
     function getLastCompletedReportDelta()
-        public view
+        external
+        view
         returns (
             uint256 postTotalPooledEther,
             uint256 preTotalPooledEther,
             uint256 timeElapsed
         )
-To calculate APR, use the following formula:
 
-    APR = (postTotalPooledEther - preTotalPooledEther)*secondsInYear/(preTotalPooledEther*timeElapsed)
+To calculate the APR, use the following formula:
+
+    APR = (postTotalPooledEther - preTotalPooledEther) * secondsInYear / (preTotalPooledEther * timeElapsed)
 
 
 ## Sanity checks the oracles reports by configurable values.
@@ -148,11 +176,13 @@ For this, we have added the following accessors and mutators:
 
     function getAllowedBeaconBalanceRelativeDecrease() public view returns(uint256)
 
-    function setAllowedBeaconBalanceAnnualRelativeIncrease(uint256 value)
-        public auth(SET_REPORT_BOUNDARIES)
+    function setAllowedBeaconBalanceAnnualRelativeIncrease(uint256 _value)
+        external
+        auth(SET_REPORT_BOUNDARIES)
 
-    function setAllowedBeaconBalanceRelativeDecrease(uint256 value)
-        public auth(SET_REPORT_BOUNDARIES)
+    function setAllowedBeaconBalanceRelativeDecrease(uint256 _value)
+        external
+        auth(SET_REPORT_BOUNDARIES)
 
 And the logic of reporting to the Lido contract got a call to `_reportSanityChecks` that does the
 following. It compares the `preTotalPooledEther` and `postTotalPooledEther` (see above) and
@@ -163,31 +193,31 @@ following. It compares the `preTotalPooledEther` and `postTotalPooledEther` (see
   below, reverts the transaction with `ALLOWED_BEACON_BALANCE_DECREASE` code.
 
 
-## Callback function to be invoked on report pushes.
+## Receiver function to be invoked on report pushes.
 
 To provide the external contract with updates on report pushes (every time the quorum is reached
 among oracle daemons data), we provide the following setter and getter functions. It might be needed
 to implement some updates to the external contracts that should happen at the same tx the rebase
 happens (e.g. adjusting uniswap v2 pools to reflect the rebase).
 
-    function setQuorumCallback(address _addr) external auth(SET_QUORUM_CALLBACK)
+    function setBeaconReportReceiver(address _addr) external auth(SET_QUORUM_CALLBACK)
 
-    function getQuorumCallback() public view returns(address)
+    function getBeaconReportReceiver() external view returns(address)
 
 And when the callback is set, the following function will be invoked on every report push.
 
-    interface IQuorumCallback {
-        function processLidoOracleReport(
-            uint256 _postTotalPooledEther,
-            uint256 _preTotalPooledEther,
-            uint256 _timeElapsed) external;
+    interface IBeaconReportReceiver {
+        function processLidoOracleReport(uint256 _postTotalPooledEther,
+                                         uint256 _preTotalPooledEther,
+                                         uint256 _timeElapsed) external;
     }
 
 The arguments provided are the same as described in sections above.
 
 The following contract storage variables are used to keep the information.
 
-    bytes32 internal constant QUORUM_CALLBACK_POSITION = keccak256("lido.LidoOracle.quorumCallback");
+    bytes32 internal constant BEACON_REPORT_RECEIVER_POSITION =
+        keccak256("lido.LidoOracle.beaconReportReceiver")
 
 
 ## Add events to cover all states change
@@ -204,10 +234,10 @@ added the following events.
 
 Reports beacon specification update by governance.
 
-    event ReportableEpochIdUpdated(uint256 epochId)
+    event ExpectedEpochIdUpdated(uint256 epochId)
 
 Reports the new epoch that the contract is ready to accept from oracles. This happens as a result of
-either a successful quorum or when some oracle reported later epoch.
+either a successful epoch finalization or when some oracle reported later epoch.
 
     event BeaconReported(
         uint256 epochId,
@@ -234,42 +264,48 @@ section above for other arguments.
 Reports the updates of the threshold limits by the governance.
 See [Sanity checks the oracles reports by configurable values][4] section above for details.
 
-    event QuorumCallbackSet(address callback);
+    event BeaconReportReceiverSet(address callback);
 
-Reports the updates of the quorum callback, [Callback function to be invoked on report pushes][5].
+Reports the updates of the beacon report receiver, [Receiver function to be invoked on report pushes][5].
+
+    event ContractVersionSet(uint256 version);
+
+Reports the initialization of the new version of the contract. This second version will be 1.
 
 It can be reasonably argued that these events and getters belong to Lido app rather than an oracle
 app. We would agree to that in a vacuum, but the reality of the situation is that the ecosystem
 needs these events and getters to build upon, and we're not upgrading the core contract anytime
 soon. So we're taking a workaround and putting some code that best belongs elsewhere in the oracle.
 
-## Add getters for accessing the current state details.
 
-In addition to the getters listed in sections above, the following functions provide public access
-to the current reporting state.
-
-    function getCurrentOraclesReportStatus() public view returns(uint256)
-
-    function getCurrentReportKindsSize() public view returns(uint256)
-
-    function getCurrentReportKind(uint256 index)
-        public view
-        returns(
-            uint128 beaconBalance,
-            uint128 beaconValidators,
-            uint256 count
-        )
-
-
-
-## Other changes.
+## Initialization.
 
 Public function `initialize` was removed from v2 because it is not needed once the contract is
-initialized for the first time, that happened in v1.
+initialized for the first time, that happened in v1. Instead we added `initialize_v2` function that
+initializes newly added variables, updates the contract version to 1.
+
+    function initialize_v2(
+        uint256 _allowedBeaconBalanceAnnualRelativeIncrease,
+        uint256 _allowedBeaconBalanceRelativeDecrease
+    );
+
+And the following accessor may be used to check the current version of data initialization.
+
+    function getVersion() external view returns (uint256);
+
+
+## SafeMath library.
+
+Using SafeMath library were removed where it could be easily proved that no value overflow or
+underflow may happen to save gas.
+
+In other cases, especially in dealing with externally provided data (public function arguments),
+SafeMath were still used.
+
 
 
 [1]: https://en.wikipedia.org/wiki/Annual_percentage_rate
 [2]: https://lido.fi/faq
 [3]: #add-calculation-of-staker-rewards-apr
 [4]: #sanity-checks-the-oracles-reports-by-configurable-values
-[5]: #callback-function-to-be-invoked-on-report-pushes
+[5]: #receiver-function-to-be-invoked-on-report-pushes
