@@ -294,6 +294,32 @@ And the following accessor may be used to check the current version of data init
     function getVersion() external view returns (uint256);
 
 
+### Balance storage is 64-bit integer.
+
+In the first version of the contract, stored balance value as a 256-bit integer as in the Ethereum
+1.0, with '1 ether' = 10^18.
+
+In this version, we decided to comply with Ethereum 2.0 spec (see [custom types][6]) where the
+balance is 64-bit integer with '1 ether' = 10^9.
+
+This type change allowed us to pack report structure more tightly and save gas on its
+storage. `ReportUtils` library was introduced to deal with handling these data.
+
+:warning: Note here, that the existing events remain the same type arguments with the same values as
+in the first contract version. So we completely keep compatibility here. For this, we introduced
+
+    uint128 internal constant DENOMINATION_OFFSET = 1e9;
+
+and multiply by it when we need to convert the new balance value into the old format.
+
+Also, `reportBeacon` function, used by oracle daemons to send their reports, signature has changed:
+
+    function reportBeacon(uint256 _epochId, uint64 _beaconBalance, uint32 _beaconValidators) external;
+
+:warning: This means that oracle daemons needs to be updated. Using old oracle daemon (with old
+signature) will result in reverting every attempt to call the function.
+
+
 ## SafeMath library.
 
 Using SafeMath library were removed where it could be easily proved that no value overflow or
@@ -303,9 +329,9 @@ In other cases, especially in dealing with externally provided data (public func
 SafeMath were still used.
 
 
-
 [1]: https://en.wikipedia.org/wiki/Annual_percentage_rate
 [2]: https://lido.fi/faq
 [3]: #add-calculation-of-staker-rewards-apr
 [4]: #sanity-checks-the-oracles-reports-by-configurable-values
 [5]: #receiver-function-to-be-invoked-on-report-pushes
+[6]: https://github.com/ethereum/eth2.0-specs/blob/dev/specs/phase0/beacon-chain.md#custom-types
