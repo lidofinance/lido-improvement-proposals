@@ -145,7 +145,11 @@ The following contract storage variables are used to keep the information.
     bytes32 internal constant TIME_ELAPSED_POSITION =
         keccak256("lido.LidoOracle.timeElapsed");
 
-Public function was added to provide data for calculating the rewards of [stETH][2] holders.
+The following accessors are added to access this data:
+
+    function getLastCompletedEpochId() external view returns (uint256)
+
+And this combined accessor helps to provide data for calculating the rewards of [stETH][2] holders.
 
     function getLastCompletedReportDelta()
         external
