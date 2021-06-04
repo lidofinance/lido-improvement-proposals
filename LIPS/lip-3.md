@@ -146,7 +146,6 @@ We propose designing and building four views to overview and manage Easy Track m
 - Motion list view showing all the ongoing votings, their current status and time left to submit objections. On this page, it will also be possible to look through historical motions passed and canceled. Data for this historical section will be collected via subgraph.
 - Motion view showing details for specific motion (description, status, current objections submitted) and action button (submit objections).
 - Motion creation view to start new motions. This functionality will be only available to respective sub-governance group.
-- Additional static page listing sub-governance groups and commitees to make it clear who are entities entitled to start motions and what specific motion types can be started by each group.
 
 # Copyright
 
