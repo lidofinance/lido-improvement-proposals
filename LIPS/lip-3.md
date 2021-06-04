@@ -1,6 +1,6 @@
 | lip: | title: | status: | author: | discussions-to: | created: | updated: |
 | --- | --- | --- | --- | --- | --- | --- |
-| 3 | Easy Track Frictionless Motions | WIP | Bogdan Kovtun (psirex), Gregory Stepanov (grstepanov) | https://research.lido.fi/t/lip-3-easy-track-motions-for-dao-routine-operations/680 | 2021-06-04 | |
+| 3 | Easy Track Motions for DAO routine operations | WIP | Bogdan Kovtun (psirex), Gregory Stepanov (grstepanov) | https://research.lido.fi/t/lip-3-easy-track-motions-for-dao-routine-operations/680 | 2021-06-04 | |
 
 # Summary
 
