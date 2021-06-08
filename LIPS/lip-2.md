@@ -1,11 +1,11 @@
 ---
 lip: 2
 title: Oracle contract upgrade to v2
-status: Work in progress
+status: Implemented
 author: Denis Glotov
 discussions-to: none
 created: 2021-02-22
-updated: 2021-03-11
+updated: 2021-06-08
 ---
 
 # Oracle contract upgrade to v2
@@ -163,6 +163,10 @@ And this combined accessor helps to provide data for calculating the rewards of 
 To calculate the APR, use the following formula:
 
     APR = (postTotalPooledEther - preTotalPooledEther) * secondsInYear / (preTotalPooledEther * timeElapsed)
+
+:warning: Note that there is a [fee](https://docs.lido.fi/contracts/lido#getfee) taken by the
+protocol. The fee may change by the governance and should be subtracted from the reward amount
+calculated above to represent the APR of the end-user.
 
 
 ## Sanity checks the oracles reports by configurable values.
