@@ -18,7 +18,7 @@ description: >-
   platform, including core protocol specifications, client APIs, and contract
   standards.
 url: "https://forum.lido.fi/"
-repository: depools/lido-improvement-proposals
+repository: lidofinance/lido-improvement-proposals
 twitter_username: lido
 github_username: lido
 header_pages:
