@@ -74,7 +74,7 @@ Each LIP must begin with an [RFC 822](https://www.ietf.org/rfc/rfc822.txt) style
 
 ` author:` <a list of the author's or authors' name(s) and/or username(s), or name(s) and email(s). Details are below.>
 
-` * discussions-to:` \<a url pointing to the official discussion thread at forum.lido.fi \>
+` * discussions-to:` \<a url pointing to the official discussion thread at research.lido.fi \>
 
 ` status:` < WIP | PROPOSED | APPROVED | IMPLEMENTED >
 
@@ -93,7 +93,7 @@ Headers requiring dates will always do so in the format of ISO 8601 (yyyy-mm-dd)
 
 #### `discussions-to` header
 
-While an LIP is in WIP or Proposed status, a `discussions-to` header will indicate the URL at [forum.lido.fi/](https://forum.lido.fi/) where the LIP is being discussed.
+While an LIP is in WIP or Proposed status, a `discussions-to` header will indicate the URL at [research.lido.fi/](https://research.lido.fi/) where the LIP is being discussed.
 
 #### `created` header
 
