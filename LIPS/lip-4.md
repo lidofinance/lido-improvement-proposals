@@ -30,7 +30,7 @@ The upgrade plan is:
 1. Make changes to the Aragon Voting smart contract so the voting duration can be changed. This work is done and can be checked out in [our Aragon fork repo](https://github.com/lidofinance/aragon-apps/blob/8c46da8704d0011c42ece2896dbf4aeee069b84a/apps/voting/contracts/Voting.sol).
 1. Deploy the Voting implementation from [our Aragon fork repo](https://github.com/lidofinance/aragon-apps/blob/8c46da8704d0011c42ece2896dbf4aeee069b84a/apps/voting/contracts/Voting.sol).
 2. Run the Aragon vote with actions:
-   1. Push new app version to the Aragon repo
+   1. Add new Voting contract version to the Aragon PM Repo contract
    2. Upgrade the voting contract to the deployed version from the step 1.
    3. Grant the DAO Agent contract the `UNSAFELY_MODIFY_VOTE_TIME_ROLE` role.
    4. Call `unsafelyChangeVoteTime` method changing vote duration to 72h instead of the current 24h.
