@@ -17,8 +17,8 @@ description: >-
   Lidos Improvement Proposals (LIPs) describe standards for the lidos
   platform, including core protocol specifications, client APIs, and contract
   standards.
-url: "https://forum.lido.fi/"
-repository: depools/lido-improvement-proposals
+url: "https://research.lido.fi/"
+repository: lidofinance/lido-improvement-proposals
 twitter_username: lido
 github_username: lido
 header_pages:
