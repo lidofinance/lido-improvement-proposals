@@ -38,7 +38,7 @@ Node Operators Committee should include addresses of active node operators partn
 # Specification
 
 To create a feature as flexible and extendable as possible, we propose implementing Easy Track functionality within several contracts rather than building a single contract for it. 
-> The statement below is abstract, please visit [specification.md](https://github.com/lidofinance/easytrack/blob/master/README.md) for full detailed specification.
+> The statement below is abstract, please visit [specification.md](https://github.com/lidofinance/easy-track/blob/master/specification.md) for full detailed specification.
 
 ## Easy Track workflow and motion life cycle
 
@@ -49,7 +49,7 @@ This architecture aims to support further extension by adding new types of Easy 
 3. `EVMScriptFactory` smart contract generates the script and returns it to the `EasyTrack` core contract.
 4. `EasyTrack` contract conducts the motion according to the motion settings (i.e. motion duration, objections threshold and maximum active motions count). While active, the motion can be canceled at any time by the address that has started it.
 5. As soon as the motion duration expires, it becomes possible to enact the motion. Anyone can enact the motion from that moment on.
-6. To enact the motion, the `EasyTrack` contract passes the enactment EVM script to the `EVMScriptExecutor` smart contract.
+6. To enact the motion, the `EasyTrack` contract recreates the enactment EVM script and passes it to the `EVMScriptExecutor` smart contract for execution.
 7. `EVMScriptExecutor` holds all the permissions to run valid enactment EVM scripts passed from the `EasyTrack` smart contract (or Aragon voting app). 
 
 ![Easy Track system schema](./assets/lip-3/easytrackschema.jpg)
@@ -144,8 +144,8 @@ The proposed Easy Track Motions design involves timelock as a native security fe
 - It should be impossible to set objections threshold at more than 5% of the total LDO supply. Nevertheless, the default objections threshold should be set a lot lower at 0.5% of the total LDO supply.
 - It should be impossible to set motion duration at less than 48 hours. For any motion, there should be enough time for DAO to submit objections and reject the motion. 
 - It should be impossible to spam motions. The default limit for simultaneously active motions will be set at 12 and it can only be increased by the DAO to up to 24 motions at a time.
+- Pause lever should be added. It is proposed to set up an Easy Track security multi-sig to pause Easy Track in case of emergency.
 
-As an additional safety measure, the DAO will also be able to cancel any active motions without them reaching the objections threshold.
 ___
 # Copyright
 
