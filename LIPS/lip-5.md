@@ -12,29 +12,50 @@ updated: 2021-10-15
 
 ## Abstract
 
-On Tuesday, Oct 5, the vulnerability allowing the malicious Node Operator to intercept the user funds on deposits to the Beacon chain in the Lido protocol was reported to [Immunefi](https://immunefi.com/). On Wednesday, Oct 6, [the short-term fix was implemented](https://blog.lido.fi/vulnerability-response-update/). **Currently, no user funds are at risk, but the deposits to the Beacon chain are paused**.
+On Tuesday, Oct 5, the vulnerability allowing the malicious Node Operator to intercept the user funds on deposits to the Beacon chain in the Lido protocol was reported to [Immunefi](https://medium.com/immunefi/rocketpool-lido-frontrunning-bug-fix-postmortem-e701f26d7971). On Wednesday, Oct 6, [the short-term fix was implemented](https://blog.lido.fi/vulnerability-response-update/). **Currently, no user funds are at risk, but the deposits to the Beacon chain are paused**.
 
 This document outlines the long-term mitigation allowing deposits in the Lido protocol.
 
 The vulnerability could only be exploited by the Node Operator front-running the `Lido.depositBufferedEther` transaction with direct deposit to the [DepositContract](https://etherscan.io/address/0x00000000219ab540356cbb839cbe05303d7705fa) of no less than 1 ETH with the same validator public key & withdrawal credentials different from the Lido's ones, effectively getting control over 32 ETH from Lido.
 
-To mitigate the vulnerability, Lido contracts should be able to check that Node Operators' keys hadn't been used for malicious pre-deposits. `DepositContract` provides the Merkle root encoding of all the keys used in staking deposits. We propose to establish the **Deposit Security Committee** checking all deposits made and approving the current `deposit_data_root` for Lido deposits.
+To mitigate the vulnerability, Lido contracts should be able to check that Node Operators' keys hadn't been used for malicious pre-deposits. We propose to establish the **Deposit Security Committee** checking all deposits made and approving the current state of deposits and available Lido keys as safe.   `DepositContract` provides the Merkle root encoding of all the keys used in staking deposits, and `NodeOperatorRegistry` can be amended to provide an index of the current state. 
 
 The idea was outlined on [research forum post](https://research.lido.fi/t/mitigations-for-deposit-front-running-vulnerability/1239#d-approving-deposit-contract-merkle-root-7) as the option `d)`.
 
-The Merkle root data should be checked & signed by the guardian committee off-chain to save gas costs. Anyone with the signed `depositRoot` can call `depositBufferedEther` sending the ether from the Lido buffer to the `DepositContract`. In case any deposit happens before the `depositBufferedEther` transaction, the Merkle root on the `DepositContract` is changed and the Lido deposit transaction is reverted.
+The Merkle root data should be checked & signed by the guardian committee off-chain to save gas costs. Anyone with the signed `depositRoot`, `keysOpIndex`, `blockNumber` and `blockHash`  can call `depositBufferedEther` sending the ether from the Lido buffer to the `DepositContract`. In case any deposit, change of Lido's approved keys or blockchain reorg happens before the `depositBufferedEther` transaction, one or more of signed data points is changed and the Lido deposit transaction is reverted.
 
 ```solidity=
 function depositBufferedEther(
+    uint256 maxDeposits,
     bytes32 depositRoot,
-    Signature[] memory signatures
+    uint256 keysOpIndex,
+    uint256 blockNumber,
+    bytes32 blockHash,
+    Signature[] memory sortedGuardianSignatures
 ) external {
-    bytes32 onchainDepositRoot = IDepositContract(depositContract).get_deposit_root();
+    bytes32 onchainDepositRoot = IDepositContract(DEPOSIT_CONTRACT).get_deposit_root();
     require(depositRoot == onchainDepositRoot, "deposit root changed");
-    
-    require(_verifySignatures(depositRoot, signatures), "invalid signatures");
-    
-    _depositBufferedEther();
+
+    require(!paused, "deposits are paused");
+    require(quorum > 0 && sortedGuardianSignatures.length >= quorum, "no guardian quorum");
+
+    require(maxDeposits <= maxDepositsPerBlock, "too many deposits");
+    require(block.number - lastDepositBlock >= minDepositBlockDistance, "too frequent deposits");
+    require(blockhash(blockNumber) == blockHash, "unexpected block hash");
+
+    uint256 onchainKeysOpIndex = INodeOperatorsRegistry(nodeOperatorsRegistry).getKeysOpIndex();
+    require(keysOpIndex == onchainKeysOpIndex, "keys op index changed");
+
+    _verifySignatures(
+        depositRoot,
+        keysOpIndex,
+        blockNumber,
+        blockHash,
+        sortedGuardianSignatures
+    );
+
+    ILido(LIDO).depositBufferedEther(maxDeposits);
+    lastDepositBlock = block.number;
 }
 ```
 
@@ -129,9 +150,9 @@ function pauseDeposits(uint256 blockNumber, Signature memory sig) external {
 }
 ```
 
-This design ensures the protocol's robustness even with a single honest committee member. The impact is limited to about, say 4800 ETH at most (150 keys allowed within a time window, 32 ETH deposited to every key). The false-positive pause would stop the deposits for a couple of days because only DAO should be able to unpause deposits.
+This design ensures the protocol's robustness even with just a single honest committee member. The impact of majority-malicious committee is limited to 4800 ETH at most (150 keys allowed within a time window, 32 ETH deposited to every key). The false-positive pause would stop the deposits for a couple of days because only DAO should be able to unpause deposits.
 
-False-positive stop reveals the rogue committee member, which is good for the protocol. Overall, DoS seems not to be a big problem, and if it would be, the DAO can change the mitigation.
+False-positive stop reveals the rogue committee member or an error in offchain service, which is good for the protocol. Overall, DoS seems not to be a big problem, and if it would be, the DAO can change the mitigation.
 
 Below is the pseudocode of the `depositBufferedEther` function, updated following the above considerations.
 
@@ -246,6 +267,8 @@ Lido dev team (and potentially anyone with access to the message queue) will run
 
 ## Additional changes not related to the vulnerability
 
+This upgrade is an opportunity to to make a few small changes to the protocol as well, given we're going to have an upgrade, a number of reviews and audits anyway.
+
 1. Mitigation for the issue: [a Node Operator can circumvent DAO validator key approval](https://github.com/lidofinance/lido-dao/issues/141);
 2. Set `DEFAULT_MAX_DEPOSITS_PER_CALL` to 150 in [Lido.sol#59](https://github.com/lidofinance/lido-dao/blob/master/contracts/0.4.24/Lido.sol#L59);
 3. Prevent creating node operators with [a non-zero staking key limit](https://github.com/lidofinance/lido-dao/blob/master/contracts/0.4.24/nos/NodeOperatorsRegistry.sol#L112);
@@ -254,7 +277,7 @@ Lido dev team (and potentially anyone with access to the message queue) will run
     
 ## Action Plan
 
-It is very important to unpause the deposits to the Beacon chain, so we assume the deployment in several stages:
+To unpause the deposits to the Beacon chain, we assume the deployment in several stages:
 
 1) multiple committee members on a centralized message queue, council-daemon, deposit bot, and monitoring;
 2) multiple committee members on a p2p network.
@@ -276,9 +299,27 @@ Updating the protocol and deploying smart contracts are required only once.
     * Granting new permission `DEPOSIT_ROLE` for `DepositSecurityModule`;
     * Increase limits for Node Operators to the currently available key numbers.
 
+
+## Security Considerations
+
+### Increased risk of stalling withdrawals
+
+The mitigation design introduces a risk of stalling withdrawals for some time for no good reason. This can happen because of a single malicious or faulty committee member, or because of broken communication channel where off-chain signatures are collected. This is by design; stalling deposits for a few days will not harm the protocol, while mallicious frontrunning deposits are a significant danger. 
+
+### Malicious majority guardian comittee can steal funds
+
+Malicious majority of guardian comittee can let frontrunning deposits through, stealing the funds in collusion with Lido's node operators. As long as there's a single honest participant, they will be able to do this only once to a maximal possible amount of funds under risk of 4800 ETH. This is still a significant amount of impact that is mitigated by choosing the withdrawal committee wisely.
+
+### Malicious blockchain reorganizations
+
+The blockchain queries in council daemon bot are not atomic, that means that there is a possibility of a reorg between them. A malicious reorg could make a daemon can first check that the blockchain state is not exploited, then sign an attestation on maliciously reorged freshly-queried deposit data root and index. This is mitigated by first querying the state qualifiers (deposit data root, index, blockhash) and checking on their state later. That makes an exploit through malicious reorg, or multiple reorganizations, impossible in practice.
+
+
 ## Links 
 
 - Pull request with all smart contracts changes: https://github.com/lidofinance/lido-dao/pull/357
 - DepositSecurityModule.sol: https://github.com/lidofinance/lido-dao/blob/feature/deposit-frontrun-protection-upgrade/contracts/0.8.9/DepositSecurityModule.sol
 - Mitigations research forum post: https://research.lido.fi/t/mitigations-for-deposit-front-running-vulnerability/1239
 - Blog post with events log: https://blog.lido.fi/vulnerability-response-update/
+- Guardian council daemon: https://github.com/lidofinance/lido-council-daemon
+- Depositor bot WIP: https://github.com/lidofinance/depositor-bot/pull/12
