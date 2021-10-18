@@ -213,9 +213,9 @@ contract DepositSecurityModule is Ownable {
      * The function might be called by the guardian directly   
      * OR by passing a valid guardian's signature.
      *
-     * blockHeight is required to prevent reply attack.
+     * blockNumber is required to prevent reply attack.
      */
-    function pauseDeposits(uint256 blockHeight, Signature memory sig) external;
+    function pauseDeposits(uint256 blockNumber, Signature memory sig) external;
     function unpauseDeposits() external onlyOwner;
     
     /**
