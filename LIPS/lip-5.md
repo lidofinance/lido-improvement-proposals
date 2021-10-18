@@ -26,7 +26,6 @@ The Merkle root data should be checked & signed by the guardian committee off-ch
 
 ```solidity=
 function depositBufferedEther(
-    uint256 maxDeposits,
     bytes32 depositRoot,
     uint256 keysOpIndex,
     uint256 blockNumber,
@@ -39,9 +38,8 @@ function depositBufferedEther(
     require(!paused, "deposits are paused");
     require(quorum > 0 && sortedGuardianSignatures.length >= quorum, "no guardian quorum");
 
-    require(maxDeposits <= maxDepositsPerBlock, "too many deposits");
     require(block.number - lastDepositBlock >= minDepositBlockDistance, "too frequent deposits");
-    require(blockhash(blockNumber) == blockHash, "unexpected block hash");
+    require(blockHash != bytes32(0) && blockhash(blockNumber) == blockHash, "unexpected block hash");
 
     uint256 onchainKeysOpIndex = INodeOperatorsRegistry(nodeOperatorsRegistry).getKeysOpIndex();
     require(keysOpIndex == onchainKeysOpIndex, "keys op index changed");
@@ -54,7 +52,7 @@ function depositBufferedEther(
         sortedGuardianSignatures
     );
 
-    ILido(LIDO).depositBufferedEther(maxDeposits);
+    ILido(LIDO).depositBufferedEther(maxDepositsPerBlock);
     lastDepositBlock = block.number;
 }
 ```
@@ -158,7 +156,6 @@ Below is the pseudocode of the `depositBufferedEther` function, updated followin
 
 ```solidity=
 function depositBufferedEther(
-    uint256 maxDeposits,
     bytes32 depositRoot,
     uint256 keysOpIndex,
     uint256 blockNumber,
@@ -171,16 +168,21 @@ function depositBufferedEther(
     require(!paused, "deposits are paused");
     require(quorum > 0 && sortedGuardianSignatures.length >= quorum, "no guardian quorum");
 
-    require(maxDeposits <= maxDepositsPerBlock, "too many deposits");
     require(block.number - lastDepositBlock >= minDepositBlockDistance, "too frequent deposits");
-    require(blockhash(blockNumber) == blockHash, "unexpected block hash");
+    require(blockHash != bytes32(0) && blockhash(blockNumber) == blockHash, "unexpected block hash");
 
     uint256 onchainKeysOpIndex = INodeOperatorsRegistry(nodeOperatorsRegistry).getKeysOpIndex();
     require(keysOpIndex == onchainKeysOpIndex, "keys op index changed");
 
-    _verifySignatures(depositRoot, keysOpIndex, sortedGuardianSignatures);
+    _verifySignatures(
+        depositRoot,
+        keysOpIndex,
+        blockNumber,
+        blockHash,
+        sortedGuardianSignatures
+    );
 
-    ILido(LIDO).depositBufferedEther(maxDeposits);
+    ILido(LIDO).depositBufferedEther(maxDepositsPerBlock);
     lastDepositBlock = block.number;
 }
 ```
@@ -217,11 +219,10 @@ contract DepositSecurityModule is Ownable {
     function unpauseDeposits() external onlyOwner;
     
     /**
-     * Calls Lido.depositBufferedEther(maxDeposits),
+     * Calls Lido.depositBufferedEther(maxDepositsPerBlock),
      * which is not callable in any other way.
      */
     function depositBufferedEther(
-        uint256 maxDeposits,
         bytes32 depositRoot,
         uint256 keysOpIndex,
         uint256 blockNumber,
