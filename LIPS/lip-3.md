@@ -59,7 +59,7 @@ This is how it works in terms of smart contract interactions:
 6. To enact the motion, the `EasyTrack` contract recreates the enactment EVM script and passes it to the `EVMScriptExecutor` smart contract for execution.
 7. `EVMScriptExecutor` holds all the permissions to run valid enactment EVM scripts passed from the `EasyTrack` smart contract. 
 
-![Easy Track system schema](./assets/lip-3/easytrackschema.jpg)
+![Easy Track system schema](./assets/lip-3/easytrackschema.png)
 ___
 
 ## Core smart contracts
@@ -68,7 +68,6 @@ The list of core Easy Track contracts includes:
 - `EasyTrack` - contains the basic motion logic and data related to all the active Easy Track motions;
 - `MotionSettings` - contains logic to set objections threshold, motion duration and maximum active motions count;
 - `EVMScriptFactoriesRegistry` - contains logic to add/remove `EVMScriptFactory` contracts and also an internal method to create EVM scripts;
-- `EasyTrackStorage` - inherited by `MotionSettings` and `EVMScriptFactoriesRegistry` to simplify Easy Track upgradability by storing all the variables in a single contract.
 
 ### `EasyTrack` contract
 
