@@ -1,6 +1,6 @@
 | lip: | title: | status: | author: | discussions-to: | created: | updated: |
 | --- | --- | --- | --- | --- | --- | --- |
-| 3 | Easy Track Motions for DAO routine operations | Approved | Bogdan Kovtun (psirex), Gregory Stepanov (grstepanov) | https://research.lido.fi/t/lip-3-easy-track-motions-v2/794 | 2021-07-09 | |
+| 3 | Easy Track Motions for DAO routine operations | Implemented | Bogdan Kovtun (psirex), Gregory Stepanov (grstepanov) | https://research.lido.fi/t/lip-3-easy-track-motions-v2/794 | 2021-07-09 | |
 
 # Summary
 
