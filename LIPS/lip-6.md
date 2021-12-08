@@ -1,11 +1,11 @@
 ---
-lip: TBA
+lip: 6
 title: In-protocol coverage
-status: Draft
+status: WIP
 author: Sam Kozin, Eugene Mamin
 discussions-to: TBA
-created: TBA
-updated: TBA
+created: 2021-12-03
+updated: 2021-12-09
 ---
 
 # In-protocol coverage proposal
@@ -26,7 +26,7 @@ balanceOf(account) = shares[account] * totalPooledEther / totalShares
 ```
 So burning someone's shares (e.g. decreasing `totalShares` count) leads to increasing all of the other accounts' balances. 
 
-We propose to deploy a dedicated `LidoStETHBurner` contract which accepts burning requests by locking caller-provided stETH tokens. Those burning requests are initially set by the contract to a pending state. Actual burning happens within an oracle (`LidoOracle`) beacon report to prevent additional fluctuations of the existing stETH token rebase period.
+We propose to deploy a dedicated `SelfOwnedStEthBurner` contract which accepts burning requests by locking caller-provided stETH tokens. Those burning requests are initially set by the contract to a pending state. Actual burning happens within an oracle (`LidoOracle`) beacon report to prevent additional fluctuations of the existing stETH token rebase period.
 
 We also distinguish two types of shares burn requests:
 - request to cover slashing event (e.g. decreasing of the total pooled ETH amount between the two consecutive oracle reports)
@@ -34,11 +34,11 @@ We also distinguish two types of shares burn requests:
 
 The proposed contract has two separate counters for the burnt shares: cover and non-cover ones. The contract should have exclusive access to the stETH shares burning. Also, it's highly desirable to only allow burning stETH from the contract's own balance.
 
-Finally, `LidoStETHBurner` provides logs and public getters to provide external access for proper accounting and monitoring. 
+Finally, `SelfOwnedStEthBurner` has logs and public getters to provide external access for a proper accounting and monitoring. 
 
 ### Sending a burn request
 
-The user sends a burn request transaction to the `LidoStETHBurner` contract by providing some stETH tokens and indicating the burning request type: cover or non-cover. The contract locks the provided stETH amount on its own balance and marks this amount for future burning.
+The user sends a burn request transaction to the `SelfOwnedStEthBurner` contract by providing some stETH tokens and indicating the burning request type: cover or non-cover. The contract locks the provided stETH amount on its own balance and marks this amount for future burning.
 
 The contract also contains a pair of internal counters to collect the total amount to be burnt upon the next oracle report.
 
@@ -60,18 +60,18 @@ This represents **less than a 0.2% increase for the base case** when no burn req
 
 ### Shares burnt counter
 
-We propose to store the total amount of shares ever burnt, distinguishing cover and non-cover shares, by maintaining two separate counters inside the `LidoStETHBurner` contract: `totalCoverSharesBurnt` and `totalNonCoverSharesBurnt`. The counters are increased when actual stETH burn is performed as part of the Lido Oracle report.
+We propose to store the total amount of shares ever burnt, distinguishing cover and non-cover shares, by maintaining two separate counters inside the `SelfOwnedStEthBurner` contract: `totalCoverSharesBurnt` and `totalNonCoverSharesBurnt`. The counters are increased when actual stETH burn is performed as part of the Lido Oracle report.
 
 This allows to split any stETH rebase into two sub-components: the rewards-induced rebase and cover application-induced rebase, which can be done as follows:
 
 1. Before the rebase, store the previous values of both counters, as well as the value of stETH share price:
    ```solidity
-   prevCoverSharesBurnt = LidoStETHBurner.totalCoverSharesBurnt()
+   prevCoverSharesBurnt = SelfOwnedStEthBurner.totalCoverSharesBurnt()
    prevSharePrice = stETH.totalSupply() / stETH.getTotalShares()
    ```
 2. After the rebase, perform the following calculations:
    ```solidity
-   sharesBurntFromOldToNew = LidoStETHBurner.totalCoverSharesBurnt() - prevCoverSharesBurnt;
+   sharesBurntFromOldToNew = SelfOwnedStEthBurner.totalCoverSharesBurnt() - prevCoverSharesBurnt;
    newSharePriceAfterCov = stETH.totalSupply() / (stETH.getTotalShares() + sharesBurntFromOldToNew);
    newSharePrice = stETH.totalSupply() / stETH.getTotalShares();
    
@@ -97,13 +97,13 @@ The Anchor integration already has the calculations proposed above implemented u
 
 The `Lido` contract (and to be precise, the whole protocol) has only one function which allows stETH burning, [`burnShares`](https://docs.lido.fi/guides/protocol-levers#lido). It requires the caller to have the `BURN_ROLE` permission.
 
-Currently, `BURN_ROLE` is assigned to the `Voting` contract. This proposal requires that only `LidoStETHBurner` contract is to be allowed stETH burning. It's vital for implementing the aforementioned calculations of splitting a rebase to cover- and rewards- induced parts.
+Currently, `BURN_ROLE` is assigned to the `Voting` contract. This proposal requires that only `SelfOwnedStEthBurner` contract is to be allowed stETH burning. It's vital for implementing the aforementioned calculations of splitting a rebase to cover- and rewards- induced parts.
 
-Also, we propose to enforce fine-grained permission control by the Aragon [ACL parameters interpretation](https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation) to only allow `LidoStETHBurner` to burn stETH from its own balance.
+Also, we propose to enforce fine-grained permission control by the Aragon [ACL parameters interpretation](https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation) to only allow `SelfOwnedStEthBurner` to burn stETH from its own balance.
  
 So, more formally, we propose the following permissions changes:
 - Revoke `BURN_ROLE` from `Voting`.
-- Assign `BURN_ROLE` to `LidoStETHBurner` requiring the `_account` argument of `burnShares` to equal the `LidoStETHBurner` address.
+- Assign `BURN_ROLE` to `SelfOwnedStEthBurner` requiring the `_account` argument of `burnShares` to equal the `SelfOwnedStEthBurner` address.
 
 ## Discussion
 
@@ -154,7 +154,7 @@ Cons:
 
 ## Specification
 
-We propose the following stETH shares burner contract interface.
+We propose the following contract interface.
 The code below presumes the Solidity v0.8 syntax.
 
 ### Function: getCoverSharesBurnt
@@ -216,14 +216,22 @@ See: `getExcessStEth`
 
 ### Function: recoverERC20
 ```solidity
-function recoverERC20(address token, uint256 amount) 
+function recoverERC20(address token, uint256 amount) external
 ```
 Transfers a given `amount` of an ERC20-token (defined by the `token` contract address) belonging to the burner contract address to the Lido treasury address.
 * Reverts if the `amount` is 0 (zero).
 * Reverts if `token` address is 0 (zero).
 * Reverts if trying to recover stETH (`token` address equals to the `stETH` address).
 * Emits the `ERC20Recovered` event.
-    
+
+### Function: recoverERC721
+```solidity
+function recoverERC721(address token, uint256 token_id) external
+```
+Transfers a given `token_id` of an ERC721-compatible NFT (defined by the `token` contract address) belonging to the burner contract address to the Lido treasury address.
+* Reverts if `token` address is 0 (zero).
+* Emits the `ERC721Recovered` event. 
+
 ### Event: StEthBurnRequested
 ```solidity
     event StEthBurnRequested(
@@ -273,15 +281,27 @@ Emitted when the ERC20 `token` recovered (e.g. transferred) to the Lido treasure
 
 See: `recoverERC20`.
 
+### Event: ERC721Recovered
+```solidity
+    event ERC721Recovered(
+        address indexed requestedBy,
+        address indexed token,
+        uint256 token_id
+    )
+```
+Emitted when the ERC721-compatible `token` (NFT) recovered (e.g. transferred) to the Lido treasure address by `requestedBy` sender.
+
+See: `recoverERC721`.
+
 ## Security Considerations
 
 #### The proposed contract is non-upgradable and non-ownable
 
 There are no intermediate proxies. All of the external addresses are set only on the deployment stage. In case of emergency or crucial update, we would deploy a new contract and reset `IBeaconReportReceiver` callback address on `LidoOracle`. A newly deployed replacement contract should be initialized with previously accumulated cover/non-cover counter values.
 
-#### Burning is only allowed on the `LidoStEthBurner` contract address
+#### Burning is only allowed on the `SelfOwnedStEthBurner` contract address
 
-The `BURN_ROLE` that's assigned to the `LidoStEthBurner` is restricted by the Aragon ACL parameters. That way, `Lido.burnShares()` method could only be executed for the `LidoSharesBurner` contract address by the contract itself and there are no other shares burning interfaces exists.
+The `BURN_ROLE` that's assigned to the `SelfOwnedStEthBurner` is restricted by the Aragon ACL parameters. That way, `Lido.burnShares()` method could only be executed for the `SelfOwnedStEthBurner` contract address by the contract itself and there are no other shares burning interfaces exists.
 
 #### There is no way to call `processOracleReport` from any address except the `LidoOracle` contract
 
@@ -292,7 +312,7 @@ An explicit pre-condition (`require(msg.sender == Lido.getOracle()`) is checked 
 #### DAO decides to grant a shares burning permission to someone else
 
 It can break the proposal concept of maintaining global (protocol-wide) shares burnt counters. 
-So the `StEthSharesBurner` contract will become almost useless by providing incomplete and even incorrect information about ever burnt shares.
+So the `SelfOwnedStEthBurner` contract will become almost useless by providing incomplete and even incorrect information about ever burnt shares.
 
 #### Someone apply slashing coverage using non-cover request type
 
@@ -304,19 +324,19 @@ Anchor/bETH token holders will lose some rewards.
 
 ## Reference implementation
 
-Reference implementation sketch of the `LidoStSharesBurner` interface is given below
+Reference implementation sketch of the `SelfOwnedStEthBurner` interface is given below
 ```solidity=
 interface IERC20;
 interface IStEth;
 interface ILido;
 
-interface IBeaconReportReceiver /* already exists in lido sources */ {
+interface IBeaconReportReceiver /* already exists in the Lido sources */ {
     function processLidoOracleReport(uint256 _postTotalPooledEther,
                                      uint256 _preTotalPooledEther,
                                      uint256 _timeElapsed) external;
 }
 
-contract LidoStETHBurner is IBeaconReportReceiver {
+contract SelfOwnedStEthBurner is IBeaconReportReceiver {
     uint256 private coverSharesBurnRequested;
     uint256 private nonCoverSharesBurnRequested;
     
