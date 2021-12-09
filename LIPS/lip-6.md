@@ -3,7 +3,7 @@ lip: 6
 title: In-protocol coverage
 status: WIP
 author: Sam Kozin, Eugene Mamin
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468
 created: 2021-12-03
 updated: 2021-12-09
 ---
