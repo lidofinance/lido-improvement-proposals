@@ -432,7 +432,7 @@ contract SelfOwnedStETHBurner is IBeaconReportReceiver {
     
     //don't accept ether
     fallback () external {
-        revert ("incoming ETH is borbidden");
+        revert ("INCOMING_ETH_IS_FORBIDDEN");
     }
    
     function recoverERC20(address token, uint256 amount) external {
