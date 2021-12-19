@@ -1,23 +1,24 @@
 ---
 lip: 6
-title: In-protocol coverage
+title: In-protocol coverage application mechanism
 status: WIP
 author: Sam Kozin, Eugene Mamin
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468
 created: 2021-12-03
-updated: 2021-12-15
+updated: 2021-12-19
 ---
 
-# In-protocol coverage proposal
+# In-protocol coverage application mechanism proposal
 
-## Summary
+## Simple Summary
 
-Specifies an in-protocol mechanism of applying coverage to address slashing/penalties events.
+A coverage application mechanism that provides a way for Lido governance to burn stETH as a means to distributed cover for losses to staking. It doesn’t oblige Lido to cover for losses or introduce any auto-cover arrangements.
 
 ## Motivation
 
 Currently, Lido has no adopted and well-defined mechanism of applying coverage for stakeholders' losses due to validators pentalties, slashing and other conditions. We propose an in-protocol solution to precisely specify coverage application without breaking existing principles, agreements, and integrations with stETH token. The proposal is aimed to improve the overall technical transparency and completeness of the Lido protocol regarding applying coverage.
 
+We have no presumption and prerequisites of when and how exactly loss compensation happens. We only propose to make this possible in a way that’s correctly handled by 3rd party protocols (e.g. Anchor Protocol) integrated with stETH.
 ## Mechanics
 
 We propose to provide an on-chain in-protocol mechanism of applying coverage by burning stETH token. It relies on the rebasing nature of the stETH. The basic account [balance calculation](https://docs.lido.fi/contracts/lido#rebasing) defined by stETH contract is the following:
