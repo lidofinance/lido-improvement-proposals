@@ -5,7 +5,7 @@ status: WIP
 author: Sam Kozin, Eugene Mamin
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468
 created: 2021-12-03
-updated: 2021-12-19
+updated: 2021-12-23
 ---
 
 # In-protocol coverage application mechanism proposal
@@ -16,7 +16,7 @@ A coverage application mechanism that provides a way for Lido governance to burn
 
 ## Motivation
 
-Currently, Lido has no adopted and well-defined mechanism of applying coverage for stakeholders' losses due to validators pentalties, slashing and other conditions. We propose an in-protocol solution to precisely specify coverage application without breaking existing principles, agreements, and integrations with stETH token. The proposal is aimed to improve the overall technical transparency and completeness of the Lido protocol regarding applying coverage.
+Currently, Lido has no adopted and well-defined mechanism of applying coverage for stakeholders' losses due to validators penalties, slashing and other conditions. We propose an in-protocol solution to precisely specify coverage application without breaking existing principles, agreements, and integrations with stETH token. The proposal is aimed to improve the overall technical transparency and completeness of the Lido protocol regarding applying coverage.
 
 We have no presumption and prerequisites of when and how exactly loss compensation happens. We only propose to make this possible in a way that’s correctly handled by 3rd party protocols (e.g. Anchor Protocol) integrated with stETH.
 ## Mechanics
@@ -194,7 +194,8 @@ Does nothing if there are no pending burning requests.
 See: [`IBeaconReportReceiver.processLidoOracleReport`](https://docs.lido.fi/contracts/lido-oracle#receiver-function-to-be-invoked-on-report-pushes).
 
 * Must be called as part of an oracle quorum report.
-* Reverts if the message sender is not `LidoOracle`.
+* Must do nothing if there are no burning requests happened since last invocation.
+* Reverts if there are pending burning requests and the message sender is not `LidoOracle`.
 * Emits the `StETHBurnt(true, coverSharesBurnRequestedAsStETH, coverSharesBurnRequested)` event for an executed cover stETH burning.
 * Emits the `StETHBurnt(false, nonCoverSharesBurnRequestedAsStETH, nonCoverSharesBurnRequested)` event for an executed non-cover stETH burning.
 
@@ -287,7 +288,7 @@ See: `recoverERC20`.
     event ERC721Recovered(
         address indexed requestedBy,
         address indexed token,
-        uint256 token_id
+        uint256 tokenId
     )
 ```
 Emitted when the ERC721-compatible `token` (NFT) recovered (e.g. transferred) to the Lido treasure address by `requestedBy` sender.
@@ -331,10 +332,39 @@ interface IERC20;
 interface IStETH;
 interface ILido;
 
-interface IBeaconReportReceiver /* already exists in the Lido sources */ {
+/**
+  * @title Interface defining a callback that the quorum will call on every quorum reached
+  */
+interface IBeaconReportReceiver {
+    /**
+      * @notice Callback to be called by the oracle contract upon the quorum is reached
+      * @param _postTotalPooledEther total pooled ether on Lido right after the quorum value was reported
+      * @param _preTotalPooledEther total pooled ether on Lido right before the quorum value was reported
+      * @param _timeElapsed time elapsed in seconds between the last and the previous quorum
+      */
     function processLidoOracleReport(uint256 _postTotalPooledEther,
                                      uint256 _preTotalPooledEther,
                                      uint256 _timeElapsed) external;
+}
+
+/**
+  * @title Interface defining a Lido liquid staking pool
+  * @dev see also [Lido liquid staking pool core contract](https://docs.lido.fi/contracts/lido)
+  */
+interface ILido {
+    /**
+      * @notice Gets authorized oracle address
+      * @return address of oracle contract
+      */
+    function getOracle() external view returns (address);
+
+    /**
+      * @notice Destroys given amount of shares from account's holdings,
+      * @param _account address of the shares holder
+      * @param _sharesAmount shares amount to burn
+      * @dev incurs stETH token rebase by decreasing the total amount of shares.
+      */
+    function burnShares(address _account, uint256 _sharesAmount) external returns (uint256 newTotalShares);
 }
 
 contract SelfOwnedStETHBurner is IBeaconReportReceiver {
@@ -375,9 +405,18 @@ contract SelfOwnedStETHBurner is IBeaconReportReceiver {
     event ERC721Recovered(
         address indexed requestedBy,
         address indexed token,
-        uint256 token_id
+        uint256 tokenId
     );
+
+    constructor(address _treasury, address _lido) public
+    {
+        require(_treasury != address(0), "TREASURY_ZERO_ADDRESS");
+        require(_lido != address(0), "LIDO_ZERO_ADDRESS");
         
+        TREASURY = _treasury;
+        LIDO = _lido;
+    }
+
     function getCoverSharesBurnt() external view returns (uint256) {
         return totalCoverSharesBurnt;
     }
@@ -395,24 +434,15 @@ contract SelfOwnedStETHBurner is IBeaconReportReceiver {
         return IStETH(LIDO).getPooledEthByShares(totalShares - sharesBurnRequested);
     }    
     
-    constructor(address _treasury, address _lido) public
-    {
-        require(_treasury != address(0), "TREASURY_ZERO_ADDRESS");
-        require(_lido != address(0), "LIDO_ZERO_ADDRESS");
+    function requestStETHBurn(uint256 _stETH2Burn, bool _isCover) external {
+        require(_stETH2Burn > 0, "ZERO_BURN_AMOUNT");
+        require(IStETH(LIDO).transferFrom(msg.sender, address(this), _stETH2Burn));
         
-        TREASURY = _treasury;
-        LIDO = _lido;
-    }
-    
-    function requestStETHBurn(uint256 stETH2Burn, bool isCover) external {
-        require(stETH2Burn > 0);
-        require(IStETH(LIDO).transferFrom(msg.sender, address(this), stETH2Burn));
+        uint256 sharesAmount = IStETH(LIDO).getSharesByPooledEth(_stETH2Burn);
         
-        uint256 sharesAmount = IStETH(LIDO).getSharesByPooledEth(stETH2Burn);
-        
-        emit StETHBurnRequested(isCover, msg.sender, stETH2Burn, sharesAmount);
+        emit StETHBurnRequested(_isCover, msg.sender, _stETH2Burn, sharesAmount);
 
-        if (isCover) { 
+        if (_isCover) {
             coverSharesBurnRequested += sharesAmount;
         } else {
             nonCoverSharesBurnRequested += sharesAmount;
@@ -432,60 +462,57 @@ contract SelfOwnedStETHBurner is IBeaconReportReceiver {
     }
     
     //don't accept ether
-    fallback () external {
+    fallback() payable external {
         revert ("INCOMING_ETH_IS_FORBIDDEN");
     }
    
-    function recoverERC20(address token, uint256 amount) external {
-        require(amount > 0);
-        require(token != address(0));
-        require(token != LIDO);
+    function recoverERC20(address _token, uint256 _amount) external {
+        require(_amount > 0, "ZERO_RECOVERY_AMOUNT");
+        require(_token != address(0), "ZERO_ERC20_ADDRESS");
+        require(_token != LIDO, "STETH_RECOVER_WRONG_FUNC");
 
-        emit ERC20Recovered(msg.sender, token, amount);
+        emit ERC20Recovered(msg.sender, _token, _amount);
         
-        IERC20(token).transfer(TREASURY, amount);
+        IERC20(_token).transfer(TREASURY, _amount);
     }
 
-    function recoverERC721(address token, uint256 token_id) external {
-        require(token != address(0));
+    function recoverERC721(address _token, uint256 _tokenId) external {
+        require(_token != address(0), "ZERO_ERC721_ADDRESS");
 
-        emit ERC721Recovered(msg.sender, token, token_id);
+        emit ERC721Recovered(msg.sender, _token, _tokenId);
 
-        IERC721(token).transferFrom(address(this), TREASURY, token_id);
+        IERC721(_token).transferFrom(address(this), TREASURY, _tokenId);
     }
     
     function processLidoOracleReport(uint256 _postTotalPooledEther,
                                      uint256 _preTotalPooledEther,
-                                     uint256 _timeElapsed) external override(IBeaconReportReceiver) {
+                                     uint256 _timeElapsed) external override {
         
-        require(msg.sender == ILido(LIDO).getOracle(), "APP_AUTH_FAILED");
-
         uint256 memCoverSharesBurnRequested = coverSharesBurnRequested;
         uint256 memNonCoverSharesBurnRequested = nonCoverSharesBurnRequested;
 
         uint256 burnAmount = memCoverSharesBurnRequested + memNonCoverSharesBurnRequested;
 
-        if (burnAmount > 0) {
-            if (memCoverSharesBurnRequested > 0) {            
-                totalCoverSharesBurnt += memCoverSharesBurnRequested;   
-
-                uint256 coverStETHBurnAmountRequested = IStETH(LIDO).getPooledEthByShares(memCoverSharesBurnRequested);
-                emit StETHBurnt(true /* isCover */, coverStETHBurnAmountRequested, memCoverSharesBurnRequested);
-
-                coverSharesBurnRequested = 0;        
-            }
-
-            if (memNonCoverSharesBurnRequested > 0) {            
-                totalNonCoverSharesBurnt += memNonCoverSharesBurnRequested;
-
-                uint256 nonCoverStETHBurnAmountRequested = IStETH(LIDO).getPooledEthByShares(memNonCoverSharesBurnRequested);
-                emit StETHBurnt(false /* isCover */, nonCoverStETHBurnAmountRequested, memNonCoverSharesBurnRequested);
-
-                nonCoverSharesBurnRequested = 0;
-            }        
-            
-            ILido(LIDO).burnShares (address(this), burnAmount);
+        if (burnAmount == 0) {
+            return;
         }
+
+        require(msg.sender == ILido(LIDO).getOracle(), "APP_AUTH_FAILED");
+
+        if (memCoverSharesBurnRequested > 0) {
+            totalCoverSharesBurnt += memCoverSharesBurnRequested;
+            uint256 coverStETHBurnAmountRequested = IStETH(LIDO).getPooledEthByShares(memCoverSharesBurnRequested);
+            emit StETHBurnt(true /* isCover */, coverStETHBurnAmountRequested, memCoverSharesBurnRequested);
+            coverSharesBurnRequested = 0;
+        }
+        if (memNonCoverSharesBurnRequested > 0) {
+            totalNonCoverSharesBurnt += memNonCoverSharesBurnRequested;
+            uint256 nonCoverStETHBurnAmountRequested = IStETH(LIDO).getPooledEthByShares(memNonCoverSharesBurnRequested);
+            emit StETHBurnt(false /* isCover */, nonCoverStETHBurnAmountRequested, memNonCoverSharesBurnRequested);
+            nonCoverSharesBurnRequested = 0;
+        }
+
+        ILido(LIDO).burnShares(address(this), burnAmount);
     }
 }
 ```
