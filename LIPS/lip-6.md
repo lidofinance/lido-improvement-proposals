@@ -5,7 +5,7 @@ status: WIP
 author: Sam Kozin, Eugene Mamin
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468
 created: 2021-12-03
-updated: 2021-12-23
+updated: 2021-12-24
 ---
 
 # In-protocol coverage application mechanism proposal
@@ -156,7 +156,7 @@ Cons:
 ## Specification
 
 We propose the following contract interface.
-The code below presumes the Solidity v0.6 syntax.
+The code below presumes the Solidity v0.8 syntax.
 
 ### Function: getCoverSharesBurnt
 ```solidity
@@ -172,14 +172,14 @@ Returns the total non-cover shares ever burnt.
 
 ### Function: requestStETHBurn
 ```solidity
-function requestStETHBurn(uint256 stETH2Burn, bool isCover) external
+function requestStETHBurn(uint256 _stETH2Burn, bool _isCover) external
 ```
-Transfers `stETH2Burn` stETH tokens from the message sender and irreversibly locks these on the burner contract address. Internally converts `stETH2Burn` amount into underlying shares amount (`stETH2BurnAsShares`) and marks the converted amount for burning by increasing `coverSharesBurnRequested` and `nonCoverSharesBurnRequested` counters.
+Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly locks these on the burner contract address. Internally converts `_stETH2Burn` amount into underlying shares amount (`_stETH2BurnAsShares`) and marks the converted amount for burning by increasing `coverSharesBurnRequested` and `nonCoverSharesBurnRequested` counters.
 
-* Must transfer `stETH2Burn` stETH tokens from the message sender to the burner contract address.
-* Reverts if no stETH provided (`stETH2Burn == 0`).
+* Must transfer `_stETH2Burn` stETH tokens from the message sender to the burner contract address.
+* Reverts if no stETH provided (`_stETH2Burn == 0`).
 * Reverts if no stETH transferred (allowance exceeded).
-* Emits the `StETHBurnRequested(isCover, msg.sender, stETH2Burn, stETH2BurnAsShares)` event.
+* Emits the `StETHBurnRequested(_isCover, msg.sender, _stETH2Burn, _stETH2BurnAsShares)` event.
 
 ### Function: processLidoOracleReport
 ```solidity
@@ -218,20 +218,20 @@ See: `getExcessStETH`
 
 ### Function: recoverERC20
 ```solidity
-function recoverERC20(address token, uint256 amount) external
+function recoverERC20(address _token, uint256 _amount) external
 ```
-Transfers a given `amount` of an ERC20-token (defined by the `token` contract address) belonging to the burner contract address to the Lido treasury address.
-* Reverts if the `amount` is 0 (zero).
-* Reverts if `token` address is 0 (zero).
-* Reverts if trying to recover stETH (`token` address equals to the `stETH` address).
+Transfers a given `_amount` of an ERC20-token (defined by the `_token` contract address) belonging to the burner contract address to the Lido treasury address.
+* Reverts if the `_amount` is 0 (zero).
+* Reverts if `_token` address is 0 (zero).
+* Reverts if trying to recover stETH (`_token` address equals to the `stETH` address).
 * Emits the `ERC20Recovered` event.
 
 ### Function: recoverERC721
 ```solidity
-function recoverERC721(address token, uint256 token_id) external
+function recoverERC721(address _token, uint256 _tokenId) external
 ```
-Transfers a given `token_id` of an ERC721-compatible NFT (defined by the `token` contract address) belonging to the burner contract address to the Lido treasury address.
-* Reverts if `token` address is 0 (zero).
+Transfers a given `_tokenId` of an ERC721-compatible NFT (defined by the `_token` contract address) belonging to the burner contract address to the Lido treasury address.
+* Reverts if `_token` address is 0 (zero).
 * Emits the `ERC721Recovered` event. 
 
 ### Event: StETHBurnRequested
@@ -462,7 +462,7 @@ contract SelfOwnedStETHBurner is IBeaconReportReceiver {
     }
     
     //don't accept ether
-    fallback() payable external {
+    receive() payable external {
         revert ("INCOMING_ETH_IS_FORBIDDEN");
     }
    
