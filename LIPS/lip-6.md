@@ -26,7 +26,7 @@ We propose to provide an on-chain in-protocol mechanism of applying coverage by 
 ```solidity
 balanceOf(account) = shares[account] * totalPooledEther / totalShares
 ```
-So burning someone's shares (e.g. decreasing `totalShares` count) leads to increasing all of the other accounts' balances. 
+So burning someone's shares (e.g. decreasing `totalShares` count) leads to increasing all of the other accounts' balances.
 
 We propose to deploy a dedicated `SelfOwnedStETHBurner` contract which accepts burning requests by locking caller-provided stETH tokens. Those burning requests are initially set by the contract to a pending state. Actual burning happens within an oracle (`LidoOracle`) beacon report to prevent additional fluctuations of the existing stETH token rebase period.
 
@@ -36,7 +36,7 @@ We also distinguish two types of shares burn requests:
 
 The proposed contract has two separate counters for the burnt shares: cover and non-cover ones. The contract should have exclusive access to the stETH shares burning. Also, it's highly desirable to only allow burning stETH from the contract's own balance.
 
-Finally, `SelfOwnedStETHBurner` has logs and public getters to provide external access for a proper accounting and monitoring. 
+Finally, `SelfOwnedStETHBurner` has logs and public getters to provide external access for a proper accounting and monitoring.
 
 ### Sending a burn request
 
@@ -76,10 +76,10 @@ This allows to split any stETH rebase into two sub-components: the rewards-induc
    sharesBurntFromOldToNew = SelfOwnedStETHBurner.totalCoverSharesBurnt() - prevCoverSharesBurnt;
    newSharePriceAfterCov = stETH.totalSupply() / (stETH.getTotalShares() + sharesBurntFromOldToNew);
    newSharePrice = stETH.totalSupply() / stETH.getTotalShares();
-   
+
    // rewards-induced share price increase
    rewardPerShare = newSharePriceAfterCov - prevSharePrice;
-   
+
    // cover-induced share price increase
    nonRewardSharePriceIncrease = newSharePrice - prevSharePrice - rewardPerShare;
    ```
@@ -89,7 +89,7 @@ The proposed mechanism allows integrations like [Anchor/bETH](https://docs.ancho
 1. When a user submits stETH, the equivalent amount of bETH is minted, and the provided stETH is locked on the bETH contract address.
 2. When a positive stETH rebase happens, the resulting increase of the amount of stETH held on bETH contract address is forwarded to the Anchor protocol.
 3. When a negative rebase happens, the bETH/stETH exchange rate (caluclated as `stETH.balanceOf(bETH) / bETH.totalSupply()`) decreases, becoming less than 1. This means that a bETH holder would get less than one stETH for one bETH burnt:
-    > Losses from slashing events are equally shared amongst all bETH tokens, lowering the calculated value of a bETH token. stETH accounts for slashing by pro-rata decreasing the token balance of all stETH holders. The stETH balance held by the bETH smart contract also decreases, decreasing the bETH exchange rate. 
+    > Losses from slashing events are equally shared amongst all bETH tokens, lowering the calculated value of a bETH token. stETH accounts for slashing by pro-rata decreasing the token balance of all stETH holders. The stETH balance held by the bETH smart contract also decreases, decreasing the bETH exchange rate.
 
 This means that, since applying cover leads to a positive stETH rebase, it cannot be used to reimburse bETH holders from prior negative stETH rebases. In contrast, implementing the calculations detailed above as part of the positive rebase handling, and forwarding only the rewards-generated part of the balance increase to Anchor, allows recovering the bETH/stETH rate to 1.
 
@@ -102,6 +102,7 @@ The `Lido` contract (and to be precise, the whole protocol) has only one functio
 Currently, `BURN_ROLE` is assigned to the `Voting` contract. This proposal requires that only `SelfOwnedStETHBurner` contract is to be allowed stETH burning. It's vital for implementing the aforementioned calculations of splitting a rebase to cover- and rewards- induced parts.
 
 Also, we propose to enforce fine-grained permission control by the Aragon [ACL parameters interpretation](https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation) to only allow `SelfOwnedStETHBurner` to burn stETH from its own balance.
+Test cases provided [here](https://github.com/lidofinance/lido-dao/blob/b38d96846df4287ddaf632bf024488474a6e9ee5/test/0.8.9/self-owned-steth-burner.test.js#L365).
 
 So, more formally, we propose the following permissions changes:
 - Revoke `BURN_ROLE` from `Voting`.
@@ -122,7 +123,7 @@ Pros:
 - Provides a generalized way of performing positive balance rebases, both for coverage and non-coverage purposes
 - The cover must be converted to stETH before it can be applied, which can either increase the market demand for stETH (in the case stETH is bought from the market) or bring additional stake to the protocol (in the case stETH is obtained by staking ETH)
 
-Cons: 
+Cons:
 - Smart-contract development is required
 - The cover must be first converted to stETH before it can be applied, which might complicate the logic of obtaining the cover
 
@@ -177,7 +178,7 @@ Returns the total non-cover shares ever burnt.
 ```solidity
 function requestBurnMyStETHForCover(uint256 _stETH2Burn) external
 ```
-Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly locks these on the burner contract address. Internally converts `_stETH2Burn` amount into underlying shares amount (`_stETH2BurnAsShares`) and marks the converted amount for burning by increasing the `coverSharesBurnRequested` counter.
+Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly locks these on the burner contract address. Internally converts `_stETH2Burn` amount into underlying shares amount (`_stETH2BurnAsShares`) and marks the converted amount for cover-backed burning by increasing the `coverSharesBurnRequested` counter.
 
 * Must transfer `_stETH2Burn` stETH tokens from the message sender to the burner contract address.
 * Reverts if the message sender is not `Voting`
@@ -185,11 +186,11 @@ Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly lo
 * Reverts if no stETH transferred (allowance exceeded).
 * Emits the `StETHBurnRequested(true, msg.sender, _stETH2Burn, _stETH2BurnAsShares)` event.
 
-### Function: requestBurnMyStETHForNonCover
+### Function: requestBurnMyStETH
 ```solidity
-function requestBurnMyStETHForNonCover(uint256 _stETH2Burn) external
+function requestBurnMyStETH(uint256 _stETH2Burn) external
 ```
-Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly locks these on the burner contract address. Internally converts `_stETH2Burn` amount into underlying shares amount (`_stETH2BurnAsShares`) and marks the converted amount for burning by increasing the `nonCoverSharesBurnRequested` counter.
+Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly locks these on the burner contract address. Internally converts `_stETH2Burn` amount into underlying shares amount (`_stETH2BurnAsShares`) and marks the converted amount for non-cover-backed burning by increasing the `nonCoverSharesBurnRequested` counter.
 
 * Must transfer `_stETH2Burn` stETH tokens from the message sender to the burner contract address.
 * Reverts if the message sender is not `Voting`
@@ -199,7 +200,7 @@ Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly lo
 
 ### Function: processLidoOracleReport
 ```solidity
-function: processLidoOracleReport(uint256 _postTotalPooledEther, 
+function: processLidoOracleReport(uint256 _postTotalPooledEther,
                                   uint256 _preTotalPooledEther,
                                   uint256 _timeElapsed) external
 ```
@@ -211,19 +212,19 @@ See: [`IBeaconReportReceiver.processLidoOracleReport`](https://docs.lido.fi/cont
 
 * Must be called as part of an oracle quorum report.
 * Must do nothing if there are no burning requests happened since last invocation.
-* Reverts if there are pending burning requests and the message sender is not `LidoOracle`.
+* Reverts if there are pending burning requests and the message sender is not of one of the `LidoOracle` or `LidoOracle.getBeaconReportReceiver()`.
 * Emits the `StETHBurnt(true, coverSharesBurnRequestedAsStETH, coverSharesBurnRequested)` event for an executed cover stETH burning.
 * Emits the `StETHBurnt(false, nonCoverSharesBurnRequestedAsStETH, nonCoverSharesBurnRequested)` event for an executed non-cover stETH burning.
 
 ### function getExcessStETH
 ```solidity
-function getExcessStETH() external view return (uint256)  
+function getExcessStETH() external view return (uint256)
 ```
 Returns the stETH amount belonging to the burner contract address but not marked for burning.
 
 ### function recoverExcessStETH
 ```solidity
-function recoverExcessStETH() external 
+function recoverExcessStETH() external
 ```
 Transfers the excess stETH amount (e.g. belonging to the burner contract address but not marked for burning) to the Lido treasury address set upon the contract construction.
 
@@ -248,7 +249,7 @@ function recoverERC721(address _token, uint256 _tokenId) external
 ```
 Transfers a given `_tokenId` of an ERC721-compatible NFT (defined by the `_token` contract address) belonging to the burner contract address to the Lido treasury address.
 * Reverts if `_token` address is 0 (zero).
-* Emits the `ERC721Recovered` event. 
+* Emits the `ERC721Recovered` event.
 
 ### Event: StETHBurnRequested
 ```solidity
@@ -333,7 +334,7 @@ An explicit pre-condition (`require(msg.sender == VOTING)`) is checked for the m
 
 #### DAO decides to grant a shares burning permission to someone else
 
-It can break the proposal concept of maintaining global (protocol-wide) shares burnt counters. 
+It can break the proposal concept of maintaining global (protocol-wide) shares burnt counters.
 So the `SelfOwnedStETHBurner` contract will become almost useless by providing incomplete and even incorrect information about ever burnt shares.
 
 #### Someone apply slashing coverage using non-cover request type
@@ -342,13 +343,13 @@ The Anchor Protocol will receive incorrect rewards.
 
 #### Someone apply non-cover using cover request type
 
-Anchor/bETH token holders will lose some rewards. 
+Anchor/bETH token holders will lose some rewards.
 
 ## Reference implementation
 
 Reference implementation of the `SelfOwnedStETHBurner` interface available on the [Lido GitHub](https://github.com/lidofinance/lido-dao/blob/feature/LIP-6/contracts/0.8.9/SelfOwnedStETHBurner.sol)
 
-## Links 
+## Links
 
 - Lido DAO discussion on the 3rd parties coverage: https://research.lido.fi/t/should-lido-use-third-party-insurance-providers/757
 - Research on the self-coverage options: https://blog.lido.fi/offline-slashing-risks-are-self-cover-options-enough/
