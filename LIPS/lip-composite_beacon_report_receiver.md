@@ -24,7 +24,7 @@ In the end, the `CompositePostRebaseBeaconReceiver` contract is a top-level enti
 
 ## Motivation
 
-Currently, the `LidoOracle` [contract](https://docs.lido.fi/contracts/lido-oracle) provides only one slot for a quorum report intercepting callback (see [LidoOracle.setBeaconReportReceiver](https://docs.lido.fi/contracts/lido-oracle#setbeaconreportreceiver)). We plan to occupy this slot soon with a newly developed contract implementing the [LIP-6 coverage application mechanism](https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468). In contrast, we have a technical vision of the future cross-chain/L2 [upgrades](https://hackmd.io/f3416OoaS2e1l2xu_bX6SA), which may require append additional callbacks propagating oracle beacon reports.
+Currently, the `LidoOracle` [contract](https://docs.lido.fi/contracts/lido-oracle) provides only one slot for a quorum report intercepting callback (see [LidoOracle.setBeaconReportReceiver](https://docs.lido.fi/contracts/lido-oracle#setbeaconreportreceiver)). We plan to occupy this slot soon with a newly developed contract implementing the [LIP-6 coverage application mechanism](https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468). In contrast, we have a technical vision of the future cross-chain/L2 [upgrades](https://hackmd.io/f3416OoaS2e1l2xu_bX6SA), which may require to append additional callbacks propagating oracle beacon reports.
 
 ## Specification
 
@@ -37,7 +37,7 @@ The contract provides callbacks storage in the form of addresses dynamic array.
 ```solidity
 modifier onlyVoting()
 ```
-Enforces the `msg.sender` to equal `voting` address set upon the contract construction.
+Enforces `msg.sender` to equal `voting` address set upon the contract construction.
 
 ```solidity
 constructor(address _voting)
@@ -59,7 +59,7 @@ See: `callbacksLength`.
 function insertCallback(address _callback, uint256 _atIndex) external override onlyVoting;
 ```
 Inserts the `_callback` element at the specified by the `_atIndex` param location in the callbacks array.
-Elements at and after the `_atIndex` position are shifted one position right to preserve an existing invocation order.
+Elements at and after the `_atIndex` position are shifted one position right to preserve the existing invocation order.
 * Reverts if `_callback` address is zero.
 * Reverts if `msg.sender` is not equal to the stored `voting` address.
 * Reverts if `_atIndex` greater than the length of the callbacks array.
@@ -71,7 +71,7 @@ See: `callbacksLength`.
 function removeCallback(uint256 _atIndex) external override onlyVoting
 ```
 Removes element with a given by the `_atIndex` param position from the callbacks array.
-Elements after the `_atIndex` position are shifted one position left to preserve an existing invocation order.
+Elements after the `_atIndex` position are shifted one position left to preserve the existing invocation order.
 * Reverts if `_atIndex` is equal to or greater than the length of the callbacks array.
 * Reverts if `msg.sender` is not equal to the stored `voting` address.
 * Emits the `CallbackRemoved` event.
