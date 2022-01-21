@@ -2,12 +2,12 @@
 title: Introduce a composite oracle beacon report receiver
 tags: LIPs
 blockchain: ethereum
-lip: TBA
+lip: 7
 status: Draft
 author: Eugine Mamin, Sam Kozin, Eugene Pshenichniy
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468/10
 created: 2022-01-14
-updated: 2022-01-16
+updated: 2022-01-21
 ---
 
 # Introduce a composite oracle beacon report receiver
@@ -18,13 +18,13 @@ To have a possibility of using two or even more Lido Oracle beacon report interc
 
 ## Abstract
 
-The `OrderedCallbacksArray` contract implements the aforementioned `IOrderedCallbacksArray` interface adding the access modifiers to allow storage changing calls (add/insert/remove) only originated by the `Voting` contract (having `require(msg.sender == Voting.address)` ). Another one contract (`CompositePostRebaseBeaconReceiver`) inherits `OrderedCallbacksArray` and implemens `IBeaconReportReceiver` interface while allowing to call `processLidoOracleReport` function only originated by the `LidoOracle` contract (having `require(msg.sender == LidoOracle.address)`).
+The `OrderedCallbacksArray` contract implements the `IOrderedCallbacksArray` interface (to add/insert/remove/view the callbacks) adding the access modifiers to allow storage changing calls (add/insert/remove) only originated by the `Voting` contract (having `require(msg.sender == Voting.address)` ). The second proposed contract (`CompositePostRebaseBeaconReceiver`) inherits `OrderedCallbacksArray` simultaneously implementing the `IBeaconReportReceiver` interface. It is allowed to call the `processLidoOracleReport` function only by the `LidoOracle` contract (having `require(msg.sender == LidoOracle.address)`).
 
 In the end, the `CompositePostRebaseBeaconReceiver` contract is a top-level entity implementing the current proposal.
 
 ## Motivation
 
-Currently, the `LidoOracle` [contract](https://docs.lido.fi/contracts/lido-oracle) provides only one slot for a quorum report intercepting callback (see [LidoOracle.setBeaconReportReceiver](https://docs.lido.fi/contracts/lido-oracle#setbeaconreportreceiver)). We plan to occupy this slot soon with a newly developed contract implementing the [LIP-6 coverage application mechanism](https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468). In contrast, we have a technical vision of the future cross-chain/L2 [upgrades](https://hackmd.io/f3416OoaS2e1l2xu_bX6SA), which may require to append additional callbacks propagating oracle beacon reports.
+Currently, the `LidoOracle` [contract](https://docs.lido.fi/contracts/lido-oracle) provides only one slot for a quorum report intercepting callback (see [LidoOracle.setBeaconReportReceiver](https://docs.lido.fi/contracts/lido-oracle#setbeaconreportreceiver)). We plan to occupy this slot soon with a newly developed contract implementing the [LIP-6 coverage application mechanism](https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468). In contrast, we have a technical vision of the future cross-chain/L2 [upgrades](https://hackmd.io/f3416OoaS2e1l2xu_bX6SA), which may require appending additional callbacks to propagate oracle beacon reports.
 
 ## Specification
 
@@ -48,7 +48,7 @@ See: `onlyVoting`.
 ```solidity
 function addCallback(address _callback) external override onlyVoting;
 ```
-Adds the provided `_callback` element at the end of the callbacks array, after its current last element.
+Adds the provided `_callback` element at the end of the callbacks array (i.e., after its current last element).
 * Reverts if `_callback` address is zero.
 * Reverts if `msg.sender` is not equal to the stored `voting` address.
 * Reverts if the new length of the callbacks array becomes greater than the `MAX_CALLBACKS_CNT` contract-wide constant.
@@ -142,6 +142,8 @@ The proposed contracts are non-upgradable for the sake of simplicity. In case of
 
 #### Access control (permissions model)
 There are two permissioned addresses introduced explicitly: `Voting` and `LidoOracle`. Only `Voting` can add/insert/remove callbacks into the `CompositePostReabaseBeaconReceiver` to make it feasible only by the Lido DAO direct vote-backed will. Only `LidoOracle` is allowed to call `processLidoOracleReport` to prevent propagating various fake oracle reports by the added callbacks or execution in an arbitrary time moment.
+
+If one of the callbacks throws an exception than the whole transaction reverts and other callbacks effects also rollbacks.
 
 #### Misbehaving callback
 A misbehaving callback could be easily removed from the current bunch by the DAO vote calling the `remove(misbehavingCallbackIndex)`
