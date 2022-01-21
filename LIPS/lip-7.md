@@ -143,7 +143,7 @@ The proposed contracts are non-upgradable for the sake of simplicity. In case of
 #### Access control (permissions model)
 There are two permissioned addresses introduced explicitly: `Voting` and `LidoOracle`. Only `Voting` can add/insert/remove callbacks into the `CompositePostReabaseBeaconReceiver` to make it feasible only by the Lido DAO direct vote-backed will. Only `LidoOracle` is allowed to call `processLidoOracleReport` to prevent propagating various fake oracle reports by the added callbacks or execution in an arbitrary time moment.
 
-If one of the callbacks throws an exception than the whole transaction reverts and other callbacks effects also rollbacks.
+If one of the callbacks throws an exception then the whole transaction reverts and other callbacks effects also rollbacks.
 
 #### Misbehaving callback
 A misbehaving callback could be easily removed from the current bunch by the DAO vote calling the `remove(misbehavingCallbackIndex)`
