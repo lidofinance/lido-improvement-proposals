@@ -2,10 +2,10 @@
 lip: 6
 title: In-protocol coverage application mechanism
 status: WIP
-author: Sam Kozin, Eugene Mamin
+author: Sam Kozin, Eugene Mamin, Eugene Pshenichnyy
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468
 created: 2021-12-03
-updated: 2021-12-28
+updated: 2022-01-21
 ---
 
 # In-protocol coverage application mechanism proposal
@@ -38,11 +38,13 @@ The proposed contract has two separate counters for the burnt shares: cover and 
 
 Finally, `SelfOwnedStETHBurner` has logs and public getters to provide external access for a proper accounting and monitoring.
 
+To prevent too large rebasing events encouraging unfair coverage distribution via front-running techniques, we introduce support of the limit of shares to burn per single beacon report. Thus, burning requests could be executed in more than one pass.
+
 ### Sending a burn request
 
 The user sends a burn request transaction to the `SelfOwnedStETHBurner` contract by providing some stETH tokens and indicating the burning request type: cover or non-cover. The contract locks the provided stETH amount on its own balance and marks this amount for future burning.
 
-The contract also contains a pair of internal counters to collect the total amount to be burnt upon the next oracle report.
+The contract also contains a pair of internal counters to collect the total amount to be burnt upon the next oracle reports.
 
 ### Burning execution on oracle report
 
@@ -52,13 +54,17 @@ The contract tracks `LidoOracle` reports by implementing the `IBeaconReportRecei
 
 The main reason for performing token burn exactly as part of a Lido oracle update is to preserve a predictable and well-known rebase period since **_every_** burning event also leads to token rebase. External integrations and oracles may rely on the existing rebase period (which is about one-day).
 
+The amount of the shares to be burnt per single oracle run is limited with the `maxBurnAmountPerRunBasePoints` var (represented as the ratio of amount taken for burning to the total shares amount in existence). Thus we limit `stETH` rebasing from being too large which otherwise could rock the market.
+
 #### Gas consumption considerations
 
-Each quorum-reaching beacon report currently costs around 461000 gas.
+Each quorum-reaching beacon report currently costs around ~460k gas.
 
-Adding the mechanism described in this proposal would increase the consumption as follows (with a 20% accuracy margin): by 720 gas for the case when there are no pending burn requests (base recurrent case); by 110000 gas when any number of burn requests of a single type is to be enacted (either cover or non-cover); by 160000 gas in the case when both cover a non-cover requests are to be enacted.
+Adding the mechanism described in this proposal would increase the consumption as follows: by ~1k gas for the case when there are no pending burn requests (base recurrent case); by ~110k gas when any number of burn requests of a single type is to be enacted (either cover or non-cover); by ~160k gas in the case when both cover a non-cover requests are to be enacted.
 
-This represents **less than a 0.2% increase for the base case** when no burn requests are pending, a 24% increase when applying one type of burn requests, and 35% increase when applying both types of burn requests.
+This represents **less than a ~0.2% increase for the base case** when no burn requests are pending, a ~24% increase when applying one type of burn requests, and ~35% increase when applying both types of burn requests.
+
+The estimates are suitable for the single oracle report only. If the amount to burn exceeds the `maxBurnAmountPerRunBasePoints`, the gas costs multiply by the number of periods to fulfill the pending requests completely.
 
 ### Shares burnt counter
 
@@ -174,6 +180,12 @@ function getNonCoverSharesBurnt() external view returns (uint256)
 ```
 Returns the total non-cover shares ever burnt.
 
+### Function: getMaxBurnAmountPerRunBasePoints
+```solidity
+function getMaxBurnAmountPerRunBasePoints() external view returns (uint256)
+```
+Returns the maximum amount of shares allowed to burn per single run
+
 ### Function: requestBurnMyStETHForCover
 ```solidity
 function requestBurnMyStETHForCover(uint256 _stETH2Burn) external
@@ -181,7 +193,7 @@ function requestBurnMyStETHForCover(uint256 _stETH2Burn) external
 Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly locks these on the burner contract address. Internally converts `_stETH2Burn` amount into underlying shares amount (`_stETH2BurnAsShares`) and marks the converted amount for cover-backed burning by increasing the `coverSharesBurnRequested` counter.
 
 * Must transfer `_stETH2Burn` stETH tokens from the message sender to the burner contract address.
-* Reverts if the message sender is not `Voting`
+* Reverts if the message sender is not `Voting`.
 * Reverts if no stETH provided (`_stETH2Burn == 0`).
 * Reverts if no stETH transferred (allowance exceeded).
 * Emits the `StETHBurnRequested(true, msg.sender, _stETH2Burn, _stETH2BurnAsShares)` event.
@@ -193,10 +205,20 @@ function requestBurnMyStETH(uint256 _stETH2Burn) external
 Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly locks these on the burner contract address. Internally converts `_stETH2Burn` amount into underlying shares amount (`_stETH2BurnAsShares`) and marks the converted amount for non-cover-backed burning by increasing the `nonCoverSharesBurnRequested` counter.
 
 * Must transfer `_stETH2Burn` stETH tokens from the message sender to the burner contract address.
-* Reverts if the message sender is not `Voting`
+* Reverts if the message sender is not `Voting`.
 * Reverts if no stETH provided (`_stETH2Burn == 0`).
 * Reverts if no stETH transferred (allowance exceeded).
 * Emits the `StETHBurnRequested(false, msg.sender, _stETH2Burn, _stETH2BurnAsShares)` event.
+
+### Function: setMaxBurnAmountPerRunBasePoints
+```solidity
+function setMaxBurnAmountPerRunBasePoints(uint256 _maxBurnAmountPerRunBasePoints) external
+```
+Sets the amount of shares allowed to burn per single run with the provided `_maxBurnAmountPerRunBasePoints` ratio.
+* Reverts if `_maxBurnAmountPerRunBasePoints` is zero.
+* Reverts if `_maxBurnAmountPerRunBasePoints` exceeds `10000`
+* Reverts if the message sender is not `Voting`
+* Emits the `MaxBurnAmountPerRunChanged(_maxBurnAmountPerRunBasePoints)` event.
 
 ### Function: processLidoOracleReport
 ```solidity
@@ -204,7 +226,9 @@ function: processLidoOracleReport(uint256 _postTotalPooledEther,
                                   uint256 _preTotalPooledEther,
                                   uint256 _timeElapsed) external
 ```
-Enacts cover/non-cover burning requests and logs cover/non-cover shares amount just burnt. Increments `totalCoverSharesBurnt` and `totalNonCoverSharesBurnt` counters. Resets `coverSharesBurnRequested` and `nonCoverSharesBurnRequested` counters to zero.
+Enacts cover/non-cover burning requests and logs cover/non-cover shares amount just burnt. Increments `totalCoverSharesBurnt` and `totalNonCoverSharesBurnt` counters. Decrements `coverSharesBurnRequested` and `nonCoverSharesBurnRequested` counters.
+
+The burning requests could be executed partially per single run due to the `maxBurnAmountPerRunBasePoints` limit. The cover reasoned burning requests have a higher priority of execution.
 
 Does nothing if there are no pending burning requests.
 
@@ -312,6 +336,16 @@ Emitted when the ERC721-compatible `token` (NFT) recovered (e.g. transferred) to
 
 See: `recoverERC721`.
 
+### Event: MaxBurnAmountPerRunChanged
+```solidity
+    event MaxBurnAmountPerRunChanged(
+        uint256 maxBurnAmountPerRunBasePoints
+    );
+```
+Emitted when new limit for the burn amount per run is set.
+
+See: `setMaxBurnAmountPerRunBasePoints`.
+
 ## Security Considerations
 
 #### The proposed contract is non-upgradable and non-ownable
@@ -330,6 +364,10 @@ An explicit pre-condition (`require(msg.sender == Lido.getOracle())`) is checked
 
 An explicit pre-condition (`require(msg.sender == VOTING)`) is checked for the message sender address.
 
+#### The amount of shares to burn per single run is limited
+
+Make front-running exploits on `processLidoOracleReport` unprofitable by burning the limited amount only per single report. The initial limit could be set to `0.04%` corresponding to the base commission of the `stETH:ETH` trading pair on the curve LP.
+
 ## Failure modes
 
 #### DAO decides to grant a shares burning permission to someone else
@@ -345,9 +383,13 @@ The Anchor Protocol will receive incorrect rewards.
 
 Anchor/bETH token holders will lose some rewards.
 
+#### The amount of shares to burn per single run limit is too high
+
+It could provoke external searchers to gain burning-incurred profit by sandwich-like trading maneuvers around `processLidoOracle` while lowering the actual reimbursement amount for the long-term stakeholders.
+
 ## Reference implementation
 
-Reference implementation of the `SelfOwnedStETHBurner` interface available on the [Lido GitHub](https://github.com/lidofinance/lido-dao/blob/feature/LIP-6/contracts/0.8.9/SelfOwnedStETHBurner.sol)
+The reference implementation of the `SelfOwnedStETHBurner` interface available on the [Lido GitHub](https://github.com/lidofinance/lido-dao/blob/develop/contracts/0.8.9/SelfOwnedStETHBurner.sol)
 
 ## Links
 
