@@ -54,7 +54,7 @@ The contract tracks `LidoOracle` reports by implementing the `IBeaconReportRecei
 
 The main reason for performing token burn exactly as part of a Lido oracle update is to preserve a predictable and well-known rebase period since **_every_** burning event also leads to token rebase. External integrations and oracles may rely on the existing rebase period (which is about one-day).
 
-The amount of the shares to be burnt per single oracle run is limited with the `maxBurnAmountPerRunBasePoints` var (represented as the ratio of amount taken for burning to the total shares amount in existence). Thus we limit `stETH` rebasing from being too large which otherwise could rock the market.
+The amount of the shares to be burnt per single oracle run is limited with the `maxBurnAmountPerRunBasisPoints` var (represented as the ratio of amount taken for burning to the total shares amount in existence). Thus we limit `stETH` rebasing from being too large which otherwise could rock the market.
 
 #### Gas consumption considerations
 
@@ -64,7 +64,7 @@ Adding the mechanism described in this proposal would increase the consumption a
 
 This represents **less than a ~0.2% increase for the base case** when no burn requests are pending, a ~24% increase when applying one type of burn requests, and ~35% increase when applying both types of burn requests.
 
-The estimates are suitable for the single oracle report only. If the amount to burn exceeds the `maxBurnAmountPerRunBasePoints`, the gas costs multiply by the number of periods to fulfill the pending requests completely.
+The estimates are suitable for the single oracle report only. If the amount to burn exceeds the `maxBurnAmountPerRunBasisPoints`, the gas costs multiply by the number of periods to fulfill the pending requests completely.
 
 ### Shares burnt counter
 
@@ -180,11 +180,11 @@ function getNonCoverSharesBurnt() external view returns (uint256)
 ```
 Returns the total non-cover shares ever burnt.
 
-### Function: getMaxBurnAmountPerRunBasePoints
+### Function: getBurnAmountPerRunQuota
 ```solidity
-function getMaxBurnAmountPerRunBasePoints() external view returns (uint256)
+function getBurnAmountPerRunQuota() external view returns (uint256)
 ```
-Returns the maximum amount of shares allowed to burn per single run
+Returns the maximum amount of shares allowed to burn per single run (expressed in basis points as a fraction from total shares amount).
 
 ### Function: requestBurnMyStETHForCover
 ```solidity
@@ -210,15 +210,15 @@ Transfers `_stETH2Burn` stETH tokens from the message sender and irreversibly lo
 * Reverts if no stETH transferred (allowance exceeded).
 * Emits the `StETHBurnRequested(false, msg.sender, _stETH2Burn, _stETH2BurnAsShares)` event.
 
-### Function: setMaxBurnAmountPerRunBasePoints
+### Function: setBurnAmountPerRunQuota
 ```solidity
-function setMaxBurnAmountPerRunBasePoints(uint256 _maxBurnAmountPerRunBasePoints) external
+function setBurnAmountPerRunQuota(uint256 _maxBurnAmountPerRunBasisPoints) external
 ```
-Sets the amount of shares allowed to burn per single run with the provided `_maxBurnAmountPerRunBasePoints` ratio.
-* Reverts if `_maxBurnAmountPerRunBasePoints` is zero.
-* Reverts if `_maxBurnAmountPerRunBasePoints` exceeds `10000`
+Sets the amount of shares allowed to burn per single run with the provided `_maxBurnAmountPerRunBasisPoints` ratio.
+* Reverts if `_maxBurnAmountPerRunBasisPoints` is zero.
+* Reverts if `_maxBurnAmountPerRunBasisPoints` exceeds `10000`
 * Reverts if the message sender is not `Voting`
-* Emits the `MaxBurnAmountPerRunChanged(_maxBurnAmountPerRunBasePoints)` event.
+* Emits the `BurnAmountPerRunQuotaChanged(_maxBurnAmountPerRunBasisPoints)` event.
 
 ### Function: processLidoOracleReport
 ```solidity
@@ -228,7 +228,7 @@ function: processLidoOracleReport(uint256 _postTotalPooledEther,
 ```
 Enacts cover/non-cover burning requests and logs cover/non-cover shares amount just burnt. Increments `totalCoverSharesBurnt` and `totalNonCoverSharesBurnt` counters. Decrements `coverSharesBurnRequested` and `nonCoverSharesBurnRequested` counters.
 
-The burning requests could be executed partially per single run due to the `maxBurnAmountPerRunBasePoints` limit. The cover reasoned burning requests have a higher priority of execution.
+The burning requests could be executed partially per single run due to the `maxBurnAmountPerRunBasisPoints` limit. The cover reasoned burning requests have a higher priority of execution.
 
 Does nothing if there are no pending burning requests.
 
@@ -336,15 +336,15 @@ Emitted when the ERC721-compatible `token` (NFT) recovered (e.g. transferred) to
 
 See: `recoverERC721`.
 
-### Event: MaxBurnAmountPerRunChanged
+### Event: BurnAmountPerRunQuotaChanged
 ```solidity
-    event MaxBurnAmountPerRunChanged(
-        uint256 maxBurnAmountPerRunBasePoints
+    event BurnAmountPerRunQuotaChanged(
+        uint256 maxBurnAmountPerRunBasisPoints
     );
 ```
-Emitted when new limit for the burn amount per run is set.
+Emitted when new limit for the burn amount fraction per run is set.
 
-See: `setMaxBurnAmountPerRunBasePoints`.
+See: `setBurnAmountPerRunQuota`.
 
 ## Security Considerations
 
