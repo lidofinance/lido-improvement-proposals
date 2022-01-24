@@ -3,7 +3,7 @@ lip: lip-9
 title: Add an explicit log for the stETH burn events
 status: Proposed
 author: Eugine Mamin, Artyom Veremeenko
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lip-9-add-an-explicit-log-for-the-steth-burn-events/1609?u=arwer13
 created: 2022-01-24
 updated: 2022-01-24
 ---
