@@ -3,7 +3,7 @@ title: Introduce a composite oracle beacon report receiver
 tags: LIPs
 blockchain: ethereum
 lip: 7
-status: WIP
+status: Proposed
 author: Eugine Mamin, Sam Kozin, Eugene Pshenichniy
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468/10
 created: 2022-01-14

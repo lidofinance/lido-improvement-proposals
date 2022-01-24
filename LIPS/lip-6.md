@@ -1,11 +1,11 @@
 ---
 lip: 6
 title: In-protocol coverage application mechanism
-status: WIP
+status: Proposed
 author: Sam Kozin, Eugene Mamin, Eugene Pshenichnyy
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468
 created: 2021-12-03
-updated: 2022-01-21
+updated: 2022-01-24
 ---
 
 # In-protocol coverage application mechanism proposal
