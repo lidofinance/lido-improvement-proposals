@@ -34,7 +34,7 @@ We propose to re-stake all collected EL rewards while minting only the protocol 
 
 The proposed way brings rewards compounding, has a fast shipment time due to little impact on the existing distribution scheme. It's also reasonably automated and self-governed. And finally, it fallbacks to the already adopted solution in case Merge hardfork is delayed.
 
-The compound effect depends on the EL- and CL- APRs, but a long-term stakeholder generally gains additional interest rate increase every day. For example, if EL- ad CL- APRs are both equal to 4.5% (i.e., their sum is 9%), then a 1y-long stakeholder has an APY value near [~9.2%](assets/lip-12/restaking_1y.html), and a 3y-long stakeholder has an APY value near [~9.6%](assets/lip-12/restaking_3y.html).
+The compound effect depends on the EL- and CL- APRs, but a long-term stakeholder generally gains additional interest rate increase every day. For example, if EL- ad CL- APRs are both equal to 4.5% (i.e., their sum is 9%), then a 1y-long stakeholder has an APY value near ~9.2, and a 3y-long stakeholder has an APY value near [~9.6%](assets/lip-12/restaking_effect.ipynb).
 
 The rewards distribution scheme is provided below.
 ![rewards distribution scheme draft](assets/lip-12/rewards_distribution_scheme.svg)
