@@ -1,5 +1,5 @@
 ---
-lip: LIP-8
+lip: 8
 title: Increase keysOpIndex in assignNextSigningKeys
 status: Proposed
 author: George Avsetsin, Artyom Veremeenko
@@ -33,7 +33,7 @@ Add calls to `_increaseKeysOpIndex()` at the two execution branches if returned 
 The proposed change will slightly increase gas cost of `depositBufferedEther` call for Depositor Bot. An additional call of `_increaseKeysOpIndex()` costs ~7000 gas and does not depend on number of deposits. Relative cost increment depends on amount of transaction. For example for a typical [transaction with 38 deposits](https://etherscan.io/tx/0x1722113d54960b7cda789e6f9561a56ad3d1c33c491dcb9ee6825e151cdf18c7) the gas cost will increase by ~0.3% (total cost depends on the amount of 32ETH deposits done).
 
 The chain of calls is:
-- `DepositSecurityModule::depositBufferedEther` 
+- `DepositSecurityModule::depositBufferedEther`
 - `Lido::depositBufferedEther() auth(DEPOSIT_ROLE)`
 - `NodeOperatorsRegistry::assignNextSigningKeys()`
 

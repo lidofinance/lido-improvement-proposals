@@ -1,9 +1,9 @@
 ---
-lip: lip-9
+lip: 9
 title: Add an explicit log for the stETH burn events
 status: Proposed
-author: Eugine Mamin, Artyom Veremeenko
-discussions-to: https://research.lido.fi/t/lip-9-add-an-explicit-log-for-the-steth-burn-events/1609?u=arwer13
+author: Eugene Mamin, Artyom Veremeenko
+discussions-to: https://research.lido.fi/t/lip-9-add-an-explicit-log-for-the-steth-burn-events/1609
 created: 2022-01-24
 updated: 2022-01-24
 ---
@@ -57,7 +57,7 @@ Two lines to add into the function body:
 
 ## Gas price effects
 
-Negligible: stETH burning is expected to happen no more than a few times per year, extra event costs are negligible. 
+Negligible: stETH burning is expected to happen no more than a few times per year, extra event costs are negligible.
 
 ## Links
 

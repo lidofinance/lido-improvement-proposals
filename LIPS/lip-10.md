@@ -1,8 +1,8 @@
 ---
+lip: 10
 title: Proxy initializations and LidoOracle upgrade
-lip: lip-10
 status: Proposed
-author: Artyom Veremeenko, Sam Kozin, Mihail Semenkin, Eugene Pshenichniy, Eugine Mamin
+author: Artyom Veremeenko, Sam Kozin, Mihail Semenkin, Eugene Pshenichniy, Eugene Mamin
 discussions-to: https://research.lido.fi/t/lip-10-proxy-initializations-and-lidooracle-upgrade/1616
 created: 2022-01-25
 updated: 2022-01-25
@@ -78,7 +78,7 @@ contract ProxyImplementation {
 
     function initialize(address _foo, uint64 _bar) {
         ... // code performing all initializations up to version 3
-        
+
         initialize_v3(_bar);
     }
 
@@ -107,7 +107,7 @@ Cons:
 - increases contract deployment cost.
 
 ### Restrictions on calling initilize functions
-We still need to use `onlyInit` modifier for `initialize()` in Aragon contracts as Aragon authentication modifiers require it ([see the details]( 
+We still need to use `onlyInit` modifier for `initialize()` in Aragon contracts as Aragon authentication modifiers require it ([see the details](
 https://hack.aragon.org/docs/aragonos-building#constructor-and-initialization)).
 
 We also propose not to add any authentication restrictions on calls of `initialize()` and `finalizeUpgrade_vN`. Risk of an attack exploiting this is quite negligible but the restriction would require adding one more role and complicating the code.

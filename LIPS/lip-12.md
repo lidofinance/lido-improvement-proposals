@@ -2,7 +2,6 @@
 lip: 12
 title: On-chain part of the rewards distribution after the Merge
 status: Proposed
-blockchain: ethereum
 author: Eugene Pshenichnyy, Eugene Mamin, Artyom Veremeenko
 discussions-to: https://research.lido.fi/t/lip-12-on-chain-part-of-the-rewards-distribution-after-the-merge/1625
 created: 2022-01-21
