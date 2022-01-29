@@ -2,7 +2,7 @@
 lip: 11
 title: Add a transfer shares function for stETH
 status: Proposed
-author: Eugine Mamin, Sam Kozin, Artyom Veremeenko
+author: Eugene Mamin, Sam Kozin, Artyom Veremeenko
 discussions-to: https://research.lido.fi/t/lip-11-add-a-transfer-shares-function-for-steth/1622
 created: 2022-01-27
 updated: 2022-01-27
