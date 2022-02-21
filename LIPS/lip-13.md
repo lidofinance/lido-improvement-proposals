@@ -3,7 +3,7 @@ title: Easy Track payments limit
 tags: LIPs
 blockchain: ethereum
 lip: lip-13
-status: Proposed
+status: Implemented
 author: Alexey Potapkin, Eugene Pshenichnyy, Victor Suzdalev, Eugene Mamin
 discussions-to: https://research.lido.fi/t/lip-13-easy-track-payments-limit/1670
 ---
@@ -80,8 +80,6 @@ You can see the example of code, encoding these parameters, [here](https://githu
 
 ### Proposed limits
 
-Actual limits shall be established after discussion, but they should be high enough to provide smooth operations without resetting the constraints each time.
-
 As initial values to start with, we propose:
 - 1,000 ETH
 - 1,000 stETH
@@ -106,4 +104,4 @@ You can see the test cases for the proposal in the [relevant GitHub PR](https://
 * [Easy Track code](https://github.com/lidofinance/easy-track)
 * [Guide to Easy Track](https://docs.lido.fi/guides/easy-track-guide)
 * [Aragon ACL docs](https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation)
-* [LIP-13 implementation (WIP)](https://github.com/lidofinance/scripts/pull/33)
+* [LIP-13 implementation](https://github.com/lidofinance/scripts/pull/33)
