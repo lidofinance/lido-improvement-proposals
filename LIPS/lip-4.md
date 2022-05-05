@@ -1,11 +1,11 @@
 ---
 lip: 4
 title: 72h Aragon Votes
-status: WIP
-author: Victor Suzdalev (kadmil)
-discussions-to: https://research.lido.fi/t/increase-the-dao-voting-duration/1048
+status: Implemented
+author: Victor Suzdalev, Sam Kozin, Eugene Mamin
+discussions-to: https://research.lido.fi/t/increase-the-dao-voting-duration/1048, https://research.lido.fi/t/increase-aragon-voting-duration-to-72-hours-operation-plan/1915
 created: 2021-09-28
-updated: -
+updated: 2022-04-08
 ---
 
 # 72h Aragon Votes
