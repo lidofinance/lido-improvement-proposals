@@ -1,11 +1,11 @@
 ---
 lip: 5
 title: Mitigations for deposit front-running vulnerability
-status: Proposed
+status: Implemented
 author: Eugene Pshenichnyy, Sam Kozin, Victor Suzdalev, Vasiliy Shapovalov
 discussions-to: https://research.lido.fi/t/mitigations-for-deposit-front-running-vulnerability/1239
 created: 2021-10-15
-updated: 2021-10-15
+updated: 2021-11-15
 ---
 
 # Mitigations for deposit front-running vulnerability
