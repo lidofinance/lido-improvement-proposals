@@ -10,7 +10,7 @@ created: 2022-05-11
 updated: 2022-05-12
 ---
 
-# Protocol safeguards. Resume role.
+# Protocol safeguards. Resume role
 
 ## Abstract
 
