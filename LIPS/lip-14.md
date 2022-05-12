@@ -5,9 +5,9 @@ blockchain: ethereum
 title: Protocol safeguards. Staking rate limiting
 status: Proposed
 author: Eugene Mamin, Sam Kozin, Eugene Pshenichnyy, Aleksei Potapkin
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/announcement-merge-ready-protocol-service-pack/2184
 created: 2022-05-05
-updated: 2022-05-05
+updated: 2022-05-12
 ---
 
 # Protocol safeguards. Staking rate limiting
@@ -45,7 +45,7 @@ We propose to accomplish the `Lido.sol` contract with additional functions to co
 
 ### `Lido.sol` changes
 
-```solidity
+``` solidity
 function pauseStaking() external
 ```
 
