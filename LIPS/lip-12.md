@@ -60,7 +60,7 @@ Also, we added a withdrawal daily limit to avoid too large rebasing events when 
 
 ### An execution layer rewards vault contract
 
-The proposed `LidoExecutionLayerRewardsVault` vault contract is devoted for the EL-rewards collecting. Transactions priority fee collected by setting the the vault contract address as a coinbase (`feeRecipient`). MEV rewards could be collected by the two ways simultenously: the first one require coinbase setup too but the second presumes that payloads builders may include an explicit transaction which transfers MEV shares to the `feeRecipient` in the payload. Thus, `LidoExecutionLayerRewardsVault` has the payable `receive` function which accepts incoming ether.
+The proposed `LidoExecutionLayerRewardsVault` vault contract is devoted for the EL-rewards collecting. Transactions priority fee collected by setting the the vault contract address as a coinbase (`feeRecipient`). MEV rewards could be collected by the two ways simultaneously: the first one require coinbase setup too but the second presumes that payloads builders may include an explicit transaction which transfers MEV shares to the `feeRecipient` in the payload. Thus, `LidoExecutionLayerRewardsVault` has the payable `receive` function which accepts incoming ether.
 
 **We can't recover accidentally sent by someone outside the Lido NOs set ether.**
 
@@ -103,7 +103,7 @@ Transfers a given `_amount` of an ERC20-token (defined by the `_token` contract 
 ```solidity
 function recoverERC721(address _token, uint256 _tokenId) external
 ```
-Transfers a given `_tokenId` of an ERC721-compatible NFT (defined by the token contract address) to the Lido treasury address (defined in the `construct`).
+Transfers a given `_token` of an ERC721-compatible NFT (defined by the token contract address) to the Lido treasury address (defined in the `construct`).
 * Emits the `ERC721Recovered` event
 
 
@@ -157,7 +157,7 @@ Payable function to accept the withdrawn rewards for a vault contract
 ```solidity
 function getELRewardsVault() public view returns (address)
 ```
-Returns address of the contract set as LidoExecutionLayerRewardsVault
+Returns address of the contract set as `LidoExecutionLayerRewardsVault`
 
 #### Function: setELRewardsVault
 ```solidity
