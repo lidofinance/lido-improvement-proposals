@@ -38,9 +38,9 @@ modifier onlyVoting()
 Enforces `msg.sender` to equal `voting` address set upon the contract construction.
 
 ```solidity
-constructor(address _voting)
+constructor(address _voting, bytes4 _requiredIface)
 ```
-Init contract and store the provided `_voting` address to arm the `onlyVoting` modifier.
+Init contract and store the provided `_voting` address to arm the `onlyVoting` modifier. Store the provided `_requiredIface` to avoid mistake with callback incorrect implementation
 See: `onlyVoting`.
 
 ```solidity
