@@ -96,7 +96,7 @@ function recoverERC20(address _token, uint256 _amount) external
 ```
 Transfers a given `_amount` of an ERC20-token (defined by the `_token` contract address) to the Lido treasury address (defined in the `construct`).
 
-* Reverts if `_amount` less or equal zero
+* Reverts if `_amount` is zero
 * Emits the `ERC20Recovered` event
 
 #### Function: recoverERC721
