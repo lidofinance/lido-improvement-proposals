@@ -18,8 +18,8 @@ Add a staking rate limiting feature to have the soft moving cap for the stake am
 We propose to implement a rate limiting mechanics by using the following conventions:
 
 - Staking can be paused completely by calling the `pauseStaking()` method
-- Staking can be resumed then by calling the `resumeStaking` method 
-- Staking limit can be removed by calling the `removeStakingLimit` method
+- Staking can be resumed then by calling the `resumeStaking()` method 
+- Staking limit can be removed by calling the `removeStakingLimit()` method
 - The rate limit is managed by two parameters:
     - `maxStakingLimit` - max amount of ETH that could be staked into the protocol to meet the limit;
     - `stakeLimitIncreasePerBlock` - speed of replenishing the staking capacity of the protocol in ETH per block.

@@ -111,7 +111,7 @@ the type of asset to be transferred.
 where `params` is a logic predicate packed in `uint[]` in a special way 
 described in 
 [Aragon ACL documentation](https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation). 
-That predicate applied to the arguments of `newImmediiatePayment` method MUST 
+That predicate applied to the arguments of `newImmediatePayment` method MUST 
 resolve to true if the asset type and the amount is under the limits, and MUST 
 be false otherwise.
 
