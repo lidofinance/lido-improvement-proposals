@@ -399,4 +399,4 @@ The reference implementation of the `SelfOwnedStETHBurner` interface available o
 - Preliminary smoke tests on Anchor Protocol integration:
 https://github.com/lidofinance/anchor-collateral-steth/blob/00cddd633ffe855a133a8c3ee024833bf6551d50/tests/test_insurance.py
 - Anchor Protocol Bonded ETH (bETH) token spec: https://docs.anchorprotocol.com/protocol/bonded-assets-bassets/bonded-eth-beth
-- Aragon ACL parameter intepretation: https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation
+- Aragon ACL parameter interpretation: https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation
