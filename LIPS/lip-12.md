@@ -198,20 +198,6 @@ In addition to the existing `pushBeacon` code, claims EL-collected rewards after
 * Must not distribute any rewards if beacon chain delta (with a correction by newly appeared validators amount) is zero or negative.
 * Must not introduce additional revert reasons if all permissions agree.
 
-The function is also renamed to better match it's new functionality.
-
-#### Function: getTotalMevTxFeeCollected
-```solidity
-function getTotalMevTxFeeCollected() external view returns (uint256)
-```
-Get the total amount of MEV and transaction fees ever buffered on this contract's balance.
-
-#### Function: getMevTxFeeVault
-```solidity
-function getMevTxFeeVault() public view returns (address)
-```
-Get the previously set `MevTxFeeVault` address.
-
 #### Event: ELRewardsReceived
 ```solidity
 event ELRewardsReceived(uint256 amount)

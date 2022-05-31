@@ -132,7 +132,7 @@ Iteratively calls `callback.processLidoOracleReport` for each stored `callback` 
 
 ## Gas effects
 
-In the case of `CompositePostRebaseBeaconReceiver` used with only one `IBeaconReportReceiver` callback set, spending's increase approximately by the ~4600 gas compared to direct usage of the underlying callback with `LidoOracle` (without composite adapter).
+In the case of `CompositePostRebaseBeaconReceiver` used with only one `IBeaconReportReceiver` callback set, spending increase approximately by the ~4600 gas compared to direct usage of the underlying callback with `LidoOracle` (without composite adapter).
 
 ## Security considerations
 
