@@ -1,11 +1,11 @@
 ---
 lip: 9
 title: Add an explicit log for the stETH burn events
-status: Proposed
+status: Implemented
 author: Eugene Mamin, Artyom Veremeenko
 discussions-to: https://research.lido.fi/t/lip-9-add-an-explicit-log-for-the-steth-burn-events/1609
 created: 2022-01-24
-updated: 2022-01-24
+updated: 2022-06-06
 ---
 
 # Add an explicit log for the stETH burn events
@@ -61,7 +61,7 @@ uint256 preRebaseTokenAmount = getPooledEthByShares(_sharesAmount);
 uint256 postRebaseTokenAmount = getPooledEthByShares(_sharesAmount);
 
 emit SharesBurnt(_account, preRebaseTokenAmount, postRebaseTokenAmount, _sharesAmount);
-```    
+```
 
 ## Gas price effects
 
