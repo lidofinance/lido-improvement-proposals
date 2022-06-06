@@ -1,11 +1,11 @@
 ---
 lip: 7
 title: Introduce a composite oracle beacon report receiver
-status: Proposed
+status: Implemented
 author: Eugene Mamin, Sam Kozin, Eugene Pshenichnyy
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468/10
 created: 2022-01-14
-updated: 2022-01-24
+updated: 2022-06-06
 ---
 
 # Introduce a composite oracle beacon report receiver
