@@ -1,11 +1,11 @@
 ---
 lip: 6
 title: In-protocol coverage application mechanism
-status: Proposed
+status: Implemented
 author: Sam Kozin, Eugene Mamin, Eugene Pshenichnyy
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468
 created: 2021-12-03
-updated: 2022-01-24
+updated: 2022-06-06
 ---
 
 # In-protocol coverage application mechanism proposal
@@ -99,7 +99,7 @@ The proposed mechanism allows integrations like [Anchor/bETH](https://docs.ancho
 
 This means that, since applying cover leads to a positive stETH rebase, it cannot be used to reimburse bETH holders from prior negative stETH rebases. In contrast, implementing the calculations detailed above as part of the positive rebase handling, and forwarding only the rewards-generated part of the balance increase to Anchor, allows recovering the bETH/stETH rate to 1.
 
-The Anchor integration already has the calculations proposed above implemented using a plug-in adapter for retrieving the total number of shares burnt for cover purposes. The current version of the adapter just returns zero so it will need to be replaced if/after the proposed changes are made to the protocol. See [`AnchorVault.collect_rewards#434`](https://github.com/lidofinance/anchor-collateral-steth/blob/39cd11d9d628c1de6f4f481f3992f2d1fca41ecf/contracts/AnchorVault.vy#L434) for the possible sketch of usage with similar integrations.
+The Anchor integration already had the calculations proposed above implemented using a plug-in adapter for retrieving the total number of shares burnt for cover purposes. See [`AnchorVault.collect_rewards#434`](https://github.com/lidofinance/anchor-collateral-steth/blob/39cd11d9d628c1de6f4f481f3992f2d1fca41ecf/contracts/AnchorVault.vy#L434) for the possible sketch of usage with similar integrations.
 
 ### Burn permissions
 
@@ -377,11 +377,11 @@ So the `SelfOwnedStETHBurner` contract will become almost useless by providing i
 
 #### Someone apply slashing coverage using non-cover request type
 
-The Anchor Protocol will receive incorrect rewards.
+Affected external integrations derivative token holders will receive incorrect rewards.
 
 #### Someone apply non-cover using cover request type
 
-Anchor/bETH token holders will lose some rewards.
+Affected external integrations derivative token holders will lose some rewards.
 
 #### The amount of shares to burn per single run limit is too high
 
