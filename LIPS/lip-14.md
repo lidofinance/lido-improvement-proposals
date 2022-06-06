@@ -3,11 +3,11 @@ tags: LIP
 lip: 14
 blockchain: ethereum
 title: Protocol safeguards. Staking rate limiting
-status: Proposed
+status: Implemented
 author: Eugene Mamin, Sam Kozin, Eugene Pshenichnyy, Aleksei Potapkin
 discussions-to: https://research.lido.fi/t/announcement-merge-ready-protocol-service-pack/2184
 created: 2022-05-05
-updated: 2022-05-12
+updated: 2022-06-06
 ---
 
 # Protocol safeguards. Staking rate limiting
@@ -108,7 +108,7 @@ function getStakeLimitFullInfo() external view returns (
     uint256 prevStakeBlockNumber
 )
 ```
-Might be used for the advanced integration requests. Returns actual staking parameters for current block. 
+Might be used for the advanced integration requests. Returns actual staking parameters for current block.
 
 #### Event: StakingPaused
 ```solidity
@@ -116,17 +116,17 @@ event StakingPaused()
 ```
 
 #### Event: StakingResumed
-```solidity 
+```solidity
 event StakingResumed()
 ```
 
 #### Event: StakingLimitSet
-```solidity 
+```solidity
 event StakingLimitSet(uint256 maxStakeLimit, uint256 stakeLimitIncreasePerBlock)
 ```
 
 #### Event: StakingLimitRemoved
-```solidity 
+```solidity
 event StakingLimitRemoved()
 ```
 
