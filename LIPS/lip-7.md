@@ -1,11 +1,11 @@
 ---
 lip: 7
 title: Introduce a composite oracle beacon report receiver
-status: Proposed
+status: Implemented
 author: Eugene Mamin, Sam Kozin, Eugene Pshenichnyy
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468/10
 created: 2022-01-14
-updated: 2022-01-24
+updated: 2022-06-06
 ---
 
 # Introduce a composite oracle beacon report receiver
@@ -38,9 +38,9 @@ modifier onlyVoting()
 Enforces `msg.sender` to equal `voting` address set upon the contract construction.
 
 ```solidity
-constructor(address _voting)
+constructor(address _voting, bytes4 _requiredIface)
 ```
-Init contract and store the provided `_voting` address to arm the `onlyVoting` modifier.
+Init contract and store the provided `_voting` address to arm the `onlyVoting` modifier. Store the provided `_requiredIface` to avoid mistake with callback incorrect implementation
 See: `onlyVoting`.
 
 ```solidity
@@ -59,6 +59,7 @@ function insertCallback(address _callback, uint256 _atIndex) external override o
 Inserts the `_callback` element at the specified by the `_atIndex` param location in the callbacks array.
 Elements at and after the `_atIndex` position are shifted one position right to preserve the existing invocation order.
 * Reverts if `_callback` address is zero.
+* Reverts if `_callback` doesn't support provided interface.
 * Reverts if `msg.sender` is not equal to the stored `voting` address.
 * Reverts if `_atIndex` greater than the length of the callbacks array.
 * Reverts if new length of the callbacks array becomes greater than the `MAX_CALLBACKS_CNT` contract-wide constant.
@@ -131,15 +132,15 @@ Iteratively calls `callback.processLidoOracleReport` for each stored `callback` 
 
 ## Gas effects
 
-In the case of `ComositePostRebaseBeaconReceiver` used with only one `IBeaconReportReceiver` callback set, spendings increase approximately by the ~4600 gas compared to direct usage of the underlying callback with `LidoOracle` (without composite adapter).
+In the case of `CompositePostRebaseBeaconReceiver` used with only one `IBeaconReportReceiver` callback set, spending increase approximately by the ~4600 gas compared to direct usage of the underlying callback with `LidoOracle` (without composite adapter).
 
 ## Security considerations
 
-#### Upgradability
+#### Upgradeability
 The proposed contracts are non-upgradable for the sake of simplicity. In case of emergency, we can disable them entirely by calling `LidoOracle.setBeaconReportReceiver(address(0))` and redeploy newly developed versions later from scratch without incurring additional proxy-initialization logic and state transitions.
 
 #### Access control (permissions model)
-There are two permissioned addresses introduced explicitly: `Voting` and `LidoOracle`. Only `Voting` can add/insert/remove callbacks into the `CompositePostReabaseBeaconReceiver` to make it feasible only by the Lido DAO direct vote-backed will. Only `LidoOracle` is allowed to call `processLidoOracleReport` to prevent propagating various fake oracle reports by the added callbacks or execution in an arbitrary time moment.
+There are two permissioned addresses introduced explicitly: `Voting` and `LidoOracle`. Only `Voting` can add/insert/remove callbacks into the `CompositePostRebaseBeaconReceiver` to make it feasible only by the Lido DAO direct vote-backed will. Only `LidoOracle` is allowed to call `processLidoOracleReport` to prevent propagating various fake oracle reports by the added callbacks or execution in an arbitrary time moment.
 
 If one of the callbacks throws an exception then the whole transaction reverts and other callbacks effects also rollbacks.
 

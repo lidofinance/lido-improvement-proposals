@@ -1,14 +1,14 @@
 ---
 lip: 4
-title: 72h Aragon Votes
+title: Protocol safeguards. 72h Aragon Votes
 status: Implemented
 author: Victor Suzdalev, Sam Kozin, Eugene Mamin
 discussions-to: https://research.lido.fi/t/increase-the-dao-voting-duration/1048, https://research.lido.fi/t/increase-aragon-voting-duration-to-72-hours-operation-plan/1915
 created: 2021-09-28
-updated: 2022-04-08
+updated: 2022-06-06
 ---
 
-# 72h Aragon Votes
+# Protocol safeguards. 72h Aragon Votes
 
 Currently Aragon votes on Lido DAO are 24h long. This timeframe has proved to be short enough for reaching the quorum even on non-contentios votes. While most routine DAO operations are expected to switch to EasyTracks (vehicle for default-pass DAO actions), any custom blockchain action on behalf of DAO would still require the Aragon vote. The proposal is to make Aragon votes longer, allowing more LDO holders to participate.
 

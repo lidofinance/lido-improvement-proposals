@@ -1,11 +1,11 @@
 ---
 lip: 6
 title: In-protocol coverage application mechanism
-status: Proposed
+status: Implemented
 author: Sam Kozin, Eugene Mamin, Eugene Pshenichnyy
 discussions-to: https://research.lido.fi/t/lip-6-in-protocol-coverage-proposal/1468
 created: 2021-12-03
-updated: 2022-01-24
+updated: 2022-06-06
 ---
 
 # In-protocol coverage application mechanism proposal
@@ -94,12 +94,12 @@ The proposed mechanism allows integrations like [Anchor/bETH](https://docs.ancho
 
 1. When a user submits stETH, the equivalent amount of bETH is minted, and the provided stETH is locked on the bETH contract address.
 2. When a positive stETH rebase happens, the resulting increase of the amount of stETH held on bETH contract address is forwarded to the Anchor protocol.
-3. When a negative rebase happens, the bETH/stETH exchange rate (caluclated as `stETH.balanceOf(bETH) / bETH.totalSupply()`) decreases, becoming less than 1. This means that a bETH holder would get less than one stETH for one bETH burnt:
+3. When a negative rebase happens, the bETH/stETH exchange rate (calculated as `stETH.balanceOf(bETH) / bETH.totalSupply()`) decreases, becoming less than 1. This means that a bETH holder would get less than one stETH for one bETH burnt:
     > Losses from slashing events are equally shared amongst all bETH tokens, lowering the calculated value of a bETH token. stETH accounts for slashing by pro-rata decreasing the token balance of all stETH holders. The stETH balance held by the bETH smart contract also decreases, decreasing the bETH exchange rate.
 
 This means that, since applying cover leads to a positive stETH rebase, it cannot be used to reimburse bETH holders from prior negative stETH rebases. In contrast, implementing the calculations detailed above as part of the positive rebase handling, and forwarding only the rewards-generated part of the balance increase to Anchor, allows recovering the bETH/stETH rate to 1.
 
-The Anchor integration already has the calculations proposed above implemented using a plug-in adapter for retrieving the total number of shares burnt for cover purposes. The current version of the adapter just returns zero so it will need to be replaced if/after the proposed changes are made to the protocol. See [`AnchorVault.collect_rewards#434`](https://github.com/lidofinance/anchor-collateral-steth/blob/39cd11d9d628c1de6f4f481f3992f2d1fca41ecf/contracts/AnchorVault.vy#L434) for the possible sketch of usage with similar integrations.
+The Anchor integration already had the calculations proposed above implemented using a plug-in adapter for retrieving the total number of shares burnt for cover purposes. See [`AnchorVault.collect_rewards#434`](https://github.com/lidofinance/anchor-collateral-steth/blob/39cd11d9d628c1de6f4f481f3992f2d1fca41ecf/contracts/AnchorVault.vy#L434) for the possible sketch of usage with similar integrations.
 
 ### Burn permissions
 
@@ -159,7 +159,7 @@ Pros:
 
 Cons:
 - Requires non-trivial and error-prone off-chain computations to calculate the amount of cover for each direct and non-direct staker address. These computations will get more and more complex as new stETH integrations appear.
-- Gas-costly: initializing the airdrop contract with the snapshot of all stakers' balances will consume a lot of gas. Also, getting the cover will cost gas for each individual staker and might make no economical sense for smaller stakers.
+- Gas-costly: initializing the airdrop contract with the snapshot of all stakers balances will consume a lot of gas. Also, getting the cover will cost gas for each individual staker and might make no economical sense for smaller stakers.
 - Requires an explicit action from each staker which means that stakers will have to monitor the announcements to get the cover.
 - May add volatility to the cover asset on mass payouts.
 
@@ -170,13 +170,13 @@ The code below presumes the Solidity v0.8 syntax.
 
 ### Function: getCoverSharesBurnt
 ```solidity
-function getCoverSharesBurnt() external view returns (uint256)
+function getCoverSharesBurnt() external view virtual override returns (uint256)
 ```
 Returns the total cover shares ever burnt.
 
 ### Function: getNonCoverSharesBurnt
 ```solidity
-function getNonCoverSharesBurnt() external view returns (uint256)
+function getNonCoverSharesBurnt() external view virtual override returns (uint256)
 ```
 Returns the total non-cover shares ever burnt.
 
@@ -224,7 +224,7 @@ Sets the amount of shares allowed to burn per single run with the provided `_max
 ```solidity
 function: processLidoOracleReport(uint256 _postTotalPooledEther,
                                   uint256 _preTotalPooledEther,
-                                  uint256 _timeElapsed) external
+                                  uint256 _timeElapsed) external virtual override
 ```
 Enacts cover/non-cover burning requests and logs cover/non-cover shares amount just burnt. Increments `totalCoverSharesBurnt` and `totalNonCoverSharesBurnt` counters. Decrements `coverSharesBurnRequested` and `nonCoverSharesBurnRequested` counters.
 
@@ -242,7 +242,7 @@ See: [`IBeaconReportReceiver.processLidoOracleReport`](https://docs.lido.fi/cont
 
 ### function getExcessStETH
 ```solidity
-function getExcessStETH() external view return (uint256)
+function getExcessStETH() public view returns (uint256)
 ```
 Returns the stETH amount belonging to the burner contract address but not marked for burning.
 
@@ -377,11 +377,11 @@ So the `SelfOwnedStETHBurner` contract will become almost useless by providing i
 
 #### Someone apply slashing coverage using non-cover request type
 
-The Anchor Protocol will receive incorrect rewards.
+Affected external integrations derivative token holders will receive incorrect rewards.
 
 #### Someone apply non-cover using cover request type
 
-Anchor/bETH token holders will lose some rewards.
+Affected external integrations derivative token holders will lose some rewards.
 
 #### The amount of shares to burn per single run limit is too high
 
@@ -399,4 +399,4 @@ The reference implementation of the `SelfOwnedStETHBurner` interface available o
 - Preliminary smoke tests on Anchor Protocol integration:
 https://github.com/lidofinance/anchor-collateral-steth/blob/00cddd633ffe855a133a8c3ee024833bf6551d50/tests/test_insurance.py
 - Anchor Protocol Bonded ETH (bETH) token spec: https://docs.anchorprotocol.com/protocol/bonded-assets-bassets/bonded-eth-beth
-- Aragon ACL parameter intepretation: https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation
+- Aragon ACL parameter interpretation: https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation

@@ -1,11 +1,11 @@
 ---
 lip: 12
 title: On-chain part of the rewards distribution after the Merge
-status: Proposed
+status: Implemented
 author: Eugene Pshenichnyy, Eugene Mamin, Artyom Veremeenko
 discussions-to: https://research.lido.fi/t/lip-12-on-chain-part-of-the-rewards-distribution-after-the-merge/1625
 created: 2022-01-21
-updated: 2022-01-27
+updated: 2022-06-06
 ---
 
 # On-chain part of the rewards distribution after the Merge
@@ -25,7 +25,7 @@ The proposed rewards distribution mechanism should work as follows:
 
 ## Motivation
 
-Now the Lido protocol collects only Beacon chain staking rewards. These rewards are locked on the Beacon chain until withdrawals are enabled sometime later in 2022. After the merge, validators will start to receive two aditional types of rewards: transaction fees (priority fee, to be exact) and extracted MEV which would be paid on the execution layer (EL).
+Now the Lido protocol collects only Beacon chain staking rewards. These rewards are locked on the Beacon chain until withdrawals are enabled sometime later in 2022. After the merge, validators will start to receive two additional types of rewards: transaction fees (priority fee, to be exact) and extracted MEV which would be paid on the execution layer (EL).
 
 Lido is likely to approach MEV using [Flashbots](https://flashbots.net) ecosystem. The Lido Node Operators would use [mev-boost](https://github.com/flashbots/mev-boost) as a middleware which allows to receive transaction bundles submitted by [searchers](https://docs.flashbots.net/flashbots-auction/searchers/quick-start). Searchers share the revenue with validators by sending part of rewards to the `feeRecipient` address.
 
@@ -40,12 +40,12 @@ The rewards distribution scheme is provided below.
 
 ## Specification
 
-A rewards vault is represented with the new `LidoMevTxFeeVault` contract. Rewards distribution run performs with the upgraded `Lido` contract.
+A rewards vault is represented with the new `LidoExecutionLayerRewardsVault` contract. Rewards distribution run performs with the upgraded `Lido` contract.
 
 #### Algorithm sketch
 
 1) Start the Lido oracle report
-2) Withdraw EL-collected rewards from the `LidoMevTxFeeVault` contract to the `Lido` contract address (re-stake)
+2) Withdraw EL-collected rewards from the `LidoExecutionLayerRewardsVault` contract to the `Lido` contract address (re-stake)
 3) Compare the report numbers with previous ones to check whether it is profitable or not.
 4) If report IS profitable (i.e. beacon chain delta is positive):
     * sum rewards (beacon chain delta + EL-collected tx fees and extracted MEV)
@@ -56,35 +56,88 @@ A rewards vault is represented with the new `LidoMevTxFeeVault` contract. Reward
 
 We explicitly state that protocol fee distributed if and only if CL-stake balances delta between the two consecutive reports is positive. This way was selected to motivate NOs to do their main job of securing network better with active and healthy validators.
 
+Also, we added a withdrawal daily limit to avoid too large rebasing events when distributing a large amount of MEV or tx fees accrued between Lido oracle reports.
+
 ### An execution layer rewards vault contract
 
-The proposed `LidoMevTxFeeVault` vault contract is devoted for the EL-rewards collecting. Transactions priority fee collected by setting the the vault contract address as a coinbase (`feeRecipient`). MEV rewards could be collected by the two ways simultenously: the first one require coinbase setup too but the second presumes that payloads builders may include an explicit transaction which transfers MEV shares to the `feeRecipient` in the payload. Thus, `LidoMevTxFeeVault` has the payable `receive` function which accepts incoming ether.
+The proposed `LidoExecutionLayerRewardsVault` vault contract is devoted for the EL-rewards collecting. Transactions priority fee collected by setting the the vault contract address as a coinbase (`feeRecipient`). MEV rewards could be collected by the two ways simultaneously: the first one require coinbase setup too but the second presumes that payloads builders may include an explicit transaction which transfers MEV shares to the `feeRecipient` in the payload. Thus, `LidoExecutionLayerRewardsVault` has the payable `receive` function which accepts incoming ether.
 
 **We can't recover accidentally sent by someone outside the Lido NOs set ether.**
 
-We propose the following interface for the `LidoMevTxFeeVault` contract. The code below presumes the Solidity v0.8 syntax.
+We propose the following interface for the `LidoExecutionLayerRewardsVault` contract. The code below presumes the Solidity v0.8 syntax.
 
 #### Constructor
 ```solidity
-constructor(address _lidoAddress)
+constructor(address _lido, address _treasury)
 ```
-Construct a vault contract instance with the provided `_lidoAddress` as a single one allowed to withdrawal collected rewards.
-* Reverts if `_lidoAddress` is set to zero.
+Construct a vault contract instance with the provided `_lido` and `_treasury` addresses. Where _lido is allowed to withdraw collected rewards, and _treasury is allowed to recover `ERC20` and `ERC721` tokens
+* Reverts if `_lido` is set to zero.
+* Reverts if `_treasury` is set to zero.
+
+#### Function: receive
+```solidity
+receive() external payable
+```
+Allows the contract to receive ETH
+* Emits the `ETHReceived` event
 
 #### Function: withdrawRewards
 ```solidity
-function withdrawRewards() external returns (uint256 amount)
+function withdrawRewards(uint256 _maxAmount) external returns (uint256 amount)
 ```
-Withdraw all accumulated rewards nominated in ether to the `Lido` contract by calling a newly proposed `mevTxFeeReceiver` payable method.
+Withdraw a limited by `_maxAmount` param accumulated rewards nominated in ether to the `Lido` contract by calling a newly proposed `receiveELRewards` payable method.
 Returns amount of the received rewards.
 * Reverts if `msg.sender` is not the `Lido` contract
 * Does nothing if there are no accumulated rewards (and returns zero)
 
+#### Function: recoverERC20
+```solidity
+function recoverERC20(address _token, uint256 _amount) external
+```
+Transfers a given `_amount` of an ERC20-token (defined by the `_token` contract address) to the Lido treasury address (defined in the `construct`).
+
+* Reverts if `_amount` is zero
+* Emits the `ERC20Recovered` event
+
+#### Function: recoverERC721
+```solidity
+function recoverERC721(address _token, uint256 _tokenId) external
+```
+Transfers a given `_token` of an ERC721-compatible NFT (defined by the token contract address) to the Lido treasury address (defined in the `construct`).
+* Emits the `ERC721Recovered` event
+
+
+#### Event: ETHReceived
+```solidity
+event ETHReceived(uint256 amount);
+```
+Emitted when the vault received ETH
+
+#### Event: ERC20Recovered
+```solidity
+event ERC20Recovered(
+    address indexed requestedBy,
+    address indexed token,
+    uint256 amount
+);
+```
+Emitted when the `amount` of ERC20 `token` recovered (i.e. transferred) to the Lido treasure address by `requestedBy` sender.
+
+#### Event: ERC721Recovered
+```solidity
+event ERC721Recovered(
+    address indexed requestedBy,
+    address indexed token,
+    uint256 tokenId
+);
+```
+Emitted when the ERC721-compatible `token` (NFT) recovered (i.e. transferred) to the Lido treasury address by `requestedBy` sender.
+
 ### An upgrade for the `Lido` contract
 
-We propose to introduce new functions to grab rewards from the `LidoMevTxFeeVault` and update the existing `pushBeacon` function (also rename it to `pushRewards` for the sake of meaningfulness).
+We propose to introduce new functions to grab rewards from the `LidoExecutionLayerRewardsVault` and update the existing `pushBeacon` function (also rename it to `handleOracleReport` for the sake of meaningfulness).
 
-Note: to keep stETH APR estimation valid as descibed in the Lido [docs](https://docs.lido.fi/contracts/lido-oracle#add-calculation-of-staker-rewards-apr):
+Note: to keep stETH APR estimation valid as described in the Lido [docs](https://docs.lido.fi/contracts/lido-oracle#add-calculation-of-staker-rewards-apr):
 ```javascript
 APR = (postTotalPooledEther - preTotalPooledEther) * secondsInYear / (preTotalPooledEther * timeElapsed)
 ```
@@ -92,50 +145,76 @@ we just sum all rewards type together (consensus layer rewards + execution layer
 
 The code below presumes the Solidity v0.4.24 syntax.
 
-#### Function: receiveMevTxFee
+#### Function: receiveELRewards
 ```solidity
-function receiveMevTxFee() external payable
+function receiveELRewards() external payable
 ```
 Payable function to accept the withdrawn rewards for a vault contract
-* Reverts if msg.sender is not the `LidoMevTxFeeVault` contract.
-* Emits the `mevTxFeeReceived` event.
+* Reverts if msg.sender is not the `LidoExecutionLayerRewardsVault` contract.
+* Emits the `ELRewardsReceived` event.
 
-#### Function: setMevTxFeeVault
+#### Function: getELRewardsVault
 ```solidity
-function setMevTxFeeVault(address _mevTxFeeVault) external
+function getELRewardsVault() public view returns (address)
 ```
-Set the `LidoMevTxFeeVault` address for the `Lido` contract.
-* Reverts if called without `SET_MEV_TX_FEE_VAULT_ROLE.`
-* Reverts if provided `_mevTxFeeVault` address is EOA.
+Returns address of the contract set as `LidoExecutionLayerRewardsVault`
+
+#### Function: setELRewardsVault
+```solidity
+function setELRewardsVault(address _executionLayerRewardsVault) external
+```
+Set the `LidoExecutionLayerRewardsVault` address for the `Lido` contract.
+* Reverts if called without `SET_EL_REWARDS_VAULT_ROLE`
+* Emits the `ELRewardsVaultSet` event
+
+#### Function: setELRewardsWithdrawalLimit
+```solidity
+function setELRewardsWithdrawalLimit(uint16 _limitPoints) external
+```
+
+Sets limit on amount of ETH to withdraw from execution layer rewards vault per LidoOracle report
+
+* Reverts if called without `SET_EL_REWARDS_WITHDRAWAL_LIMIT_ROLE`
+* Emits the `ELRewardsWithdrawalLimitSet` event
+
+#### Function: getTotalELRewardsCollected
+```solidity
+function getTotalELRewardsCollected() external view returns (uint256)
+```
+Get total amount of execution layer rewards collected to Lido contract
+
+#### Function: getELRewardsWithdrawalLimit
+```solidity
+function getELRewardsWithdrawalLimit() external view returns (uint256)
+```
+Get limit in basis points to amount of ETH to withdraw per LidoOracle report
 
 #### Function: handleOracleReport (replaces pushBeacon)
 ```solidity
 function handleOracleReport(uint256 _beaconValidators, uint256 _beaconBalance) external whenNotStopped
 ```
 In addition to the existing `pushBeacon` code, claims EL-collected rewards after saving current beacon balance, and in case of positive beacon chain delta increase overall rewards amount by the EL-collected value before calling `distributeRewards` function.
-* Must not change rewards distribution if there are no EL-collected rewards or `LidoMevTxFeeVault` address is zero.
+* Must not change rewards distribution if there are no EL-collected rewards or `LidoExecutionLayerRewardsVault` address is zero.
 * Must not distribute any rewards if beacon chain delta (with a correction by newly appeared validators amount) is zero or negative.
 * Must not introduce additional revert reasons if all permissions agree.
 
-The function is also renamed to better match it's new fucntionality.
-
-#### Function: getTotalMevTxFeeCollected
+#### Event: ELRewardsReceived
 ```solidity
-function getTotalMevTxFeeCollected() external view returns (uint256)
+event ELRewardsReceived(uint256 amount)
 ```
-Get the total amount of MEV and transaction fees ever buffered on this contract's balance.
+Emitted when the EL-collected rewards `amount` were withdrawn from the vault contract.
 
-#### Function: getMevTxFeeVault
+#### Event: ELRewardsVaultSet
 ```solidity
-function getMevTxFeeVault() public view returns (address)
+event ELRewardsVaultSet(address executionLayerRewardsVault)
 ```
-Get the previously set `MevTxFeeVault` address.
+Emitted when the `executionLayerRewardsVault` address was set in the `Lido` contract.
 
-#### Event: MevTxFeeReceived
+#### Event: ELRewardsWithdrawalLimitSet
 ```solidity
-event MevTxFeeReceived(uint256 amount)
+event ELRewardsWithdrawalLimitSet(uint256 limitPoints)
 ```
-Emitted when the EL-collected rewards `amount` were widthrawn from the vault contract.
+Emitted when the EL rewards `limitPoints` was set in the `Lido` contract.
 
 ### An upgrade to LidoOracle contract
 There is also a single change to LidoOracle contract: a one-line refactoring to match with the renaming of Lido contract's `pushBeacon` to `handleOracleReport`.
@@ -144,7 +223,7 @@ There is also a single change to LidoOracle contract: a one-line refactoring to 
 
 In case of postponed merge, an EL-rewards vault contract holds zero ether amount so the conventional rewards distribution scheme would work as usual without any differences.
 
-As an option, we also could keep the `LidoMevTxFeeVault` address is zero inside the `Lido` contract to bypass all of the EL-rewards logic explicitly.
+As an option, we also could keep the `LidoExecutionLayerRewardsVault` address is zero inside the `Lido` contract to bypass all of the EL-rewards logic explicitly.
 
 ## Security considerations
 

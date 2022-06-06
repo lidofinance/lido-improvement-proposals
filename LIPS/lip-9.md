@@ -1,11 +1,11 @@
 ---
 lip: 9
 title: Add an explicit log for the stETH burn events
-status: Proposed
+status: Implemented
 author: Eugene Mamin, Artyom Veremeenko
 discussions-to: https://research.lido.fi/t/lip-9-add-an-explicit-log-for-the-steth-burn-events/1609
 created: 2022-01-24
-updated: 2022-01-24
+updated: 2022-06-06
 ---
 
 # Add an explicit log for the stETH burn events
@@ -16,7 +16,7 @@ Add a dedicated event to log the `burnShares` function invocation backing the on
 
 ## Abstract
 
-We propose to include `StETHBurnt` event into the `StETH` contract and emit the proposed event on every `burnShares` invocation.
+We propose to include `SharesBurnt` event into the `StETH` contract and emit the proposed event on every `burnShares` invocation.
 It would allow to complete off-chain logs and hold a new invariant for Lido: every `stETH` rebase must be covered with the some explicitly emitted event.
 
 ## Motivation
@@ -25,35 +25,43 @@ Burning of the `stETH` underlying shares is one of the on-chain effects causing 
 
 ## Specification
 
-Every token rebase caused by shares burning must emit `StETHBurnt` event indicating the caller account, burnt shares amount and the corresponding amount of tokens burnt.
+Every token rebase caused by shares burning must emit `SharesBurnt` event indicating the caller account, burnt shares amount and the corresponding amount of tokens burnt.
 
-### New `StETHBurnt` event
+### New `SharesBurnt` event
 
-We propose to include `StETHBurnt` event into the `StETH` contract having the following signature:
+We propose to include `SharesBurnt` event into the `StETH` contract having the following signature:
 ```solidity
     /**
-     * @notice An executed stETH burn event
+     * @notice An executed `burnShares` request
      *
-     * @dev Reports simultaneously stETH amount and shares amount.
-     * The stETH amount is calculated before the burning incurred rebase.
+     * @dev Reports simultaneously burnt shares amount
+     * and corresponding stETH amount.
+     * The stETH amount is calculated twice: before and after the burning incurred rebase.
      *
-     * @param account holder of the burnt stETH
-     * @param amount amount of the burnt stETH
-     * @param sharesAmount amount of the burnt shares
+     * @param account holder of the burnt shares
+     * @param preRebaseTokenAmount amount of stETH the burnt shares corresponded to before the burn
+     * @param postRebaseTokenAmount amount of stETH the burnt shares corresponded to after the burn
+     * @param sharesAmount amount of burnt shares
      */
-    event StETHBurnt(
+    event SharesBurnt(
         address indexed account,
-        uint256 amount,
+        uint256 preRebaseTokenAmount,
+        uint256 postRebaseTokenAmount,
         uint256 sharesAmount
     );
 ```
 
 ### New version of the `burnShares` function
 
-Two lines to add into the function body:
+Cause the burning also decreases the total amount of minted shares, the balance of the account will be decreased by a different amount, so we need to calculate a pre/post token amount. So there are 3 new lines to add:
 
-    uint256 amount = getPooledEthByShares(_sharesAmount);
-    emit StETHBurnt(_account, amount, _sharesAmount);
+```solidity
+uint256 preRebaseTokenAmount = getPooledEthByShares(_sharesAmount);
+...
+uint256 postRebaseTokenAmount = getPooledEthByShares(_sharesAmount);
+
+emit SharesBurnt(_account, preRebaseTokenAmount, postRebaseTokenAmount, _sharesAmount);
+```
 
 ## Gas price effects
 

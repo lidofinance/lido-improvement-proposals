@@ -3,11 +3,11 @@ tags: LIP
 lip: 15
 blockchain: ethereum
 title: Protocol safeguards. Resume role
-status: Proposed
+status: Implemented
 author: Eugene Mamin, Alexey Potapkin
 discussions-to: https://research.lido.fi/t/announcement-merge-ready-protocol-service-pack/2184
 created: 2022-05-11
-updated: 2022-05-12
+updated: 2022-06-06
 ---
 
 # Protocol safeguards. Resume role

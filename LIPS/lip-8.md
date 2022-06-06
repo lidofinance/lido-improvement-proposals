@@ -1,11 +1,11 @@
 ---
 lip: 8
 title: Increase keysOpIndex in assignNextSigningKeys
-status: Proposed
+status: Implemented
 author: George Avsetsin, Artyom Veremeenko
 discussions-to: https://research.lido.fi/t/lip-8-increase-keysopindex-in-assignnextsigningkeys/1608
 created: 2022-01-24
-updated: 2022-01-24
+updated: 2022-06-06
 
 ---
 

@@ -1,11 +1,11 @@
 ---
 lip: 10
 title: Proxy initializations and LidoOracle upgrade
-status: Proposed
+status: Implemented
 author: Artyom Veremeenko, Sam Kozin, Mihail Semenkin, Eugene Pshenichnyy, Eugene Mamin
 discussions-to: https://research.lido.fi/t/lip-10-proxy-initializations-and-lidooracle-upgrade/1616
 created: 2022-01-25
-updated: 2022-01-25
+updated: 2022-06-06
 ---
 
 # Proxy initializations and LidoOracle upgrade
