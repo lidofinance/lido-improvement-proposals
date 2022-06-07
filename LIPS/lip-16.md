@@ -52,6 +52,10 @@ As a side effect, we're getting a governance process easier to cancel the vote
 than to make it pass and making Lido DAO governance more conservative and 
 resistant to changes. 
 
+As for the timings, we'd like to retain the overall duration to be 72h to have
+the whole process, including preparing the vote and enacting it to fit in 
+a working week.
+
 ## Specification
 
 We propose to add the following field to the `Voting.sol` contract to store 
