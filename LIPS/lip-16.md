@@ -3,11 +3,11 @@ tags: LIP
 lip: 16
 blockchain: ethereum
 title: Protocol safeguards. Two-phase voting.
-status: Draft
+status: Proposed
 author: Alexey Potapkin, Sam Kozin
 discussions-to: https://research.lido.fi/t/proposal-last-minute-vote-mitigation/2162/14
 created: 2022-06-01
-updated: 2022-06-06
+updated: 2022-06-07
 ---
 
 # Protocol safeguards. Two-phase voting
