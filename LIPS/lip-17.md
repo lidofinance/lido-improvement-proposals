@@ -19,7 +19,7 @@ The on-chain relays whitelist is planned to be used by Node Operators participat
 
 ## Motivation
 
-It's proposed that Node Operators should use [`MEV-Boost`](https://github.com/flashbots/mev-boost) infrastructure developed by Flashbots to support MEV extraction through the open market mechanics as a current PBS solution that has a market fit.
+It's proposed that Node Operators use [`MEV-Boost`](https://github.com/flashbots/mev-boost) infrastructure developed by Flashbots to support MEV extraction through the open market mechanics as a current PBS solution that has a market fit.
 
 The proposed whitelist is intended to be a source of truth for the set of possible relays allowed to be used by Node Operators. In particular, Node Operators would use the contract to keep their software configuration up-to-date (setting the necessary relays once Lido DAO updates the set).
 
@@ -50,17 +50,17 @@ struct Relay:
 where:
 
 - `uri` is the relay's URI to fetch the data
-- `operator` is a name of the entity running the relay
+- `operator` is the name of the entity running the relay
 - `is_mandatory` is supposed to distinguish between optional and mandatory relays
 - `description` is designated to store any additional info (unspecified at the current stage)
 
 ### Adding relay
 
-To add a new relay, `Lido DAO Aragon Agent` or `manager` (if assigned) should call `add_relay` method, passing all necessary relay structure's params described above.
+To add a new relay, `owner` or `manager` (if assigned) should call `add_relay` method, passing all necessary relay structure's params described above.
 
 ### Removing relay
 
-To remove a new relay, `Lido DAO Aragon Agent` or `manager` (if assigned) should call `remove_relay` method, passing the relay's `uri`.
+To remove a new relay, `owner` or `manager` (if assigned) should call `remove_relay` method, passing the relay's `uri`.
 
 ### Updating relay
 
@@ -92,13 +92,15 @@ All storage modification functions emit at least a single event containing all n
 - `RelayAdded` (once a relay was whitelisted)
 - `RelayRemoved` (once a previously whitelisted relay was removed)
 - `RelaysUpdated` (once whitelist version bumped)
+- `OwnerChanged` (once the owner is changed)
 - `ManagerChanged` (once management entity is assigned or dismissed)
+- `ERC20Recovered` (once some ERC-20 tokens successfully recovered)
 
 ### Permissions
 
-The contract has only one immutable owner set upon the deployment phase. It's presumed that the owner will be set to the [`Lido DAO Aragon Agent`](https://etherscan.io/address/0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c) address.
+The contract has a mutable owner set upon the deployment phase. It's presumed that the owner will be set to the [`Lido DAO Aragon Agent`](https://etherscan.io/address/0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c) address. The owner can be changed by a call of `change_owner` only by the current owner.
 
-An additional `manager` is allowed to add or remove relays (initialy is set to zero address). Only the contract's owner is allowed to assign or dismiss `manager`.
+An additional `manager` is allowed to add or remove relays (initially is set to zero address). Only the contract's owner is allowed to assign or dismiss `manager`.
 
 ## Specification
 
@@ -109,13 +111,28 @@ The code below presumes the Vyper v0.3.6 syntax.
 
 ```vyper
 @external
-def __init__(lido_agent: address)
+def __init__(owner: address)
 ```
 
-Stores internally `lido_agent` as the contract's instance owner.
+Stores internally `owner` as the contract's instance owner.
 Initializes `manager` with a zero address (no manager is assigned).
 
-- Reverts if `lido_agent` is zero address.
+- Reverts if `owner` is zero address.
+
+
+### Function: change_owner
+
+```vyper
+@external
+def change_owner(owner: address)
+```
+
+Change current `owner` to the new one.
+
+- Reverts if called by anyone except the current owner.
+- Reverts if `owner` is the current owner.
+- Reverts if `owner` is zero address.
+- Emits `OwnerChanged(owner)`.
 
 ### Function: set_manager
 
@@ -126,7 +143,7 @@ def set_manager(manager: address)
 
 Sets `manager` as the current management entity.
 
-- Reverts if called by anyone except the owner (Lido DAO Agent).
+- Reverts if called by anyone except the owner.
 - Reverts if `manager` is equal to the previously set value.
 - Reverts if `manager` is zero address.
 - Emits `ManagerChanged(manager)`.
@@ -140,9 +157,19 @@ def dismiss_manager()
 
 Dismisses the current management entity.
 
-- Reverts if called by anyone except the owner (Lido DAO Agent).
+- Reverts if called by anyone except the owner.
 - Reverts if no `manager` was set previously.
 - Emits `ManagerChanged(empty(address))`.
+
+### Function: get_owner
+
+```vyper
+@view
+@external
+def get_owner() -> address
+```
+
+Retrieves the current contract owner.
 
 ### Function: get_manager
 
@@ -153,16 +180,6 @@ def get_manager() -> address
 ```
 
 Retrieves the current manager entity (returns zero address if no entity is assigned).
-
-### Function: get_lido_dao_agent
-
-```vyper
-@view
-@external
-def get_lido_dao_agent() -> address
-```
-
-Retrieves the contract's instance owner set upon construction.
 
 ### Function: get_relays_amount
 
@@ -194,7 +211,7 @@ def get_relay_by_uri(relay_uri: String[MAX_STRING_LENGTH]) -> bool
 
 Retrieves the relay with the provided uri.
 
-- Reverts if no relay was found.
+- Reverts if found no relay.
 
 ### Function: get_whitelisted_version
 
@@ -221,7 +238,7 @@ def add_relay(
 Append relay to the whitelisted set where params correspond to the previously described [Relay structure](#Relay-information-structure).
 Bumps the whitelist version.
 
-- Reverts if called by anyone except the owner (Lido DAO Agent) or `manager` (if assigned).
+- Reverts if called by anyone except the owner or `manager` (if assigned).
 - Reverts if relay with provided `uri` already whitelisted.
 - Reverts if `uri` is empty.
 - Emits `RelayAdded(uri, relay)`.
@@ -234,10 +251,10 @@ Bumps the whitelist version.
 def remove_relay(uri: String[MAX_STRING_LENGTH]):
 ```
 
-Remove previously whitelisted array from the set.
+Remove the previously whitelisted array from the set.
 Bumps the whitelist version.
 
-- Reverts if called by anyone except the owner (Lido DAO Agent) or `manager` (if assigned).
+- Reverts if called by anyone except the owner or `manager` (if assigned).
 - Reverts if relay with provided `uri` is not whitelisted.
 - Reverts if `uri` is empty.
 - Emits `RelayRemoved(uri, uri)`.
@@ -247,14 +264,15 @@ Bumps the whitelist version.
 
 ```vyper
 @external
-def recover_erc20(token: address, amount: uint256)
+def recover_erc20(token: address, amount: uint256, recipient: address)
 ```
 
-Transfers ERC20 tokens from the contract's balance to the owner (Lido DAO Agent).
+Transfers ERC20 tokens from the contract's balance to the `recipient`.
 
 - Reverts if `transfer` reverted.
-- Emits `ERC20Recovered(msg.sender, token, amount)`.
-- Emits `Transfer(self.address, LIDO_DAO_AGENT, amount)` of the `token`'s contract (if ERC20-compliant).
+- Reverts if `recipient` is zero address.
+- Emits `ERC20Recovered(msg.sender, token, amount, recipient)`.
+- Emits `Transfer(self.address, recipient, amount)` of the `token`'s contract (if ERC20-compliant).
 
 ### Event: RelayAdded
 
@@ -319,19 +337,19 @@ See: `recover_erc20`.
 
 ### Upgradability and mutability
 
-The proposed contract is non-upgradable. There is an immutable owner address that can be set only upon construction.
+The proposed contract is non-upgradable. There is a mutable owner address that is set upon construction and can be changed by the current contract owner.
 
 There is an additional entity allowed to add/remove relays. The entity is easily assignable/revokable only by the contract's owner.
 
-In case of emergency or important update, it would be necessary to dismiss the manager (if assigned) and re-deploy a new contract.
+In case of an emergency or important update, it would be necessary to dismiss the manager (if assigned) and re-deploy a new contract.
 
 ### Storage modification is restricted
 
-The contract's owner (Lido DAO Aragon Agent) is eligible for any possible storage modification.
+The contract's owner is eligible for any possible storage modification.
 
 Additional `manager` is supposed to be used as a management entity able to add/remove relays.
 
-To minimize entities number, it was decided to use the owner as a token recovery recipient, having the permissionless `recover_erc20` method.
+To minimize the number of entities, decided to use the owner as a token recovery recipient, having the permissionless `recover_erc20` method.
 
 ### Sanity caps and limits
 
