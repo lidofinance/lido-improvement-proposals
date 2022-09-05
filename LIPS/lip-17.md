@@ -50,21 +50,23 @@ struct Relay:
 where:
 
 - `uri` is the relay's URI to fetch the data
-- `operator` is the relay title or pseudonym
+- `operator` is a name of the entity running the relay
 - `is_mandatory` is supposed to distinguish between optional and mandatory relays
 - `description` is designated to store any additional info (unspecified at the current stage)
 
 ### Adding relay
 
-To add a single new relay, `Lido DAO Aragon Agent` or `manager` (if assigned) should call `add_relay` method, passing all necessary relay structure's params described above.
+To add a new relay, `Lido DAO Aragon Agent` or `manager` (if assigned) should call `add_relay` method, passing all necessary relay structure's params described above.
 
 ### Removing relay
 
-To add a single new relay, `Lido DAO Aragon Agent` or `manager` (if assigned) should call `remove_relay` method, passing the relay's `uri`.
+To remove a new relay, `Lido DAO Aragon Agent` or `manager` (if assigned) should call `remove_relay` method, passing the relay's `uri`.
 
 ### Updating relay
 
 The proposed flow to update the relay's info is to re-add the relay (call `remove_relay` and then `add_relay`).
+
+>NB: the order of the relays in the list after re-adding might change (due to the array-based implementation).
 
 ### Reading the current whitelisted relays
 
@@ -85,7 +87,7 @@ The version bumps on every add/remove operation and doesn't have additional sema
 
 ### Events
 
-All storage modification functions emit at least single event containing all necessary data to reproduce the changes by external indexers:
+All storage modification functions emit at least a single event containing all necessary data to reproduce the changes by external indexers:
 
 - `RelayAdded` (once a relay was whitelisted)
 - `RelayRemoved` (once a previously whitelisted relay was removed)
