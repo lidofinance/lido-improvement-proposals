@@ -342,7 +342,7 @@ There are the following caps to prevent unlimited storage accesses and unbounded
 
 ## Reference implementation
 
-The reference implementation of the proposed `MEVBoostRelayWhitelist` contract is available on the [Lido GitHub](https://github.com/lidofinance/mev-boost-relay-whitelist/blob/ape-vyper/contracts/MEVBoostRelayWhitelist.vy).
+The reference implementation of the proposed `MEVBoostRelayWhitelist` contract is available on the [Lido GitHub](https://github.com/lidofinance/mev-boost-relay-whitelist/blob/87c8ffd6852a4e3bf041fb4e649b25efb1d5c2cc/contracts/MEVBoostRelayWhitelist.vy).
 
 ## Links
 
