@@ -5,7 +5,7 @@ status: Draft
 author: George Avsetsyn, Artem Veremeenko, Eugene Mamin, Isidoros Passadis
 discussions-to: TBA
 created: 2022-08-30
-updated: 2022-09-02
+updated: 2022-09-05
 ---
 
 # MEV-Boost relays whitelist for Lido
@@ -31,7 +31,7 @@ Anyone can access the storage in a permissionless way through the disclosed `vie
 
 Any modification of the set (i.e., internal storage modification) is allowed only by [the general Lido DAO governance process](https://lido.fi/governance#regular-process), which is implemented on-chain through the Aragon voting from the initial deployment stage. However, it's still possible to assign a dedicated management entity for adding/removing relay items.
 
-The proposed `MEVBoostRelayWhitelist` contract is non-upgradable, and its immutable owner is intended to be initialized with the [Lido DAO Aragon Agent](https://etherscan.io/address/0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c) address on mainnet upon the deployment phase.
+The proposed `MEVBoostRelayWhitelist` contract is non-upgradable, and its owner is intended to be initialized with the [Lido DAO Aragon Agent](https://etherscan.io/address/0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c) address on mainnet upon the deployment phase.
 
 The dedicated management `manager` entity is initialized with a zero address and can be set later by the contract's owner to be able to add/remove relays. The possible candidate to bear such responsibilities without sacrificing governance security is [Easy Track](https://easytrack.lido.fi/) (in this case  [`EVMScriptExecutor (Easy Track)`](https://docs.lido.fi/deployed-contracts#easy-track) should be set as `manager`).
 
@@ -60,7 +60,7 @@ To add a new relay, `owner` or `manager` (if assigned) should call `add_relay` m
 
 ### Removing relay
 
-To remove a new relay, `owner` or `manager` (if assigned) should call `remove_relay` method, passing the relay's `uri`.
+To remove a relay, `owner` or `manager` (if assigned) should call `remove_relay` method, passing the relay's `uri`.
 
 ### Updating relay
 
@@ -118,7 +118,6 @@ Stores internally `owner` as the contract's instance owner.
 Initializes `manager` with a zero address (no manager is assigned).
 
 - Reverts if `owner` is zero address.
-
 
 ### Function: change_owner
 
@@ -238,7 +237,7 @@ def add_relay(
 Append relay to the whitelisted set where params correspond to the previously described [Relay structure](#Relay-information-structure).
 Bumps the whitelist version.
 
-- Reverts if called by anyone except the owner or `manager` (if assigned).
+- Reverts if called by anyone except the owner or manager (if assigned).
 - Reverts if relay with provided `uri` already whitelisted.
 - Reverts if `uri` is empty.
 - Emits `RelayAdded(uri, relay)`.
@@ -254,7 +253,7 @@ def remove_relay(uri: String[MAX_STRING_LENGTH]):
 Remove the previously whitelisted array from the set.
 Bumps the whitelist version.
 
-- Reverts if called by anyone except the owner or `manager` (if assigned).
+- Reverts if called by anyone except the owner or manager (if assigned).
 - Reverts if relay with provided `uri` is not whitelisted.
 - Reverts if `uri` is empty.
 - Emits `RelayRemoved(uri, uri)`.
@@ -269,9 +268,10 @@ def recover_erc20(token: address, amount: uint256, recipient: address)
 
 Transfers ERC20 tokens from the contract's balance to the `recipient`.
 
+- Reverts if called by anyone except the owner.
 - Reverts if `transfer` reverted.
 - Reverts if `recipient` is zero address.
-- Emits `ERC20Recovered(msg.sender, token, amount, recipient)`.
+- Emits `ERC20Recovered(token, amount, recipient)`.
 - Emits `Transfer(self.address, recipient, amount)` of the `token`'s contract (if ERC20-compliant).
 
 ### Event: RelayAdded
@@ -309,6 +309,17 @@ Emitted when either relay was added or removed.
 
 See: `add_relay`, `remove_relay`.
 
+### Event: OwnerChanged
+
+```vyper
+event OwnerChanged:
+    new_owner: indexed(address)
+```
+
+Emitted when new owner was set.
+
+See: `change_owner`.
+
 ### Event: ManagerChanged
 
 ```vyper
@@ -324,9 +335,9 @@ See: `set_manager`, `dismiss_manager`.
 
 ```vyper
 event ERC20Recovered:
-    requested_by: indexed(address)
     token: indexed(address)
     amount: uint256
+    recipient: address
 ```
 
 Emitted when ERC20 tokens were recovered.
@@ -347,9 +358,7 @@ In case of an emergency or important update, it would be necessary to dismiss th
 
 The contract's owner is eligible for any possible storage modification.
 
-Additional `manager` is supposed to be used as a management entity able to add/remove relays.
-
-To minimize the number of entities, decided to use the owner as a token recovery recipient, having the permissionless `recover_erc20` method.
+The additional manager is supposed to be used as a management entity able to add/remove relays.
 
 ### Sanity caps and limits
 
