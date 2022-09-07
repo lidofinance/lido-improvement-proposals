@@ -212,7 +212,7 @@ Retrieves the relay with the provided uri.
 
 - Reverts if found no relay.
 
-### Function: get_allowed_listed_version
+### Function: get_allowed_list_version
 
 ```vyper
 @view
