@@ -5,7 +5,7 @@ status: Proposed
 author: George Avsetsyn, Artem Veremeenko, Eugene Mamin, Isidoros Passadis
 discussions-to: https://research.lido.fi/t/lip-17-mev-boost-relays-whitelist-for-lido/2885
 created: 2022-08-30
-updated: 2022-09-05
+updated: 2022-09-08
 ---
 
 # MEV-Boost relays allowed list for Lido
@@ -369,11 +369,11 @@ There are the following caps to prevent unlimited storage accesses and unbounded
 
 ## Reference implementation
 
-The reference implementation of the proposed `MEVBoostAllowedRelaysList` contract is available on the [Lido GitHub](https://github.com/lidofinance/mev-boost-relay-whitelist/blob/87c8ffd6852a4e3bf041fb4e649b25efb1d5c2cc/contracts/MEVBoostRelaylist.vy).
+The reference implementation of the proposed `MEVBoostAllowedRelaysList` contract is available on the [Lido GitHub](https://github.com/lidofinance/mev-boost-relay-whitelist/blob/26ec6791c2466e784a894b8867db71d8de620745/contracts/MEVBoostRelayAllowedList.vy).
 
 ## Links
 
-- [Ongoing discussion draft for block proposer rewards](https://research.lido.fi/t/discussion-draft-for-lido-on-ethereum-block-proposer-rewards-policy/2817)
+- [Ongoing discussion for block proposer rewards](https://research.lido.fi/t/discussion-draft-for-lido-on-ethereum-block-proposer-rewards-policy/2817)
 - [Ethereum MEV Extraction and Rewards - Discussion & Policy Groundwork](https://research.lido.fi/t/ethereum-mev-extraction-and-rewards-discussion-policy-groundwork/2461)
 - [[Proposal] optimal MEV policy for Lido](https://research.lido.fi/t/proposal-optimal-mev-policy-for-lido/2489)
 - [LIP-12: On-chain part of the rewards distribution after the Merge](https://research.lido.fi/t/lip-12-on-chain-part-of-the-rewards-distribution-after-the-merge/1625)
