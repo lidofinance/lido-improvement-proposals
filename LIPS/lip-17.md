@@ -1,27 +1,27 @@
 ---
 lip: 17
-title: MEV-Boost relays whitelist for Lido
+title: MEV-Boost allowed relays list for Lido
 status: Proposed
 author: George Avsetsyn, Artem Veremeenko, Eugene Mamin, Isidoros Passadis
-discussions-to: https://research.lido.fi/t/lip-17-mev-boost-relays-whitelist-for-lido/2885
+discussions-to: https://research.lido.fi/t/lip-17-mev-boost-relays-allowed-list-for-lido/2885
 created: 2022-08-30
-updated: 2022-09-05
+updated: 2022-09-09
 ---
 
-# MEV-Boost relays whitelist for Lido
+# MEV-Boost relays allowed list for Lido
 
 >DISCLAIMER. [MEV extraction policy](https://research.lido.fi/t/discussion-draft-for-lido-on-ethereum-block-proposer-rewards-policy/2817
 ) for Lido DAO is an ongoing topic and has not been finalized yet. This proposal is about additional tech spares.
 
 ## Simple Summary
 
-The on-chain relays whitelist is planned to be used by Node Operators participating in the Lido protocol after the Merge to extract MEV according to the expected Lido policies.
+The on-chain allowed relays list is planned to be used by Node Operators participating in the Lido protocol after the Merge to extract MEV according to the expected Lido policies.
 
 ## Motivation
 
 It's proposed that Node Operators use [`MEV-Boost`](https://github.com/flashbots/mev-boost) infrastructure developed by Flashbots to support MEV extraction through the open market mechanics as a current PBS solution that has a market fit.
 
-The proposed whitelist is intended to be a source of truth for the set of possible relays allowed to be used by Node Operators. In particular, Node Operators would use the contract to keep their software configuration up-to-date (setting the necessary relays once Lido DAO updates the set).
+The proposed allowed list is intended to be a source of truth for the set of possible relays allowed to be used by Node Operators. In particular, Node Operators would use the contract to keep their software configuration up-to-date (setting the necessary relays once Lido DAO updates the set).
 
 ## Mechanics
 
@@ -31,7 +31,7 @@ Anyone can access the storage in a permissionless way through the disclosed `vie
 
 Any modification of the set (i.e., internal storage modification) is allowed only by [the general Lido DAO governance process](https://lido.fi/governance#regular-process), which is implemented on-chain through the Aragon voting from the initial deployment stage. However, it's still possible to assign a dedicated management entity for adding/removing relay items.
 
-The proposed `MEVBoostRelayWhitelist` contract is non-upgradable, and its owner is intended to be initialized with the [Lido DAO Aragon Agent](https://etherscan.io/address/0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c) address on mainnet upon the deployment phase.
+The proposed `MEVBoostAllowedRelaysList` contract is non-upgradable, and its owner is intended to be initialized with the [Lido DAO Aragon Agent](https://etherscan.io/address/0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c) address on mainnet upon the deployment phase.
 
 The dedicated management `manager` entity is initialized with a zero address and can be set later by the contract's owner to be able to add/remove relays. The possible candidate to bear such responsibilities without sacrificing governance security is [Easy Track](https://easytrack.lido.fi/) (in this case  [`EVMScriptExecutor (Easy Track)`](https://docs.lido.fi/deployed-contracts#easy-track) should be set as `manager`).
 
@@ -68,20 +68,20 @@ The proposed flow to update the relay's info is to re-add the relay (call `remov
 
 >NB: the order of the relays in the list after re-adding might change (due to the array-based implementation).
 
-### Reading the current whitelisted relays
+### Reading the current allowed relays
 
 Anyone is allowed to call the following methods to retrieve the current relays set:
 
-- `get_relays_amount` to check how many relays are currently whitelisted by Lido DAO
-- `get_relays` to retrieve all currently whitelisted arrays
-- `get_relay_by_uri` to retrieve the whitelisted relay details by uri
-- `get_whitelist_version` to read lastly bumped version number of the whitelist
+- `get_relays_amount` to check how many relays are currently allowed by Lido DAO
+- `get_relays` to retrieve all currently allowed relays
+- `get_relay_by_uri` to retrieve the allowed relay details by uri
+- `get_allowed_list_version` to read lastly bumped version number of the allowed list
 
-### Whitelist versioning
+### Allowed list versioning
 
-The principal purpose of the proposed contract is to be used for generating configurations containing up-to-date whitelisted relays.
+The principal purpose of the proposed contract is to be used for generating configurations containing up-to-date allowed relays.
 
-To facilitate config generation process, the contract contains the previously mentioned `get_whitelist_version` view method to check whether the lastly used relays whitelist was updated or not.
+To facilitate config generation process, the contract contains the previously mentioned `get_allowed_list_version` view method to check whether the lastly used allowed relays list was updated or not.
 
 The version bumps on every add/remove operation and doesn't have additional semantical meaning and numbering schemes.
 
@@ -89,9 +89,9 @@ The version bumps on every add/remove operation and doesn't have additional sema
 
 All storage modification functions emit at least a single event containing all necessary data to reproduce the changes by external indexers:
 
-- `RelayAdded` (once a relay was whitelisted)
-- `RelayRemoved` (once a previously whitelisted relay was removed)
-- `RelaysUpdated` (once whitelist version bumped)
+- `RelayAdded` (once a relay was allowed)
+- `RelayRemoved` (once a previously allowed relay was removed)
+- `RelaysUpdated` (once allowed list version bumped)
 - `OwnerChanged` (once the owner is changed)
 - `ManagerChanged` (once management entity is assigned or dismissed)
 - `ERC20Recovered` (once some ERC-20 tokens successfully recovered)
@@ -104,7 +104,7 @@ An additional `manager` is allowed to add or remove relays (initially is set to 
 
 ## Specification
 
-We propose the following interface for `MEVBoostRelayWhitelist`.
+We propose the following interface for `MEVBoostAllowedRelaysList`.
 The code below presumes the Vyper v0.3.6 syntax.
 
 ### Constructor
@@ -188,7 +188,7 @@ Retrieves the current manager entity (returns zero address if no entity is assig
 def get_relays_amount() -> uint256
 ```
 
-Retrieves the current total amount of whitelisted relays.
+Retrieves the current total amount of allowed relays.
 
 ### Function: get_relays
 
@@ -198,7 +198,7 @@ Retrieves the current total amount of whitelisted relays.
 def get_relays() -> DynArray[Relay, MAX_NUM_RELAYS]
 ```
 
-Retrieves all of the currently whitelisted relays.
+Retrieves all of the currently allowed relays.
 
 ### Function: get_relay_by_uri
 
@@ -212,15 +212,15 @@ Retrieves the relay with the provided uri.
 
 - Reverts if found no relay.
 
-### Function: get_whitelisted_version
+### Function: get_allowed_list_version
 
 ```vyper
 @view
 @external
-def get_whitelist_version() -> uint256:
+def get_allowed_list_version() -> uint256:
 ```
 
-Retrieves the current version of the whitelisted relays set.
+Retrieves the current version of the allowed relays set.
 
 ### Function: add_relay
 
@@ -234,14 +234,14 @@ def add_relay(
 ):
 ```
 
-Append relay to the whitelisted set where params correspond to the previously described [Relay structure](#Relay-information-structure).
-Bumps the whitelist version.
+Append relay to the allowed set where params correspond to the previously described [Relay structure](#Relay-information-structure).
+Bumps the allowed list version.
 
 - Reverts if called by anyone except the owner or manager (if assigned).
-- Reverts if relay with provided `uri` already whitelisted.
+- Reverts if relay with provided `uri` already allowed.
 - Reverts if `uri` is empty.
 - Emits `RelayAdded(uri, relay)`.
-- Emits `RelaysUpdated(new_whitelist_ver)`.
+- Emits `RelaysUpdated(new_allowed_list_ver)`.
 
 ### Function: remove_relay
 
@@ -250,14 +250,14 @@ Bumps the whitelist version.
 def remove_relay(uri: String[MAX_STRING_LENGTH]):
 ```
 
-Remove the previously whitelisted array from the set.
-Bumps the whitelist version.
+Remove the previously allowed relay from the set.
+Bumps the allowed list version.
 
 - Reverts if called by anyone except the owner or manager (if assigned).
-- Reverts if relay with provided `uri` is not whitelisted.
+- Reverts if relay with provided `uri` is not allowed.
 - Reverts if `uri` is empty.
 - Emits `RelayRemoved(uri, uri)`.
-- Emits `RelaysUpdated(new_whitelist_ver)`.
+- Emits `RelaysUpdated(new_allowed_list_ver)`.
 
 ### Function: recover_erc20
 
@@ -302,7 +302,7 @@ See: `remove_relay`.
 
 ```vyper
 event RelaysUpdated:
-    whitelist_version: indexed(uint256)
+    allowed_list_version: indexed(uint256)
 ```
 
 Emitted when either relay was added or removed.
@@ -365,15 +365,15 @@ The additional manager is supposed to be used as a management entity able to add
 There are the following caps to prevent unlimited storage accesses and unbounded loop cases:
 
 - `MAX_STRING_LENGTH` to be used for all `String[MAX_STRING_LENGTH]` types, proposed to set its value to `1024`.
-- `MAX_NUM_RELAYS` to be used as maximum whitelisted arrays amount, proposed to set its value to `40`.
+- `MAX_NUM_RELAYS` to be used as maximum allowed relays amount, proposed to set its value to `40`.
 
 ## Reference implementation
 
-The reference implementation of the proposed `MEVBoostRelayWhitelist` contract is available on the [Lido GitHub](https://github.com/lidofinance/mev-boost-relay-whitelist/blob/87c8ffd6852a4e3bf041fb4e649b25efb1d5c2cc/contracts/MEVBoostRelayWhitelist.vy).
+The reference implementation of the proposed `MEVBoostAllowedRelaysList` contract is available on the [Lido GitHub](https://github.com/lidofinance/mev-boost-relay-allowed-list/blob/26ec6791c2466e784a894b8867db71d8de620745/contracts/MEVBoostRelayAllowedList.vy).
 
 ## Links
 
-- [Ongoing discussion draft for block proposer rewards](https://research.lido.fi/t/discussion-draft-for-lido-on-ethereum-block-proposer-rewards-policy/2817)
+- [Ongoing discussion for block proposer rewards](https://research.lido.fi/t/discussion-draft-for-lido-on-ethereum-block-proposer-rewards-policy/2817)
 - [Ethereum MEV Extraction and Rewards - Discussion & Policy Groundwork](https://research.lido.fi/t/ethereum-mev-extraction-and-rewards-discussion-policy-groundwork/2461)
 - [[Proposal] optimal MEV policy for Lido](https://research.lido.fi/t/proposal-optimal-mev-policy-for-lido/2489)
 - [LIP-12: On-chain part of the rewards distribution after the Merge](https://research.lido.fi/t/lip-12-on-chain-part-of-the-rewards-distribution-after-the-merge/1625)
