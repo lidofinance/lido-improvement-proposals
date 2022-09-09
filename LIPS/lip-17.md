@@ -3,9 +3,9 @@ lip: 17
 title: MEV-Boost allowed relays list for Lido
 status: Proposed
 author: George Avsetsyn, Artem Veremeenko, Eugene Mamin, Isidoros Passadis
-discussions-to: https://research.lido.fi/t/lip-17-mev-boost-relays-whitelist-for-lido/2885
+discussions-to: https://research.lido.fi/t/lip-17-mev-boost-relays-allowed-list-for-lido/2885
 created: 2022-08-30
-updated: 2022-09-08
+updated: 2022-09-09
 ---
 
 # MEV-Boost relays allowed list for Lido
@@ -369,7 +369,7 @@ There are the following caps to prevent unlimited storage accesses and unbounded
 
 ## Reference implementation
 
-The reference implementation of the proposed `MEVBoostAllowedRelaysList` contract is available on the [Lido GitHub](https://github.com/lidofinance/mev-boost-relay-whitelist/blob/26ec6791c2466e784a894b8867db71d8de620745/contracts/MEVBoostRelayAllowedList.vy).
+The reference implementation of the proposed `MEVBoostAllowedRelaysList` contract is available on the [Lido GitHub](https://github.com/lidofinance/mev-boost-relay-allowed-list/blob/26ec6791c2466e784a894b8867db71d8de620745/contracts/MEVBoostRelayAllowedList.vy).
 
 ## Links
 
