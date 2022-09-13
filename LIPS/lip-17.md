@@ -5,7 +5,7 @@ status: Proposed
 author: George Avsetsyn, Artem Veremeenko, Eugene Mamin, Isidoros Passadis
 discussions-to: https://research.lido.fi/t/lip-17-mev-boost-relays-allowed-list-for-lido/2885
 created: 2022-08-30
-updated: 2022-09-09
+updated: 2022-09-13
 ---
 
 # MEV-Boost relays allowed list for Lido
@@ -241,7 +241,7 @@ Bumps the allowed list version.
 - Reverts if relay with provided `uri` already allowed.
 - Reverts if `uri` is empty.
 - Emits `RelayAdded(uri, relay)`.
-- Emits `RelaysUpdated(new_allowed_list_ver)`.
+- Emits `AllowedListUpdated(new_allowed_list_ver)`.
 
 ### Function: remove_relay
 
