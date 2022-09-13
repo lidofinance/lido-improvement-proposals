@@ -5,7 +5,7 @@ status: Proposed
 author: George Avsetsyn, Artem Veremeenko, Eugene Mamin, Isidoros Passadis
 discussions-to: https://research.lido.fi/t/lip-17-mev-boost-relays-allowed-list-for-lido/2885
 created: 2022-08-30
-updated: 2022-09-09
+updated: 2022-09-13
 ---
 
 # MEV-Boost relays allowed list for Lido
@@ -91,7 +91,7 @@ All storage modification functions emit at least a single event containing all n
 
 - `RelayAdded` (once a relay was allowed)
 - `RelayRemoved` (once a previously allowed relay was removed)
-- `RelaysUpdated` (once allowed list version bumped)
+- `AllowedListUpdated` (once allowed list version bumped)
 - `OwnerChanged` (once the owner is changed)
 - `ManagerChanged` (once management entity is assigned or dismissed)
 - `ERC20Recovered` (once some ERC-20 tokens successfully recovered)
@@ -241,7 +241,7 @@ Bumps the allowed list version.
 - Reverts if relay with provided `uri` already allowed.
 - Reverts if `uri` is empty.
 - Emits `RelayAdded(uri, relay)`.
-- Emits `RelaysUpdated(new_allowed_list_ver)`.
+- Emits `AllowedListUpdated(new_allowed_list_ver)`.
 
 ### Function: remove_relay
 
@@ -257,7 +257,7 @@ Bumps the allowed list version.
 - Reverts if relay with provided `uri` is not allowed.
 - Reverts if `uri` is empty.
 - Emits `RelayRemoved(uri, uri)`.
-- Emits `RelaysUpdated(new_allowed_list_ver)`.
+- Emits `AllowedListUpdated(new_allowed_list_ver)`.
 
 ### Function: recover_erc20
 
@@ -298,10 +298,10 @@ Emitted when a relay was removed.
 
 See: `remove_relay`.
 
-### Event: RelaysUpdated
+### Event: AllowedListUpdated
 
 ```vyper
-event RelaysUpdated:
+event AllowedListUpdated:
     allowed_list_version: indexed(uint256)
 ```
 
@@ -323,7 +323,7 @@ See: `change_owner`.
 ### Event: ManagerChanged
 
 ```vyper
-event RelaysUpdated:
+event ManagerChanged:
     new_manager: indexed(address)
 ```
 
@@ -337,7 +337,7 @@ See: `set_manager`, `dismiss_manager`.
 event ERC20Recovered:
     token: indexed(address)
     amount: uint256
-    recipient: address
+    recipient: indexed(address)
 ```
 
 Emitted when ERC20 tokens were recovered.
