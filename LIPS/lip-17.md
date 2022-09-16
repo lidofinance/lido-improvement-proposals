@@ -1,7 +1,7 @@
 ---
 lip: 17
 title: MEV-Boost allowed relays list for Lido
-status: Proposed
+status: Implemented
 author: George Avsetsyn, Artem Veremeenko, Eugene Mamin, Isidoros Passadis
 discussions-to: https://research.lido.fi/t/lip-17-mev-boost-relays-allowed-list-for-lido/2885
 created: 2022-08-30
