@@ -5,7 +5,7 @@ status: Proposed
 author: Azat Serikov
 created: 2022-09-13
 updated: 2022-10-03
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lip-18-vault-contract-for-potential-self-cover-purposes/2992
 ---
 
 # LIP-18: Vault Contract for Potential Self-Cover Purposes
