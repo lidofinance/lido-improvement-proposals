@@ -1,6 +1,6 @@
-# LIPs 
+# [LIPs](https://research.lido.fi/) 
 
-Lido Improvement Proposals (LIPs) describe standards for the Lido platform, including core protocol specifications, client APIs, and contract standards.
+> Lido Improvement Proposals (LIPs) describe standards for the Lido platform, including core protocol specifications, client APIs, and contract standards.
  
 ## Contributing
 
@@ -25,6 +25,28 @@ When you believe your LIP is mature and ready to progress past the WIP phase, yo
 * **Withdrawn** - a LIP that has been withdrawn by the author(s).
 * **Deferred** - a LIP that is pending another LIP/some other change that should be bundled with it together.
 * **Moribund** - a LIP that was implemented but is now obsolete and requires no explicit replacement.
+
+>**Note**   
+> Diagram of LIP Progressions 
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> Draft
+  Draft --> Review
+  Review --> Living
+  Review --> Implementation
+  Implementation --> Final
+  Final --> [*]
+  Final --> Moribund
+  
+  Draft --> Withdrawn
+  Review --> Withdrawn
+  Implementation --> Withdrawn
+  Implementation --> Deferred
+  Withdrawn --> [*]
+```
+
 
 ## Validation
 
