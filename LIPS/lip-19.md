@@ -1,12 +1,11 @@
 ---
 lip: 19
-title: LIP-19. Easy Track. Limits for committees
+title: Easy Track. Limits for committees
 status: Draft
 author: Ekaterina Zueva, Victor Suzdalev, Eugene Mamin
 discussions-to: TBA
 created: 2022-08-26
 updated: 2022-11-15
-tags: LIP, easy-track, budget, limits
 ---
 
 # LIP-19. Easy Track. Limits for committees
