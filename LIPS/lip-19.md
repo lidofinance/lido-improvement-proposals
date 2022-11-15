@@ -141,7 +141,7 @@ function addMonths(uint256 timestamp, uint256 _months)
     returns (uint256 newTimestamp);
 ```
 
-4. How to avoid math underflow error while calculating the current balance and what consequences this can lead to.
+#### 4. How to avoid math underflow error while calculating the current balance and what consequences this can lead to.
 
 It is necessary to avoid math underflow error in the method:
 
