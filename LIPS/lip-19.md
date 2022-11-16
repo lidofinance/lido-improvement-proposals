@@ -1,9 +1,9 @@
 ---
 lip: 19
 title: Easy Track. Limits for committees
-status: Draft
+status: Proposed
 author: Ekaterina Zueva, Victor Suzdalev, Eugene Mamin
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lip-19-easy-track-limits-for-committees/3237
 created: 2022-08-26
 updated: 2022-11-15
 ---
