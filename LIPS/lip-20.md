@@ -1112,6 +1112,8 @@ Only `Lido DAO Agent` is allowed to perform administrative actions (pause/resume
 
 ## Reference implementation
 
+[Lido Shapella Upgrade](https://github.com/lidofinance/lido-dao/pull/482)
+
 ## Links
 -  [The Next Chapter for Lido | Lido Finance](https://blog.lido.fi/the-next-chapter-for-lido/)
 -  [LNOSG](https://lido.fi/governance)
