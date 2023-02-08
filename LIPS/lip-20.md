@@ -35,7 +35,7 @@ Despite the simplicity of the idea behind StakingRouter, it is necessary to agre
 
 The diagram below illustrates a high-level architecture that the StakingRouter upgrade proposes.
 
-![StakingRouter diagram](./assets/lip-20/staking-router-architecture.png)
+![StakingRouter diagram](./assets/lip-20/router-architecture.png)
 
 ### Deposit workflow
 
