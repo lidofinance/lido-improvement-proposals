@@ -8,13 +8,6 @@ created: 2024-03-06
 updated: 2024-03-08
 ---
 
-| LIP | Title | Status | Author | Discussion | Created | Updated |
-| -------- | -------- | -------- | --- | --- | --- | --- |
-| 21     | Simple Delegation | WIP | Eugene Pshenichnyy, Ekaterina Zueva, Victor Suzdalev, Alexander Belokon |  TBA | 2024-03-06 | 2024-03-06 |
-
-
-
-
 # LIP-21. Simple On-chain Delegation
 
 ## Simple Summary
