@@ -1,9 +1,9 @@
 ---
 lip: 21
 title: Simple On-chain Delegation
-status: Draft
+status: Proposed
 author: Eugene Pshenichnyy, Ekaterina Zueva, Victor Suzdalev, Alexander Belokon
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lip-21-simple-on-chain-delegation/6840
 created: 2024-03-06
 updated: 2024-03-08
 ---
