@@ -2,7 +2,7 @@
 lip: 22
 title: LIP-22. stETH on L2
 status: WIP
-author: Anton Kovalchuk, Eugene Mamin
+author: Anton Kovalchuk, Artyom Veremeenko, Eugene Mamin
 discussions-to: https://research.lido.fi/t/
 created: 2023-11-10
 updated: 2024-03-13
@@ -48,13 +48,13 @@ It's also assumed that general rollup failures and communication loss of `L1->L2
 
 ## Design assumptions and invariants
 
-### Risks not concerned here
+### Risks not concerned
 - fraud transactions
 - rollup spec violations, including:
     - loss of L1->L2 messaging
     - loss of block production for 24h+
 
-### Risks that addressed
+### Risks addressed
 - sequencer failure (outage, censor, clogging)
 - reorganization on L1
     - either L2 would be reorganized too, or the deposit window duration would ensure that the L1 rate is settled (the report epoch is finalized)
@@ -64,7 +64,7 @@ It's also assumed that general rollup failures and communication loss of `L1->L2
     - each oracle report might happen after finalizing the daily reference slot
     - the worst case is when the oracle report happens just before the new reference slot, and the next report for this new slot happens ~30 minutes after
 
-### Invariants
+### Invariants upheld
 - the token rate on L1 can never be older than on L2
 - the token rate submission is permissionless, L1 onchain contracts are the source of truth
 - no new trusted parties and trust assumptions for a token rate submission
