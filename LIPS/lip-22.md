@@ -1,6 +1,6 @@
 ---
 lip: 22
-title: LIP-22. stETH on L2
+title: stETH on L2
 status: WIP
 author: Anton Kovalchuk, Artyom Veremeenko, Eugene Mamin
 discussions-to: https://research.lido.fi/t/
