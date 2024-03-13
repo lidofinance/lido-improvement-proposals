@@ -20,27 +20,27 @@ As a practical example, explore a design of upgrading the wstETH custom bridge o
 
 The 'lock-and-mint' wstETH bridge extension (i.e., [`lido-l2`](https://github.com/lidofinance/lido-l2/tree/main/contracts/optimism)) introduces a set of the new bridging flows:
 
-- Bridging stETH from L1 to L2
+#### Bridging stETH from L1 to L2
 
 User locks stETH, and the bridge contract wraps it into wstETH. The amount of wrapped tokens is then forwarded through the already implemented wstETH bridging path (e.g., [wstETH on Optimism](https://github.com/lidofinance/lido-l2/blob/277631b5b323312f57fc1aed7ec79e75f4b7e912/contracts/optimism/L1ERC20TokenBridge.sol#L46)) with the intent to have stETH on the L2 end. Therefore, the L2 bridge mints wstETH and wraps it back to stETH.
 
 The design facilitates the L2 stETH bridged amount is being the same as was sent from L1 in most cases by attaching the token rate data with each bridging request.
 
-- Bridging back stETH from L2 to L1
+#### Bridging back stETH from L2 to L1
 
 The bridge transfers stETH from a user upon request,  unwraps it to wstETH, and burns that wstETH on L2 side. The amount of burned tokens is then forwarded through the established path with the goal of receiving stETH on the L1 end. To achieve this, the L1 bridge, in turn, unlocks wstETH and unwraps it to stETH.
 
 Since the withdrawal process can take up to a week (a common case for optimistic rollups), it's expected that the stETH amount will be different on the L1 side upon the withdrawal completion due to rebases happened during the withdrawal delay (i.e., challenge period) of a rollup, and user rewards/penalties will be attributed properly.
 
-- Forwarding the `wstETH/stETH` in-protocol rate from L1 to L2
+#### Forwarding the `wstETH/stETH` in-protocol rate from L1 to L2
 
-Include the token rate as a part of the calldata in each L1 to L2 bridging request. This involves incorporating the L1 `block.timestamp` and utilizing the information from https://docs.lido.fi/contracts/wsteth#getstethbywsteth. 
+Include the token rate as a part of the calldata in each L1 to L2 bridging request. This involves incorporating the L1 `block.timestamp` and utilizing the information from https://docs.lido.fi/contracts/wsteth#getstethbywsteth.
 
 Furthermore, allow permissionless token rate updates to be sent from L1 to L2 with a zero token amount escrowing.
 
 It's also suggested to push the token rate as a part of each `AccountingOracle` report (upon the `submitReportData` transaction execution).
 
-- Emergency flow
+#### Emergency flow
 
 It's assumed that a rollup allows to perform force inclusion of the transaction in case of rogue or stale sequencer. To achieve this, the same approach of `L1->L2` messaging is used, while the inclusion itselft is guaranteed when the sequencing window duration passes (12h for Optimism, 24h for Arbitrum).
 
@@ -48,13 +48,13 @@ It's also assumed that general rollup failures and communication loss of `L1->L2
 
 ## Design assumptions and invariants
 
-### Risks not concerned
+#### Risks not concerned
 - fraud transactions
 - rollup spec violations, including:
     - loss of L1->L2 messaging
     - loss of block production for 24h+
 
-### Risks addressed
+#### Risks addressed
 - sequencer failure (outage, censor, clogging)
 - reorganization on L1
     - either L2 would be reorganized too, or the deposit window duration would ensure that the L1 rate is settled (the report epoch is finalized)
@@ -64,7 +64,7 @@ It's also assumed that general rollup failures and communication loss of `L1->L2
     - each oracle report might happen after finalizing the daily reference slot
     - the worst case is when the oracle report happens just before the new reference slot, and the next report for this new slot happens ~30 minutes after
 
-### Invariants upheld
+#### Invariants upheld
 - the token rate on L1 can never be older than on L2
 - the token rate submission is permissionless, L1 onchain contracts are the source of truth
 - no new trusted parties and trust assumptions for a token rate submission
@@ -88,7 +88,7 @@ The scheme outlines a place of a new rebasable token on L2 (an orange square stE
 
 ![architecture](./assets/lip-22/architecture.png)
 
-Three main flows
+Three main flows are presented on the following diagram:
 ![threeNewFlows](./assets/lip-22/threeNewFlows.png)
 
 
@@ -106,7 +106,7 @@ Locks the provided amount of L2 wstETH token on the contract, mints L2 stETH tok
 
 - reverts if `amount_` is zero;
 - reverts if `msg.sender` is zero address;
-- reverts if `wrappedToken` doesn not have enough allowance to transfer `msg.sender` tokens;
+- reverts if `wrappedToken` doesn't not have enough allowance to transfer `msg.sender` tokens;
 - reverts if `msg.sender` does not have enough balance;
 
 ##### Parameters
@@ -191,7 +191,7 @@ Destroys `amount_` tokens from `account_`, reducing the total supply. Authorized
 | `account_` | `address` | an address of the account to burn shares |
 | `amount_` | `uint256` | an amount of shares to burn |
 
-### L1 bridge 
+### L1 bridge
 
 #### Function: `depositERC20To`
 
@@ -212,7 +212,7 @@ Permissionless to call. Allows to push token rate even when deposits are disable
 | --------   | --------  | -------- |
 | `l2Gas_` | `uint32` | Gas limit required to complete the deposit on L2 |
 
-    
+
 ### Token Rate Oracle
 As mentioned before, for calculating L2 stETH token balance, the `wstETH/stETH` token rate is required. Therefore, a token rate oracle contract on L2 is placed to receive, store, and fetch the token rate. The fetching interface follows the Chainlink data feeds API, a widely adopted standard that will simplify integration in the future.
 
@@ -271,14 +271,14 @@ Permission to make calls is granted to the L2 bridge only.
 #### Deposit and withdrawal flows
 Although the interface of both bridge contracts won't change, as it is a requirement of Optimism bridges, modifications are needed in the implementation of the deposit and withdraw methods. The most interesting aspect here is packing rate and its timestamp into a single message and transmitting it across layers. This can be achieved through the Optimism Cross-Domain Messenger, which involves a specialized contract and an Optimism service to facilitate the process. The following pseudocode explains how it works.
 
-```solidity
+```bash
 function deposit(to, amount)
     transfer stETH tokens user => bridge
     convert stETH to wstETH
     pack rate and its timestamp to the bytes array
     send crossdomain message with wstETH tokens and packed data
     mint L2 stETH tokens using received wstETH amount and unpacked rate on L2 side
-        
+
 function withdraw(from, amount)
     burn L2 stETH tokens using shares
     send crossdomain message to finish withdraw on L1 side
@@ -291,16 +291,16 @@ function withdraw(from, amount)
 ![updatingTokenRate](./assets/lip-22/updatingTokenRate.png)
 
 There are two options to deliver the `wstETH/stETH` token rate from L1 to L2 permissionlessly:
-##### Send the rate with each `wstETH/stETH` token deposit message from L1 to L2
+##### Option 1. Send the rate with each `wstETH/stETH` token deposit message from L1 to L2
 
 The L1 bridge retrieves the token rate using the `StETH.stEthPerToken()` function, encoding it with the current timestamp into a byte array. Subsequently, the bridge transmits this byte array, along with the token addresses intended for the deposit and other deposit-related data, to the Optimism cross-bridge messenger. On the L2 side, the bridge receives deposit data, verifies its initiation for the wstETH token, fetches the rate timestamp, and updates it for `TokenRateOracle`. This process ensures that the L2 side can mint the accurate amount of rebasable tokens and use the correct rate for subsequent wrap/unwrap operations.
 
-##### Allow sending the token rate with zero token amount escrowed
+##### Option 2. Allow sending the token rate with zero token amount escrowed
 
 By only incurring the transaction fee, this creates a permissionless way of updating the token rate on L2. This way isn't affected by paused deposits.
 
 
-##### Automatic token rate delivery
+###### Automatic token rate delivery
 
 To fortify token rate delivery, the proposal suggests utilizing the core Lido protocol to transmit the token rate whenever a rebase event takes place. This requires developing a contract adapter that conforms to the [`IPostTokenRebaseReceiver`](https://github.com/lidofinance/lido-dao/blob/cadffa46a2b8ed6cfa1127fca2468bae1a82d6bf/contracts/0.4.24/Lido.sol#L20-L30) protocol, thereby replacing the outdated [`LegacyOracle`](https://docs.lido.fi/contracts/legacy-oracle/) contract.
 
@@ -331,7 +331,7 @@ contract OpStackTokenRateObserver is ITokenRateObserver {
 
 contract TokenRateNotifier: IPostTokenRebaseReceiver {
     function registerObserver(address observer_);
-    
+
     function handlePostTokenRebase() {
         _notifyObservers();
     }
@@ -340,23 +340,23 @@ contract TokenRateNotifier: IPostTokenRebaseReceiver {
 
 ## Rationale
 
-As was mentioned before, non-rebasable token (wstETH on L2) was already implemented, tested, and integrated, and the user can deposit/withdraw it using the custom bridges available for wstETH on L2 projects. 
+As was mentioned before, non-rebasable token (wstETH on L2) was already implemented, tested, and integrated, and the user can deposit/withdraw it using the custom bridges available for wstETH on L2 projects.
 
 The proposed design doesn't require a separate bridging architecture rather relying on the existing wstETH upgradable one. Therefore, one can treat stETH bridging parts as a kind of plugin for the previously developed wstETH bridge solution.
 
 ### Why stETH is wrapped wstETH
 
-stETH and wstETH allows participating in the same protocol on the same rules and assumptions. Therefore, the both tokens should be convertable to each other through the in-protocol interfaces and contracts not involving secondary markets and 3rdparties. 
+stETH and wstETH allows participating in the same protocol on the same rules and assumptions. Therefore, the both tokens should be convertible to each other through the in-protocol interfaces and contracts not involving secondary markets and 3rd-parties.
 
-wstETH on L1 is the non-upgradable wrapped version of stETH. However, wstETH token balance corresponds to the shares balance of stETH while stETH balance is changing according to the `token_rate`: `shares x token_rate`. Hence, it could have been quite solid to have the same architecture for L2 as well: wstETH is the primary token, and stETH is its wrapped version. 
+wstETH on L1 is the non-upgradable wrapped version of stETH. However, wstETH token balance corresponds to the shares balance of stETH while stETH balance is changing according to the `token_rate`: `shares x token_rate`. Hence, it could have been quite solid to have the same architecture for L2 as well: wstETH is the primary token, and stETH is its wrapped version.
 
-If it was decided to sunset stETH on L2 at some point, there would be a straigforward pass to migrate back to wstETH (just unwrapping the tokens).
+If it was decided to sunset stETH on L2 at some point, there would be a straightforward pass to migrate back to wstETH (just unwrapping the tokens).
 
 ### Rate delivery flow L1->L2
 
 #### Deposit flow
 
-A regular flow allows pushing the token rate through the standard rollup messaging service. The best part here is that passing the rate together with each bridging request provides an expectation (although, might be violated in rare cases) that the user receives the same amount of stETH on L2 that he was locked on the L1 side before. 
+A regular flow allows pushing the token rate through the standard rollup messaging service. The best part here is that passing the rate together with each bridging request provides an expectation (although, might be violated in rare cases) that the user receives the same amount of stETH on L2 that he was locked on the L1 side before.
 
 The additional gas required for packing and transmitting token rate in each deposit is approximately 50k, which, compared to the total deposit transaction cost of around 670k, constitutes only an 8% increase. This increase is considered a tolerable amount for users to bear.
 
@@ -392,9 +392,9 @@ The following expectations are set for the design described.
 
 #### Risks analysis
 
-Centralized exchanges supporting stETH on several chains might be used to quickly transfer stETH between supported chains and arbitrage the rebase rate. The arbitrage scheme is quite simple: deposit stETH to a CEX on the chain where rebase already happened and immediately withdraw this stETH amount on the chain where rebase has not happened yet. This will result in receiving more stETH shares and harvesting rebase for the second time on the new chain in the same day. 
+Centralized exchanges supporting stETH on several chains might be used to quickly transfer stETH between supported chains and arbitrage the rebase rate. The arbitrage scheme is quite simple: deposit stETH to a CEX on the chain where rebase already happened and immediately withdraw this stETH amount on the chain where rebase has not happened yet. This will result in receiving more stETH shares and harvesting rebase for the second time on the new chain in the same day.
 
-This arbitrage scheme might be used on a daily basis between the Ethereum Mainnet and L2s given that the rebase data delivery from the Ethereum Mainnet to most popular Ethereum L2s takes ~15-20 minutes while the ERC20 deposit+withdrawal combination on major CEXes might be completed in 24 blocks or ~5 minutes. 
+This arbitrage scheme might be used on a daily basis between the Ethereum Mainnet and L2s given that the rebase data delivery from the Ethereum Mainnet to most popular Ethereum L2s takes ~15-20 minutes while the ERC20 deposit+withdrawal combination on major CEXes might be completed in 24 blocks or ~5 minutes.
 
 **Potential profit for an arbitrageur and potential loss for a CEX for 1 arbitrage iteration = stETH daily rebase ratio (~0.01% on average in late 2023) * stETH inventory held by a CEX on the L2 with slow rebase delivery.**
 Negative stETH rebase might be fully avoided by following the reverse scheme: deposit stETH to a CEX on the chain where rebase has not happened yet and immediately withdraw this stETH amount on the chain where rebase has already happened to receive more shares.
@@ -403,9 +403,9 @@ Negative stETH rebase might be fully avoided by following the reverse scheme: de
 
 It's recommended to always bridge assets from L1 to L2 using the native bridge instead of going to market. By doing that, one can enjoy the best token rate available, propagating it to the L2 side.
 
-Centralized and decentralized cryptocurrency exchanges, which enable withdrawals while bypassing the native bridge to chains where the token rate has not yet been delivered, may face unfair arbitrage losses. 
+Centralized and decentralized cryptocurrency exchanges, which enable withdrawals while bypassing the native bridge to chains where the token rate has not yet been delivered, may face unfair arbitrage losses.
 
-To mitigate this risk, we recommend either: 
+To mitigate this risk, it's recommended either:
 - **always check that the destination L2 token rate is up to date with L1**, otherwise push the rate permissionlessly through the native bridge and wait until it is updated
 - use shares-based (wstETH) bookkeeping as the transfer units
 
