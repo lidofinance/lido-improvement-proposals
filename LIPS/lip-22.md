@@ -12,9 +12,9 @@ updated: 2024-03-13
 
 ## Simple Summary
 
-Propose an architecture framework for the rebasable stETH token on L2 to be used across various Ethereum Layer 2 (L2) networks. The idea is to create a canonical version of `stETH` on these networks, being wrapped on top of `wstETH` (sort of 'wrapped twice'). This approach will streamline the process of moving `stETH` across Ethereum rollups, making use of the existing `wstETH` infrastructure and liquidity venues on L2 networks.
+Propose an architecture framework for the rebasable stETH token on L2 to be used across various Ethereum Layer 2 (L2) networks. The idea is to create a canonical version of stETH on these networks, being wrapped on top of wstETH (sort of 'wrapped twice'). This approach will streamline the process of moving stETH across Ethereum rollups, making use of the existing wstETH infrastructure and liquidity venues on L2 networks.
 
-As a practical example, explore a design of upgrading the `wstETH` custom bridge on the Optimism network. The design relies on the previously presented [`lido-l2`](https://github.com/lidofinance/lido-l2/tree/main/contracts/optimism) reference architecture.
+As a practical example, explore a design of upgrading the wstETH custom bridge on the Optimism network. The design relies on the previously presented [`lido-l2`](https://github.com/lidofinance/lido-l2/tree/main/contracts/optimism) reference architecture.
 
 ## Abstract
 
@@ -32,7 +32,7 @@ The bridge transfers stETH from a user upon request,  unwraps it to wstETH, and 
 
 Since the withdrawal process can take up to a week (a common case for optimistic rollups), it's expected that the stETH amount will be different on the L1 side upon the withdrawal completion due to rebases happened during the withdrawal delay (i.e., challenge period) of a rollup, and user rewards/penalties will be attributed properly.
 
-- Forwarding the wstETH/stETH in-protocol rate from L1 to L2
+- Forwarding the `wstETH/stETH` in-protocol rate from L1 to L2
 
 Include the token rate as a part of the calldata in each L1 to L2 bridging request. This involves incorporating the L1 `block.timestamp` and utilizing the information from https://docs.lido.fi/contracts/wsteth#getstethbywsteth. 
 
@@ -48,13 +48,13 @@ It's also assumed that general rollup failures and communication loss of `L1->L2
 
 ## Design assumptions and invariants
 
-### risks not concerned here
+### Risks not concerned here
 - fraud transactions
 - rollup spec violations, including:
     - loss of L1->L2 messaging
     - loss of block production for 24h+
 
-### risks that addressed
+### Risks that addressed
 - sequencer failure (outage, censor, clogging)
 - reorganization on L1
     - either L2 would be reorganized too, or the deposit window duration would ensure that the L1 rate is settled (the report epoch is finalized)
@@ -64,7 +64,7 @@ It's also assumed that general rollup failures and communication loss of `L1->L2
     - each oracle report might happen after finalizing the daily reference slot
     - the worst case is when the oracle report happens just before the new reference slot, and the next report for this new slot happens ~30 minutes after
 
-### invariants
+### Invariants
 - the token rate on L1 can never be older than on L2
 - the token rate submission is permissionless, L1 onchain contracts are the source of truth
 - no new trusted parties and trust assumptions for a token rate submission
@@ -77,14 +77,14 @@ In contrast to wstETH, stETH depends on the rate changes to recalculate each use
 
 Beyond just updating an account's balance in the wallet, having rebasable stETH on L2 hypothetically unlocks the following use cases and scenarios:
 - staking/withdrawal requests originated from L2s with accuracy accounting for the stETH rebases that occurred during the bridging period
-- performing gas payments in `stETH` with amounts corresponding to ether on rollups that opted in to support token gas payments (e.g., following the Account Abstraction)
-- cross-domain `stETH` deposits/withdrawals (L1 and L2s) for CEXes
+- performing gas payments in stETH with amounts corresponding to ether on rollups that opted in to support token gas payments (e.g., following the Account Abstraction)
+- cross-domain stETH deposits/withdrawals (L1 and L2s) for CEXes
 - custodians and service providers to support L2s directly (DeFi interactions, deposits/withdrawals) as they can charge fees with each rebase while users still see their balance changing each day
 - once main routine user activity migrated from L1 to L2, there should be UX available as it was previously (rebasable token)
 
 ## Specification for stETH on Optimism
 
-The scheme outlines a place of a new rebasable token on L2 (an orange square `stETH` on the Optimism side) and rate oracle contracts in a [current architecture](https://github.com/lidofinance/lido-l2).
+The scheme outlines a place of a new rebasable token on L2 (an orange square stETH on the Optimism side) and rate oracle contracts in a [current architecture](https://github.com/lidofinance/lido-l2).
 
 ![architecture](./assets/lip-22/architecture.png)
 
@@ -95,14 +95,14 @@ Three main flows
 ### Rebasable token (stETH on L2)
 
 #### StETH token on L2 is a wrapped wstETH
-L2 `stETH` can be minted by calling the `StETH.wrap` method which requires locking L2 `wstETH`. To unlock L2 `wstETH` back, one should call `StETH.unwrap`, burning L2 `stETH`.
+L2 stETH can be minted by calling the `StETH.wrap` method which requires locking L2 wstETH. To unlock L2 wstETH back, one should call `StETH.unwrap`, burning L2 stETH.
 
-##### Function: `wrap`
-Returns amount of L2 `stETH` user receives after wrap.
+#### Function: `wrap`
+Returns amount of L2 stETH user receives after wrap.
 ```solidity
 function wrap(uint256 amount_) external returns (uint256)
 ```
-Locks the provided `amount_` of L2 `wstETH` token on the contract, mints L2 `stETH` token in return. The amount of L2 `stETH` tokens is calculated using `TokensByShares = shares[user] * tokensRate` formula.
+Locks the provided amount of L2 wstETH token on the contract, mints L2 stETH token in return. The amount of L2 stETH tokens is calculated using `TokensByShares = shares[user] * tokensRate` formula.
 
 - reverts if `amount_` is zero;
 - reverts if `msg.sender` is zero address;
@@ -113,15 +113,15 @@ Locks the provided `amount_` of L2 `wstETH` token on the contract, mints L2 `stE
 
 | Name       | Type      | Description |
 | --------   | --------  | -------- |
-| `amount_` | `uint256` | amount of L2 `wstETH` token to wrap in exchange for L2 `stETH` token |
+| `amount_` | `uint256` | amount of L2 wstETH token to wrap in exchange for L2 stETH token |
 
 
-##### Function: `unwrap`
-Returns amount of L2 `wstETH` user receives after unwrap.
+#### Function: `unwrap`
+Returns amount of L2 wstETH user receives after unwrap.
 ```solidity
 function unwrap(uint256 amount_) external returns (uint256)
 ```
-Burns the provided L2 `stETH` token amount, unlocks the previously locked L2 `wstETH` token corresponding amount from the contract. The amount of L2 `stETH` tokens is calculated using `SharesByTokens = tokenAmount_ / tokensRate` formula.
+Burns the provided L2 stETH token amount, unlocks the previously locked L2 wstETH token corresponding amount from the contract. The amount of L2 stETH tokens is calculated using `SharesByTokens = tokenAmount_ / tokensRate` formula.
 
 - reverts if `amount_` is zero;
 - reverts if `msg.sender` is zero address;
@@ -132,18 +132,18 @@ Burns the provided L2 `stETH` token amount, unlocks the previously locked L2 `ws
 
 | Name       | Type      | Description |
 | --------   | --------  | -------- |
-| `amount_` | `uint256` | amount of L2 `stETH` token to wrap in exchange for L2 `wstETH` token |
+| `amount_` | `uint256` | amount of L2 stETH token to wrap in exchange for L2 wstETH token |
 
 #### Balance
 The balance of the stETH token on L1, normally, gets recalculated [daily when the Lido oracle reports](https://docs.lido.fi/contracts/accounting-oracle#report-cycle) the Beacon Chain ether balance update. Its amount depends on the total amount of pooled Ether and the total amount of [shares](https://docs.lido.fi/guides/lido-tokens-integration-guide#steth-internals-share-mechanics). Treating L1 as the source of truth, a new rebasable token on L2 can also store shares and calculate balance using pushed from L1 `wstETH/stETH` token rate. Here, it is essential to notice that the wstETH token represents the account's share of the stETH total supply. Thus, share and wstETH are similar concepts.
 
-##### Function: `balanceOf`
-Returns the amount of L2 `stETH` tokens owned by `account_`.
+#### Function: `balanceOf`
+Returns the amount of L2 stETH tokens owned by `account_`.
 ```solidity
 function balanceOf(address account_) external view returns (uint256)
 ```
 
-Returns the amount of tokens owned by `account_`. Since the token rate that is passed from L1 to L2 is `stETH:wstETH` proportion, the balance of stETH on L2 can be calculated using `balanceOf(user) = shares[user] * tokensRate` formula.
+Returns the amount of tokens owned by `account_`. Since the token rate that is passed from L1 to L2 is stETH:wstETH proportion, the balance of stETH on L2 can be calculated using `balanceOf(user) = shares[user] * tokensRate` formula.
 
 ##### Parameters
 
@@ -154,7 +154,7 @@ Returns the amount of tokens owned by `account_`. Since the token rate that is p
 #### Bridging helpers
 To deposit or withdraw stETH on L2, the bridge should be able to mint and burn L2 stETH using shares. The following functions facilitate these actions:
 
-##### Function: `mintShares`
+#### Function: `mintShares`
 Returns total amount of shares.
 ```solidity
 function mintShares(address account_, uint256 amount_) external returns (uint256)
@@ -172,7 +172,7 @@ Creates `amount_` shares and assigns them to `account_`, increasing the total sh
 | `amount_` | `uint256` | an amount of shares to mint |
 
 
-##### Function: `burnShares`
+#### Function: `burnShares`
 Returns total amount of shares.
 ```solidity
 function burnShares(address account_, uint256 amount_) external
@@ -195,10 +195,10 @@ Destroys `amount_` tokens from `account_`, reducing the total supply. Authorized
 
 #### Function: `depositERC20To`
 
-The deposit method of the L1 bridge will remain unchanged as it is required to conform to the same interface to maintain compatibility with the Optimism UI. However, if the user passes the `stETH` tokens, it wraps `L1 stETH` into `L1 wstETH`, sends it across, and then unwraps it to `L2 stETH` on the other side.
+The deposit method of the L1 bridge will remain unchanged as it is required to conform to the same interface to maintain compatibility with the Optimism UI. However, if the user passes the stETH tokens, it wraps L1 stETH into L1 wstETH, sends it across, and then unwraps it to L2 stETH on the other side.
 
 #### Function: `pushTokenRate`
-Pushes token rate by depositing zero `stETH` tokens.
+Pushes token rate by depositing zero stETH tokens.
 ```solidity
 function pushTokenRate(uint32 l2Gas_) external
 ```
@@ -214,7 +214,7 @@ Permissionless to call. Allows to push token rate even when deposits are disable
 
     
 ### Token Rate Oracle
-As mentioned before, for calculating L2 `stETH` token balance, the `wstETH/stETH` token rate is required. Therefore, a token rate oracle contract on L2 is placed to receive, store, and fetch the token rate. The fetching interface follows the Chainlink data feeds API, a widely adopted standard that will simplify integration in the future.
+As mentioned before, for calculating L2 stETH token balance, the `wstETH/stETH` token rate is required. Therefore, a token rate oracle contract on L2 is placed to receive, store, and fetch the token rate. The fetching interface follows the Chainlink data feeds API, a widely adopted standard that will simplify integration in the future.
 
 #### Function: `latestRoundData`
 Returns the latest token rate data.
@@ -256,15 +256,15 @@ Represents the number of decimals the oracle responses represent.
 ```solidity
     function updateRate(int256 rate, uint256 rateL1Timestamp) external
 ```
-Updates token rate. To guarantee the updating of the `rate` with the most recent value, it is necessary to supply it with the `rateL1Timestamp`.
-Permission to make calls is granted to the L2 `stETH` token and `TokenUpdater`.
+Updates token rate. To guarantee the updating of the rate with the most recent value, it is necessary to supply it with the `rateL1Timestamp`.
+Permission to make calls is granted to the L2 bridge only.
 
 #### Parameters
 
 | Name       | Type      | Description |
 | --------   | --------  | -------- |
 | `rate` | `int256` | the `wstETH/stETH` token rate |
-| `rateL1Timestamp` | `uint256` | is the L1 timestamp when provided `rate` was updated |
+| `rateL1Timestamp` | `uint256` | is the L1 timestamp when provided rate was updated |
 
 ### Token bridge contracts
 
@@ -291,9 +291,9 @@ function withdraw(from, amount)
 ![updatingTokenRate](./assets/lip-22/updatingTokenRate.png)
 
 There are two options to deliver the `wstETH/stETH` token rate from L1 to L2 permissionlessly:
-##### Send the rate with each wstETH/stETH token deposit message from L1 to L2
+##### Send the rate with each `wstETH/stETH` token deposit message from L1 to L2
 
-The L1 bridge retrieves the token rate using the `StETH.stEthPerToken()` function, encoding it with the current timestamp into a byte array. Subsequently, the bridge transmits this byte array, along with the token addresses intended for the deposit and other deposit-related data, to the Optimism cross-bridge messenger. On the L2 side, the bridge receives deposit data, verifies its initiation for the `wstETH` token, fetches the rate timestamp, and updates it for `Token Rate Oracle`. This process ensures that the L2 side can mint the accurate amount of rebasable tokens and use the correct rate for subsequent `wrap/unwrap` operations.
+The L1 bridge retrieves the token rate using the `StETH.stEthPerToken()` function, encoding it with the current timestamp into a byte array. Subsequently, the bridge transmits this byte array, along with the token addresses intended for the deposit and other deposit-related data, to the Optimism cross-bridge messenger. On the L2 side, the bridge receives deposit data, verifies its initiation for the wstETH token, fetches the rate timestamp, and updates it for `TokenRateOracle`. This process ensures that the L2 side can mint the accurate amount of rebasable tokens and use the correct rate for subsequent wrap/unwrap operations.
 
 ##### Allow sending the token rate with zero token amount escrowed
 
@@ -306,7 +306,7 @@ To fortify token rate delivery, the proposal suggests utilizing the core Lido pr
 
 When a rebase event occurs, the adapter can forward the token rate to a list of contracts, each responsible for executing deposit transactions for specific rollup solutions. The currently solution is focused mainly on Optimism. `TokenRateNotifier` should manage reverts during calls to each observer to ensure the oracle report remains uninterrupted. Additionally, it should emit an event upon failure.
 
-```solidity=
+```solidity
 interface IPostTokenRebaseReceiver {
     function handlePostTokenRebase(
         uint256 _reportTimestamp,
@@ -362,11 +362,10 @@ The additional gas required for packing and transmitting token rate in each depo
 
 The rate delivery is permissionless and derives the same flow as the token bridging request already has.
 
-#### Rate delivery as a part of the AccountingOracle report
+#### Rate delivery as a part of the `AccountingOracle` report
 
 Sending deposit transactions directly from the core protocol to the Optimism portal brings several advantages:
-Seamless integration:
-- No new services needed to maintain and operate manually (outside of the core protocol).
+- Seamless integration: No new services needed to maintain and operate manually (outside of the core protocol).
 - DAO involvement: the new L2 token comes with an explicit vote to support it.
 - Guarantee of delivery: According to the Optimism specification, sending deposit transactions to `OptimismPortal` ensures fault-tolerant (wrt Sequencer issues) delivery to Layer 2.
 
@@ -376,9 +375,9 @@ The following expectations are set for the design described.
 
 ##### Contracts upgradeable by the Lido DAO Agent
 
-- Both `wstETH` and `stETH` tokens upgradeable by the Lido DAO Agent.
+- Both wstETH and stETH tokens upgradeable by the Lido DAO Agent.
 - Token bridges contracts upgradeable by the Lido DAO Agent.
-- `TokenRateOracle` upgradeability is achieved by an immutable variable stored inside the L2 `stETH` token contract.
+- `TokenRateOracle` upgradeability is achieved by an immutable variable stored inside the L2 stETH token contract.
 - `TokenRateNotifier` upgradeable by the Lido DAO Agent.
 
 ##### Pausable and resumable
