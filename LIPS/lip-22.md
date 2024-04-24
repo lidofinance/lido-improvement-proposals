@@ -369,6 +369,49 @@ Sending deposit transactions directly from the core protocol to the Optimism por
 - DAO involvement: the new L2 token comes with an explicit vote to support it.
 - Guarantee of delivery: According to the Optimism specification, sending deposit transactions to `OptimismPortal` ensures fault-tolerant (wrt Sequencer issues) delivery to Layer 2.
 
+
+### Storage layout and versions
+
+Given that L2 wstETH has already been deployed on certain rollups, it's crucial to consider upgrades without disrupting the existing storage state. Below is a list of current contracts along with their hierarchy and storage types.
+
+| Contract | Storage |
+| -------- | ------- |
+|`L1ERC20ExtendedTokensBridge`/`L2ERC20ExtendedTokensBridge`|no storage except inherited|
+|&nbsp;&nbsp;\|_`BridgingManager`|mixed storage |
+|&nbsp;&nbsp;\|_`RebasableAndNonRebasableTokens`|no storage|
+|&nbsp;&nbsp;\|_`CrossDomainEnabled`|no storage|
+|&nbsp;|&nbsp;|
+|`ERC20Bridged`|no storage variables except inherited|
+|&nbsp;&nbsp;\|_`ERC20Core`|linear storage: totalSupply, balanceOf, allowance|
+|&nbsp;&nbsp;\|_`ERC20Metadata`|unstructured storage: Struct {name, symbol}|
+
+It's evident that there is no consistent approach in organizing the storage layout. For new implementations and upgrades, it's recommended to adopt a single approach, favoring unstructured storage. Thus, here is a list of new and upgraded contracts with their storage types. There is no `TokenRateNotifier` and `OpStackTokenRatePusher` since they are going to be used without proxy.
+
+| Contract | Storage |
+| -------- | ------- |
+|`L1ERC20ExtendedTokensBridge`/`L2ERC20ExtendedTokensBridge`|no storage variables except inherited|
+|&nbsp;&nbsp;\|_`BridgingManager`|mixed storage|
+|&nbsp;&nbsp;\|_`RebasableAndNonRebasableTokens`|no storage variables|
+|&nbsp;&nbsp;\|_`CrossDomainEnabled`|no storage variables|
+|`TokenRateOracle`|unstructed storage|
+|&nbsp;&nbsp;\|_`CrossDomainEnabled`|no storage variables|
+|&nbsp;|&nbsp;|
+|`ERC20BridgedPermit`||no storage variables except inherited|
+|&nbsp;&nbsp;\|_`ERC20Bridged`||no storage variables except inherited|
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\|_`ERC20Core`|linear storage: totalSupply, balanceOf, allowance|
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\|_`ERC20Metadata`|unstructured storage: Struct {name, symbol}|
+|&nbsp;&nbsp;\|_`PermitExtension`|unstructured storage: Struct {name, verions}, noncesByAddress|
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\|_`EIP712`|no storage variables|
+|&nbsp;|&nbsp;|
+|`ERC20RebasableBridgedPermit`|no storage variables except inherited|
+|&nbsp;&nbsp;\|_`ERC20RebasableBridged`|unstructured storage: tokenAllowance, shares, totalShares|
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\|_`ERC20Metadata`|unstructured storage: Struct {name, symbol}|
+|&nbsp;&nbsp;\|_`PermitExtension`|unstructured storage: Struct {name, verions}, noncesByAddress|
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\|_`EIP712`|no storage variables|
+
+### Scheme with all contracts and their API
+![allContractsAPI](./assets/lip-22/allContractsAPI.png)
+
 ### Upgradeability and ownership
 
 The following expectations are set for the design described.
