@@ -25,9 +25,10 @@ While a high-precision check is possible using zero-knowledge technologies and E
 ## Specification
 
 The proposed sanity check operates on the rebase value of the report
+
 $$
-clRebaseValue_i = 
-clBalance_i + withdrawalVaultBalance_i - clBalance_{i-1} - clDepositsAppeared_i
+clRebaseValue_{i} = 
+clBalance_{i} + withdrawalVaultBalance_{i} - clBalance_{i-1} - clDepositsAppeared_{i}
 $$
 
 where
