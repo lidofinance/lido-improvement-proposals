@@ -117,8 +117,6 @@ Possible risks are divided in a way that negative events that can happen swiftly
 In case Oracle reports are missed for some reason, the calculation window may be increased (for example 3 days of missed reports will one-time add 3 days to the calculation window). Since the proposed design takes into account cumulative validators set, such an event may trigger a false positive sanity check, in case all validators are slashed on day x-18, and reports are missed on day x-1,x,x+1 (while no new validators are being added for at least 36 days before such scenario). 
 
 In this case, the amount of accumulated attestation penalties would be higher than 0.101 ETH per validator, but since this amount of penalties is calculated for a validator set of 100000 validators, for a bigger set such a scenario wouldn't trigger a false positive sanity check. Once a trustless second opinion is added, this consideration will be fully mitigated.
-
-
 ### clValidators forging
 
 In this sanity check we rely on $clValidators$ value that Oracle brings with each report. But if oracle committee is colluded they can bring any values in this field. 
