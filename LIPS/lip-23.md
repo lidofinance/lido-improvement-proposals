@@ -101,7 +101,7 @@ Within the formula, we calculated the total number of validators which are still
 As a result maximal decrease per validator in 18-days window equal to 1.101 ETH (0.101 ETH for attestation penalties and 1 ETH for initial slashing penalty). Compared to the existing mechanism such improvement lowers the current sanity check by aproximately 26 times from a 5% decrease per day to a 0.19% decrease per day.
 
 
-## Security consideration
+## Security considerations
 
 ### Dual Governance clashing
 
