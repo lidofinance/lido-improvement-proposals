@@ -33,9 +33,9 @@ $$
 
 where
 
-- $clBalance_i$ — the aggregate balance of all Lido validators on Beacon Chain for the $i$th report day
-- $clDepositsAppeared_i$ — ether that was deposited to Beacon Chain appeared as new validators in $i$th report day
-- $withdrawalVaultBalance_i$ — the amount of ether that was withdrawn from the Beacon Chain to the Lido withdrawal vault on the moment of $i$th report day
+- $clBalance_i$ — the aggregate balance of all Lido validators on Beacon Chain for the $i$ th report day
+- $clDepositsAppeared_i$ — ether that was deposited to Beacon Chain appeared as new validators in $i$ th report day
+- $withdrawalVaultBalance_i$ — the amount of ether that was withdrawn from the Beacon Chain to the Lido withdrawal vault on the moment of $i$ th report day
 
 and 
 
