@@ -55,14 +55,14 @@ $$ maxPenalties_{18} = 0.101 ETH * (clValidators_i - clValidatorsExited_{i-54})$
 
 where
 
-$clValidators_i$ — cumulative number of ever appeared Lido validators on Beacon Chain on the $i$th report
+$clValidators_i$ — cumulative number of ever appeared Lido validators on Beacon Chain on the i-th report
 
-$clValidatorsExited_i$ - cumulative number of Lido validators ever exited from Beacon Chain on the $i$th report
+$clValidatorsExited_i$ - cumulative number of Lido validators ever exited from Beacon Chain on the i-th report
 
 >NOTE 1: In the case if $i-18$ or $i-54$ report is missing, it's safe to use the closest earlier report to construct $maxClRebaseNegativeSum_{18}$.
 
 >NOTE 2: During the bootstrap period, while historical data is not available, it's recommended to use 
-$maxInitialSlashings_{18} = 1 ETH * clValidators_i$ until $i-18$th report is available, and $maxPenalties_{18} = 0.101 ETH * clValidators_i$ until ${i-54}$th report is available. 
+$maxInitialSlashings_{18} = 1 ETH * clValidators_i$ until $i-18$ th report is available, and $maxPenalties_{18} = 0.101 ETH * clValidators_i$ until ${i-54}$ th report is available. 
 
 ### Second opinion
 
