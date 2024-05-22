@@ -1,5 +1,5 @@
 ---
-lip: 25
+lip: 23
 title: Negative rebase sanity check with second opinion
 status: Proposed
 author: Alexey Potapkin, Greg Shestakov, Eugene Pshenichnyi
@@ -8,7 +8,7 @@ created: 2024-04-17
 updated: 2024-05-22
 ---
 
-# LIP-25: Negative rebase sanity check with second opinion
+# LIP-23: Negative rebase sanity check with second opinion
 
 ## Abstract
 
