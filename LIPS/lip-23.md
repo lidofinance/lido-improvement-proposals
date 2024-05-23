@@ -3,7 +3,7 @@ lip: 23
 title: Negative rebase sanity check with second opinion
 status: Proposed
 author: Alexey Potapkin, Greg Shestakov, Eugene Pshenichnyi, Victor Petrenko
-discussions-to: https://research.lido.fi/t/
+discussions-to: https://research.lido.fi/t/lip-23-negative-rebase-sanity-check-with-second-opinion/7543
 created: 2024-04-17
 updated: 2024-05-22
 ---
