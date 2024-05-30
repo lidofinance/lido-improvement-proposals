@@ -1,11 +1,11 @@
 ---
 lip: 22
 title: stETH on L2
-status: WIP
+status: Proposed
 author: Anton Kovalchuk, Artyom Veremeenko, Eugene Mamin
-discussions-to: https://research.lido.fi/t/
+discussions-to: https://research.lido.fi/t/lip-22-steth-on-l2/6855
 created: 2023-11-10
-updated: 2024-03-13
+updated: 2024-05-30
 ---
 
 # LIP-22. stETH on L2
