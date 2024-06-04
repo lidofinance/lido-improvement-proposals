@@ -50,7 +50,9 @@ $$
 In a way, that if $clRebaseSumNegative_{18} > maxClRebaseNegativeSum_{18}$ the check MUST try to retreive a second opinion on the report values. The check is considered failed if no second opinion is available or the second opinion does not match the report.
 
 $$ maxClRebaseNegativeSum_{18} = maxInitialSlashings_{18} + maxPenalties_{18} $$
+
 $$ maxInitialSlashings_{18} = 1 ETH * (clValidators_i - clValidatorsExited_{i-18}) $$
+
 $$ maxPenalties_{18} = 0.101 ETH * (clValidators_i - clValidatorsExited_{i-54})$$
 
 where
