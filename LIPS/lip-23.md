@@ -5,7 +5,7 @@ status: Proposed
 author: Alexey Potapkin, Greg Shestakov, Eugene Pshenichnyi, Victor Petrenko
 discussions-to: https://research.lido.fi/t/lip-23-negative-rebase-sanity-check-with-second-opinion/7543
 created: 2024-04-17
-updated: 2024-05-22
+updated: 2024-06-05
 ---
 
 # LIP-23: Negative rebase sanity check with second opinion
@@ -134,6 +134,8 @@ Values in this doc are calculated considering current Ethereum issuance and vote
 There is no need for any changes in the Oracle daemon. It MUST work as intended without modification and explicit knowledge about additional sanity checks. It will be able to utilize fastlane mechanics and reach a consensus but will fail to submit report data in the case of a significant decrease until the second opinion is ready. But it will retry until it finally succeeds. However, it can be optimized to avoid this polling loop and reduce resource utilization.
 
 Also, proposed approach does not require any additional data from Beacon Chain, so oracles are not to be modified. 
+
+The `checkAccountingOracleReport()` function for `OracleReportSanityChecker` is currently a view function. With the planned improvements, it is neccessary to remove view modifier from the function to make on-chain writes to keep track of the reports over the timespan. It is decided to not change the corresponding `IOracleReportSanityChecker` interface in the `Lido` contract because the contract is written with Solidity 0.4.24 which makes view and non-view calls the same in the resulting EVM bytecode. However, calls to the `checkAccountingOracleReport()` need to be restricted to the Lido contract. It will prevent malicious interference with report data used for rebase calculations.
 
 ## Links
 
