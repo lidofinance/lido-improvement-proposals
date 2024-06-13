@@ -503,7 +503,7 @@ function decreaseStakingModuleVettedKeysCountByNodeOperator(
 
 #### 2.4. New target limit modes
 
-The `StackingRouter` contract should support boosted exit requests for Validator Exit Bus Oracle. To implement this the following changes are needed:
+The `StackingRouter` contract should support more than two target limit modes. To implement this the following changes are needed:
 - The `isTargetLimitActive` field in the `NodeOperatorSummary` structure should be replaced with the new `targetLimitMode` field;
 - Existing external `updateTargetValidatorsLimits` method should be updated;
 - Existing `getNodeOperatorSummary` method should be updated.
@@ -956,9 +956,9 @@ function onExitedAndStuckValidatorsCountsUpdated() external {
 }
 ```
 
-#### 3.4. New Boosted Exit Requests
+#### 3.4. New target limit modes
 
-Now modules should be able to signal Validator Exit Bus Oracle about the necessity of sending a request to exit validators at a specific operator without being tied to demand in the Withdrawal Queue. To implement this improvement, the target validators limit should be able to have 3 possible states: "disabled", "soft mode", and "forced mode". The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` event also should be updated.
+Now it should be possible to update the target validators limit using 3 modes instead of 2: "disabled", "soft mode", and "forced mode". The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` event also should be updated.
 
 ```solidity
 event TargetValidatorsCountChanged(uint256 indexed nodeOperatorId, uint256 targetValidatorsCount, uint256 targetLimitMode);
@@ -1040,8 +1040,8 @@ interface IStakingRouter {
 
 #### 4.2. New keys vetting logic
 
-The keys vetting logic should be changed to support optimistic vetting. This requires a bunch of new events and methods to be defined:
-- New `unvetSigningKeys` external method that unvets signing keys for the given node operators;
+The keys vetting logic should be changed to support optimistic vetting and vetting without governance. This requires a bunch of new events and methods to be defined:
+- New `unvetSigningKeys` external method that unvets signing keys for the given node operators. This method is supposed to be called by the Council Daemon if it finds an invalid key in the deposit queue;
 - Two new `getMaxOperatorsPerUnvetting` and `setMaxOperatorsPerUnvetting` external methods that get and set the maximum number of operators per unvetting;
 - New `_setMaxOperatorsPerUnvetting` internal method that emits the `MaxOperatorsPerUnvettingChanged` event;
 - New `MaxOperatorsPerUnvettingChanged` event;
@@ -1224,11 +1224,29 @@ function unpauseDeposits() external onlyOwner {
 }
 ```
 
-#### 4.4. Changes in `canDeposit` method
+#### 4.4. Deposits frequency limits
 
-New optimistic keys vetting and deposit pause logic require the `canDeposit` method to be changed. It also requires implementation of the new `isMinDepositDistancePassed` external method and the new `_isMinDepositDistancePassed` internal method.
+The frequency of deposits now should be limited. This way there will be distance between deposits to different modules, similar to deposits within a single module. Deposit frequency checks in `depositBufferedEther` and `canDeposit` methods should use the maximum value of `lastDepositBlock` from the module and DSM contract.
+
+This improvement requires a number of changes:
+- Existing `canDeposit` external method should be updated;
+- Existing `depositBufferedEther` external method should be updated;
+- New `getLastDepositBlock` external method should be implemented;
+- New `isMinDepositDistancePassed` external method should be implemented;
+- New `_isMinDepositDistancePassed` internal method should be implemented;
+- New `_setLastDepositBlock` internal method should be implemented;
+- Existing `_verifySignatures` internal method should be renamed to`_verifyAttestSignatures` and updated;
+- New `lastDepositBlock` field should be added;
+- New `LastDepositBlockChanged` event should be added;
+- New `ModuleNonceChanged` error type should be added.
 
 ```solidity
+event LastDepositBlockChanged(uint256 newValue);
+
+error ModuleNonceChanged();
+
+uint256 internal lastDepositBlock;
+
 /**
 * @notice Returns whether LIDO.deposit() can be called, given that the caller
 * will provide guardian attestations of non-stale deposit root and nonce,
@@ -1258,31 +1276,6 @@ function canDeposit(uint256 stakingModuleId) external view returns (bool) {
         && isLidoCanDeposit
     );
 }
-
-/**
-* @notice Returns whether the deposit distance is greater than the minimum required.
-* @param stakingModuleId The ID of the staking module.
-* @return isMinDepositDistancePassed Whether the deposit distance is greater than the minimum required.
-* @dev Checks the distance for the last deposit to any staking module.
-*/
-function isMinDepositDistancePassed(uint256 stakingModuleId) external view returns (bool) {
-    return _isMinDepositDistancePassed(stakingModuleId);
-}
-
-function _isMinDepositDistancePassed(uint256 stakingModuleId) internal view returns (bool) {
-    uint256 lastDepositToModuleBlock = STAKING_ROUTER.getStakingModuleLastDepositBlock(stakingModuleId);
-    uint256 minDepositBlockDistance = STAKING_ROUTER.getStakingModuleMinDepositBlockDistance(stakingModuleId);
-    uint256 maxLastDepositBlock = lastDepositToModuleBlock >= lastDepositBlock ? lastDepositToModuleBlock : lastDepositBlock;
-    return block.number - maxLastDepositBlock >= minDepositBlockDistance;
-}
-```
-
-#### 4.5. Changes in `depositBufferedEther` method
-
-New deposit logic requires changes in the `depositBufferedEther` method. It also requires changes in the `_verifyAttestSignatures` internal method (former `_verifySignatures` method) and the new `ModuleNonceChanged` error type.
-
-```solidity
-error ModuleNonceChanged();
 
 /**
 * @notice Calls LIDO.deposit(maxDepositsPerBlock, stakingModuleId, depositCalldata).
@@ -1339,6 +1332,28 @@ function depositBufferedEther(
     _setLastDepositBlock(block.number);
 }
 
+/**
+* @notice Returns whether the deposit distance is greater than the minimum required.
+* @param stakingModuleId The ID of the staking module.
+* @return isMinDepositDistancePassed Whether the deposit distance is greater than the minimum required.
+* @dev Checks the distance for the last deposit to any staking module.
+*/
+function isMinDepositDistancePassed(uint256 stakingModuleId) external view returns (bool) {
+    return _isMinDepositDistancePassed(stakingModuleId);
+}
+
+/**
+* @return lastDepositBlock The block number of the last deposit.
+*/
+function getLastDepositBlock() external view returns (uint256) {
+    return lastDepositBlock;
+}
+
+function _setLastDepositBlock(uint256 newValue) internal {
+    lastDepositBlock = newValue;
+    emit LastDepositBlockChanged(newValue);
+}
+
 function _verifyAttestSignatures(
     bytes32 depositRoot,
     uint256 blockNumber,
@@ -1364,35 +1379,16 @@ function _verifyAttestSignatures(
         }
     }
 }
-```
 
-#### 4.6. New methods for getting the last deposit block
-
-Now it should be possible to get the block number of the last deposit. This requires the following changes:
-- New `getLastDepositBlock` external method;
-- New `_setLastDepositBlock` internal method;
-- New `LastDepositBlockChanged` event;
-- New `lastDepositBlock` field.
-
-```solidity
-event LastDepositBlockChanged(uint256 newValue);
-
-uint256 internal lastDepositBlock;
-
-/**
-* @return lastDepositBlock The block number of the last deposit.
-*/
-function getLastDepositBlock() external view returns (uint256) {
-    return lastDepositBlock;
-}
-
-function _setLastDepositBlock(uint256 newValue) internal {
-    lastDepositBlock = newValue;
-    emit LastDepositBlockChanged(newValue);
+function _isMinDepositDistancePassed(uint256 stakingModuleId) internal view returns (bool) {
+    uint256 lastDepositToModuleBlock = STAKING_ROUTER.getStakingModuleLastDepositBlock(stakingModuleId);
+    uint256 minDepositBlockDistance = STAKING_ROUTER.getStakingModuleMinDepositBlockDistance(stakingModuleId);
+    uint256 maxLastDepositBlock = lastDepositToModuleBlock >= lastDepositBlock ? lastDepositToModuleBlock : lastDepositBlock;
+    return block.number - maxLastDepositBlock >= minDepositBlockDistance;
 }
 ```
 
-#### 4.7. Changes in contract constructor
+#### 4.5. Changes in contract constructor
 
 Suggested improvements require changes in the contract constructor.
 
@@ -1452,7 +1448,7 @@ constructor(
 }
 ```
 
-#### 4.8. New code version constant
+#### 4.6. New code version constant
 
 New code version constants that helps to distinguish contract interfaces should be added to the contract.
 
