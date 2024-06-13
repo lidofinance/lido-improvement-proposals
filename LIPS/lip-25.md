@@ -503,7 +503,7 @@ function decreaseStakingModuleVettedKeysCountByNodeOperator(
 
 #### 2.4. New target limit modes
 
-The `StackingRouter` contract should support more than two target limit modes. To implement this the following changes are needed:
+The `StackingRouter` contract should support boosted exit requests for Validator Exit Bus Oracle. To implement this the following changes are needed:
 - The `isTargetLimitActive` field in the `NodeOperatorSummary` structure should be replaced with the new `targetLimitMode` field;
 - Existing external `updateTargetValidatorsLimits` method should be updated;
 - Existing `getNodeOperatorSummary` method should be updated.
@@ -956,9 +956,9 @@ function onExitedAndStuckValidatorsCountsUpdated() external {
 }
 ```
 
-#### 3.4. New target limit modes
+#### 3.4. New Boosted Exit Requests
 
-Now it should be possible to update the target validators limit using 3 modes instead of 2: "disabled", "soft mode", and "forced mode". The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` event also should be updated.
+Now modules should be able to signal Validator Exit Bus Oracle about the necessity of sending a request to exit validators at a specific operator without being tied to demand in the Withdrawal Queue. To implement this improvement, the target validators limit should be able to have 3 possible states: "disabled", "soft mode", and "forced mode". The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` event also should be updated.
 
 ```solidity
 event TargetValidatorsCountChanged(uint256 indexed nodeOperatorId, uint256 targetValidatorsCount, uint256 targetLimitMode);
