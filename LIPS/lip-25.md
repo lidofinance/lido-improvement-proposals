@@ -1,18 +1,18 @@
 ---
 lip: 25
-title: Staking router 2.0
+title: Staking Router 2.0
 status: Proposed
-author: Kirill Minenko, Aleksandr Lukin
+author: Kirill Minenko, Alexander Lukin
 discussions-to: <TODO>
 created: 2024-05-06
-updated: 2024-06-11
+updated: 2024-06-13
 ---
 
-# LIP-25: Staking router 2.0 upgrade
+# LIP-25. Staking Router 2.0
 
 ## Simple Summary
 
-This proposal introduces Staking Router v2.0 - the upgrade that should be made to support permissionless modules (such as [Community Staking Module](https://research.lido.fi/t/community-staking-module/5917)) and improve security and scalability of the existing [Staking Router](https://research.lido.fi/t/lip-20-staking-router/3790).
+This proposal introduces Staking Router v2.0 — the upgrade that should be made to support permissionless modules (such as [Community Staking Module](https://research.lido.fi/t/community-staking-module/5917)) and improve security and scalability of the existing [Staking Router](https://research.lido.fi/t/lip-20-staking-router/3790).
 
 The upgrade focuses on enhancing the Deposit Security Module (DSM), the Validator Exit Bus Oracle (VEBO), the third phase of the Lido Oracle, and reward distribution mechanisms in curated-based modules.
 
@@ -35,7 +35,7 @@ All the code in this interface assumes the Solidity v0.8.9 syntax.
 
 #### 1.1. New external methods
 
-The new `decreaseVettedSigningKeysCount` method should be added to the `IStakingModule` interface. It is supposed to be called by Staking Router to decrease the number of vetted keys for node operator with the given ID.
+New `decreaseVettedSigningKeysCount` method should be added to the `IStakingModule` interface. It is supposed to be called by Staking Router to decrease the number of vetted keys for node operator with the given ID.
 
 ```solidity
 /// @param _nodeOperatorIds bytes packed array of the node operators id
@@ -401,7 +401,7 @@ function _getDepositsAllocation(
 
 #### 2.2. Contract version upgrade
 
-For correct migration to the new version of the Staking Router contract, the existing `initialize` external method should be updated, and the new `finalizeUpgrade_v2` external method should be implemented. The existing `ZeroAddress` error type should be transformed to the new `ZeroAddressLido` error type. Also, the new `ZeroAddressAdmin` error type should be added.
+For correct migration to the new version of the `StakingRouter` contract, the existing `initialize` external method should be updated, and the new `finalizeUpgrade_v2` external method should be implemented. The existing `ZeroAddress` error type should be transformed to the new `ZeroAddressLido` error type. Also, the new `ZeroAddressAdmin` error type should be added.
 
 ```solidity
 error ZeroAddressLido();
@@ -747,7 +747,7 @@ function getStakingModuleNonce(uint256 _stakingModuleId) external view returns (
 
 #### 2.7. Excluded methods for module pausing
 
-Methods, events and constants related to Staking Module pausing logic should be removed from the Staking Router contract:
+Methods, events and constants related to Staking Module pausing logic should be removed from the `StakingRouter` contract:
 - `StakingModuleNotPaused` error type;
 - `STAKING_MODULE_PAUSE_ROLE` and `STAKING_MODULE_RESUME_ROLE` constants;
 - `pauseStakingModule` and `resumeStakingModule` methods.
@@ -889,7 +889,7 @@ Rewards can be distributed after node operators' statistics are updated until th
 **Start report frame 2**
 
 *... Reward can be distributed ...*
-    *(if not distributed yet)*
+*(if not distributed yet)*
 
 1. Oracle first phase: Reach hash consensus.
 2. Oracle second phase: Module receives rewards.
@@ -956,7 +956,7 @@ function onExitedAndStuckValidatorsCountsUpdated() external {
 
 #### 3.4. New target limit modes
 
-Now it should be possible to update the target validators limit using 3 modes instead of 2: "disabled", "soft mode", and "forced mode". The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` also should be updated.
+Now it should be possible to update the target validators limit using 3 modes instead of 2: "disabled", "soft mode", and "forced mode". The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` event also should be updated.
 
 ```solidity
 event TargetValidatorsCountChanged(uint256 indexed nodeOperatorId, uint256 targetValidatorsCount, uint256 targetLimitMode);
@@ -1018,7 +1018,7 @@ All the code of this contract assumes the Solidity v0.8.9 syntax.
 
 #### 4.1. Changes in `IStakingRouter` interface
 
-The `IStakingRouter` interface should be changed to reflect the new Deposit Security Module logic. The `pauseStakingModule`, `resumeStakingModule` and `getStakingModuleIsDepositsPaused` function should be removed from the interface, and new `getStakingModuleMinDepositBlockDistance`, `getStakingModuleMaxDepositsPerBlock` and `decreaseStakingModuleVettedKeysCountByNodeOperator` functions should be added.
+The `IStakingRouter` interface should be changed to reflect the new Deposit Security Module logic. The `pauseStakingModule`, `resumeStakingModule` and `getStakingModuleIsDepositsPaused` functions should be removed from the interface, and new `getStakingModuleMinDepositBlockDistance`, `getStakingModuleMaxDepositsPerBlock` and `decreaseStakingModuleVettedKeysCountByNodeOperator` functions should be added.
 
 ```solidity
 interface IStakingRouter {
@@ -1157,12 +1157,12 @@ function unvetSigningKeys(
 }
 ```
 
-#### 4.3. Changes in deposits pause logic
+#### 4.3. New deposits pause logic
 
 New deposits pause logic requires the following changes:
-- Existing `pauseDeposits` and `unpauseDeposits` external methods should be changed.
+- Existing `pauseDeposits` and `unpauseDeposits` external methods should be changed;
 - Signature of the existing `DepositsPaused` and `DepositsUnpaused` events should be changed;
-- Two new `DepositsArePaused` and `DepositsNotPaused` error types should be created.
+- Two new `DepositsArePaused` and `DepositsNotPaused` error types should be created;
 - New public flag indicating whether deposits are paused should be created.
 
 ```solidity
@@ -1461,8 +1461,8 @@ uint256 public constant VERSION = 3;
 ### 5. `OracleReportSanityChecker` contract changes
 
 To support the new multi-transactional third phase, two oracle sanity checker limits should be reconsidered:
-- Existing `churnValidatorsPerDayLimit` should be replaced with a new `exitedValidatorsPerDayLimit`. It is the maximum possible number of validators that might be reported as `exited` per single day, depends on the Consensus Layer churn limit.
-- New `appearedValidatorsPerDayLimit` should be added. It is the maximum possible number of validators that might be reported as `appeared` per single day, limited by the maximum daily deposits via DepositSecurityModule in practice isn't limited by a consensus layer (because `appeared` includes `pending`, i.e., not `activated` yet).
+- Existing `churnValidatorsPerDayLimit` should be replaced with the new `exitedValidatorsPerDayLimit`. It is the maximum possible number of validators that might be reported as `exited` per single day, depends on the Consensus Layer churn limit.
+- New `appearedValidatorsPerDayLimit` should be added. It is the maximum possible number of validators that might be reported as `appeared` per single day.
 
 All related structures, constants and methods of the `OracleReportSanityChecker` contract should be updated to support these two new limits.
 
@@ -1691,16 +1691,14 @@ library LimitsListUnpacker {
 }
 ```
 
-### 6. AccountingOracle changes
-
-TODO couple words about Extra data
+### 6. `AccountingOracle` contract changes
 
 All the code of this contract assumes the Solidity v0.8.9 syntax.
 
 #### 6.1. Multi-transactional third phase
 
-To support multi-transactional third phase of the Accounting Oracle, a number of changes should be implemented in the Accounting Oracle contract:
-- `IOracleReportSanityChecker` call should be removed from the existing `_handleConsensusReportData` internal method;
+To support multi-transactional third phase of the Accounting Oracle, a number of changes should be implemented in the `AccountingOracle` contract:
+- The `IOracleReportSanityChecker` call should be removed from the existing `_handleConsensusReportData` internal method;
 - Implementation of the `_submitReportExtraDataList` and `_processExtraDataItems` internal methods should be changed;
 - Second and third phases of the `_processExtraDataItem` internal methods should be updated;
 - Existing `ExtraDataListOnlySupportsSingleTx` error type should be replaced with the new `UnexpectedExtraDataLength` error type.
@@ -1915,7 +1913,7 @@ interface IOracleReportSanityChecker {
 
 #### 6.3. Contract version upgrade
 
-For correct migration to the new version of the Accounting Oracle contract, the existing initialize methods should be updated, and the new `finalizeUpgrade_v2` external method should be implemented.
+For correct migration to the new version of the `AccountingOracle` contract, the existing initialize methods should be updated, and the new `finalizeUpgrade_v2` external method should be implemented.
 
 ```solidity
 function initialize(
@@ -1985,10 +1983,3 @@ function allocate(
     return (allocated, buckets);
 }
 ```
-
-## Security Considerations
-
-TODO
-
-### Links
-- TODO
