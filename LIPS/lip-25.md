@@ -31,6 +31,8 @@ Current reward distribution mechanisms, tied to the third-phase finalization hoo
 
 ### 1. `IStakingModule` interface changes
 
+To support the new [automated keys vetting process](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) in the Deposit Security Module and [Boosted Exit Requests](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) in the Validator Exit Bus Oracle, the `IStakingModule` interface should endure a number of changes.
+
 All the code in this interface assumes the Solidity v0.8.9 syntax.
 
 #### 1.1. New external methods
