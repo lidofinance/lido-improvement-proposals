@@ -28,7 +28,6 @@ Current reward distribution mechanisms, tied to the third-phase finalization hoo
 
 ## Specification
 
-
 ### 1. `IStakingModule` interface changes
 
 To support the new [automated keys vetting process](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) in the Deposit Security Module and [Boosted Exit Requests](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) in the Validator Exit Bus Oracle, the `IStakingModule` interface should endure a number of changes.
@@ -37,9 +36,10 @@ All the code in this interface assumes the Solidity v0.8.9 syntax.
 
 #### 1.1. New external methods
 
-New `decreaseVettedSigningKeysCount` method should be added to the `IStakingModule` interface. It is supposed to be called by Staking Router to decrease the number of vetted keys for node operator with the given ID.
+As the role of decreasing the number of vetted keys is [proposed to be granted](https://hackmd.io/@lido/rJrTnEc2a#Unvetting) to the Deposit Security Module, the new `decreaseVettedSigningKeysCount` method should be added to the `IStakingModule` interface. Keys unvetting occurs through the `DepositSecurityModule ` contract, which should call the `decreaseVettedSigningKeysCount` method on the module side through the Staking Router.
 
 ```solidity
+/// @notice Called by StakingRouter to decrease the number of vetted keys for node operator with given id
 /// @param _nodeOperatorIds bytes packed array of the node operators id
 /// @param _vettedSigningKeysCounts bytes packed array of the new number of vetted keys for the node operators
 function decreaseVettedSigningKeysCount(
@@ -50,7 +50,20 @@ function decreaseVettedSigningKeysCount(
 
 #### 1.2. Changes in existing methods
 
-The number of `IStakingModule` interface methods should be updated:
+It is proposed to allow modules to signal the Validator Exit Bus Oracle about the necessity of sending a request to exit validators at a specific operator without being tied to demand in the Withdrawal Queue (WQ). For this, it is suggested to modify the current `targetLimit` instrument by adding an additional boosted exit mode, namely, the parameter `bool isTargetLimitActive` is proposed to be replaced with `uint8 targetLimitMode` taking one of the following values:
+- `0` – Disabled;
+- `1` – Limited stake, smooth exit mode;
+- `2` – Limited stake, boosted exit mode.
+
+**Disabled.** This mode implies no limitation. The operator is not restricted in receiving new stakes and does not have additional priorities when choosing validators for exit.
+
+**Smooth exit mode.** The operator has a limit on the number of active validators. As long as the number of active validators of the operator does not exceed the `targetLimit`, the operator receives stakes under general conditions. If this value is reached, the operator stops receiving new stakes (should be implemented at the module level). If the number of active keys of the operator exceeds the `targetLimit`, then such an operator's validators are prioritized for exit in the amount of targeted validators to exit.
+
+**Boosted exit mode.** Similar to smooth mode, but does not consider demand in WQ. The operator's validators in the amount of targeted validators to exit are prioritized for exit and requested without considering demand in WQ.
+
+More details about this change can be found in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp#Boosted-Exit-Requests1).
+
+For this improvement, the following changes should be made in the existing `IStakingModule` interface methods:
 - The `isTargetLimitActive` boolean value of the `getNodeOperatorSummary` method should be replaced with the new `targetLimitMode` uint256 value;
 - The `_stuckValidatorsCounts` param of the `updateExitedValidatorsCount` method should be replaced with the   `_exitedValidatorsCounts` param;
 - The `_isTargetLimitActive` boolean param of the `updateTargetValidatorsLimits` method should be replaced with the  `_targetLimitMode` param.
@@ -101,9 +114,15 @@ function updateTargetValidatorsLimits(
 ) external;
 ```
 
+##### 1.2.1. Backward compatibility notes
+
+The change in the `updateTargetValidatorsLimits` method does not break backward compatibility with the EasyTrack factory `UpdateTargetValidatorLimits` which is used to set limits in the Simple DVT module.
+
+The change from `bool isTargetLimitActive` to `uint8 targetLimitMode` affects the response from the view method `getNodeOperatorSummary`, which may be used in external integrations and offchain tooling. Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests). All modes other than disabled are interpreted by the decoder based on the old interface as the enabled `targetLimit` mode.
+
 #### 1.3. New events
 
-Two new events should be added to the `IStakingModule` interface.
+Two new events should be added to the `IStakingModule` interface. The purpose of the new events is to help Council Daemon [find duplicate keys in the deposit message](https://hackmd.io/@lido/rJrTnEc2a#Duplicate-Check).
 
 ```solidity
 /// @dev Event to be emitted when a signing key is added to the StakingModule
@@ -117,9 +136,40 @@ event SigningKeyRemoved(uint256 indexed nodeOperatorId, bytes pubkey);
 
 All the code of this contract assumes the Solidity v0.8.9 syntax.
 
-#### 2.1. Module's share consideration for validator exits
+#### 2.1. New Target Share engine for validator exits
 
-Staking Router now should consider module's share when prioritizing validators for exit. Support of this improvement in the `StakingRouter` contract requires several changes:
+When validators are exited from one module, its share decreases, while the shares of other modules increase. This can lead to a situation where a module's share significantly exceeds its target share. To solve this problem Staking Router should consider the module's share when prioritizing validators for exit. It is proposed to represent the target share of a module as a range of values: `stakeShareLimit` and `priorityExitShareThreshold`, where `stakeShareLimit <= priorityExitShareThreshold`.
+
+The lower value `stakeShareLimit` represents the maximum share that can be allocated to a module when distributing stakes among modules. This parameter is nothing other than the current `targetShare`. Nevertheless, it is suggested to rename it, as its current name does not fully reflect its essence.
+
+The higher value `priorityExitShareThreshold` represents the module's share threshold, upon crossing which, exits of validators from the module will be prioritized.
+
+These two values allow the module to be in one of three states at any given time:
+
+*Module has not reached share limit*
+
+`currentShare < stakeShareLimit`. The proposed design makes no changes for this state. Everything remains as it is:
+
+- The staking router **prioritizes stake allocation** to modules in this state;
+- Validators in a module with this state **do not have any extra priority for exit**.
+
+*Module has reached stake share limit*
+
+`stakeShareLimit <= currentShare <= priorityExitShareThreshold`. The proposed design makes no changes for this state. Everything remains as it is:
+
+- The staking router **does not allocate stake** to modules in this state;
+- Validators in a module with this state **do not have any extra priority for exit**.
+
+*Module exceeds priority exit threshold*
+
+`priorityExitShareThreshold < currentShare`. It is the state that is affected by the proposed changes.
+
+- The staking router **does not allocate stake** to modules in this state;
+- Validators in a module with this state have an **increased exit priority**.
+
+More details about this change can be found in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp#Target-Share1).
+
+Support of the new Target Share engine in the `StakingRouter` contract requires the following changes:
 - Existing external `addStakingModule` method should be updated;
 - Existing external `updateStakingModule` method should be updated;
 - New internal `_updateStakingModule` method should be created;
@@ -401,6 +451,17 @@ function _getDepositsAllocation(
   }
 ```
 
+##### 2.1.1. Backward compatibility notes
+
+The change to the `StakingModule` struct affects the response from some view methods, which may be used in external integrations and offchain tooling:
+
+- `getStakingModule`;
+- `getStakingModules`;
+- `getStakingModuleDigests`;
+- `getAllStakingModuleDigests`.
+
+[Tests](https://github.com/lidofinance/sr-1.5-compatibility-tests) show that backward compatibility remains for both offchain tools and possible onchain integrations. The modified response is correctly decoded using standard Solidity tools and the Ethers library. New bytes in the response are ignored.
+
 #### 2.2. Contract version upgrade
 
 For correct migration to the new version of the `StakingRouter` contract, the existing `initialize` external method should be updated, and the new `finalizeUpgrade_v2` external method should be implemented. The existing `ZeroAddress` error type should be transformed to the new `ZeroAddressLido` error type. Also, the new `ZeroAddressAdmin` error type should be added.
@@ -479,7 +540,7 @@ function finalizeUpgrade_v2(
 
 #### 2.3. Keys vetting improvements
 
-Support of new key vetting logic requires implementation of the new `decreaseStakingModuleVettedKeysCountByNodeOperator` external method. Also, the new `STAKING_MODULE_UNVETTING_ROLE` constant should be defined.
+Support of the [new key vetting logic](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) requires implementation of the new `decreaseStakingModuleVettedKeysCountByNodeOperator` external method. Also, the new `STAKING_MODULE_UNVETTING_ROLE` constant should be defined.
 
 ```solidity
 bytes32 public constant STAKING_MODULE_UNVETTING_ROLE = keccak256("STAKING_MODULE_UNVETTING_ROLE");
@@ -503,7 +564,9 @@ function decreaseStakingModuleVettedKeysCountByNodeOperator(
 
 #### 2.4. New target limit modes
 
-The `StackingRouter` contract should support more than two target limit modes. To implement this the following changes are needed:
+It is proposed to replace the current `isTargetLimitActive` parameter with the new `targetLimitMode` parameter to allow the Staking Router to consider the module's share when prioritizing validators for exit. More details can be found in the [`IStakingModule` interface specification](#1.2.-changes-in-existing-methods) and in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp#VEBO-Improvements).
+
+To implement this improvement the following changes are needed:
 - The `isTargetLimitActive` field in the `NodeOperatorSummary` structure should be replaced with the new `targetLimitMode` field;
 - Existing external `updateTargetValidatorsLimits` method should be updated;
 - Existing `getNodeOperatorSummary` method should be updated.
@@ -583,9 +646,9 @@ function getNodeOperatorSummary(
 }
 ```
 
-#### 2.5. New methods for getting deposit blocks
+#### 2.5. New deposit parameters
 
-Two new external methods for getting module's min deposit block distance and max deposits per block should be implemented.
+It is proposed to move the parameters `maxDepositsPerBlock` and `minDepositBlockDistance` from DSM to the Staking Router level. Modules with different properties have different risks when making deposits, so these parameters can be different for different modules. More reasons for this change are provided in the [DSM specification](https://hackmd.io/@lido/rJrTnEc2a#Deposit). New methods for getting these new parameters also should be implemented.
 
 ```solidity
 function getStakingModuleMinDepositBlockDistance(uint256 _stakingModuleId) external view returns (uint256) {
@@ -596,6 +659,16 @@ function getStakingModuleMaxDepositsPerBlock(uint256 _stakingModuleId) external 
     return _getStakingModuleById(_stakingModuleId).maxDepositsPerBlock;
 }
 ```
+
+##### 2.5.1. Backward compatibility notes
+
+Changing the `StakingModule` struct will affect the following view methods, which can be used in external integrations and offchain tooling:
+- `getStakingModule`;
+- `getStakingModules`;
+- `getStakingModuleDigests`;
+- `getAllStakingModuleDigests`.
+
+[Tests](https://github.com/lidofinance/sr-1.5-compatibility-tests) show that backward compatibility remains for both offchain tooling and possible onchain integrations. The modified methods responses are correctly decoded by standard Solidity decoder and the Ethers library. New bytes in the responses are ignored.
 
 #### 2.6. New internal `_getIStakingModuleById` method
 
@@ -748,8 +821,10 @@ function getStakingModuleNonce(uint256 _stakingModuleId) external view returns (
 ```
 
 #### 2.7. Excluded methods for module pausing
+Now the protocol should be able to pause deposits to all modules at once. The pausing logic should be moved to the `DepositSecurityModule` contract. More reasons for this change are provided in the new [DSM specification](https://hackmd.io/@lido/rJrTnEc2a#Soft-Pause).
 
-Methods, events and constants related to Staking Module pausing logic should be removed from the `StakingRouter` contract:
+The following methods, events and constants that implement pausing logic in the `StakingRouter` contract should be deleted:
+
 - `StakingModuleNotPaused` error type;
 - `STAKING_MODULE_PAUSE_ROLE` and `STAKING_MODULE_RESUME_ROLE` constants;
 - `pauseStakingModule` and `resumeStakingModule` methods.
@@ -787,7 +862,7 @@ function _initialize_v3() internal {
 
 #### 3.2. New `decreaseVettedSigningKeysCount` method
 
-The new `decreaseVettedSigningKeysCount` method should be implemented. It is called by the Staking Router to decrease the number of vetted keys for the node operator with the given ID.
+The new `decreaseVettedSigningKeysCount` method should be implemented. It is called by the Staking Router to decrease the number of vetted keys for the node operator with the given ID. See more details about this change in the [`IStakingModule` interface specification](#1.1.-new-external-methods).
 
 ```solidity
 /// @param _nodeOperatorIds bytes packed array of the node operators id
@@ -874,12 +949,13 @@ function _updateVettedSingingKeysCount(
 
 #### 3.3. New reward distribution engine
 
-The new external permissionless `distributeReward` method should be implemented. This method should distribute all accumulated module rewards among node operators based on the latest accounting report.
+Currently curated modules distribute rewards during the third phase of the Accounting Oracle report, while other modules can use alternative mechanisms of rewards distribution. This complicates the accounting report and could potentially become a source of bugs.
+
+To solve this problem it is proposed to implement new permissionless `distributeReward` method. This method should distribute all accumulated module rewards among node operators based on the latest accounting report. Using this new method, reward distribution will be decoupled from the Accounting Oracle report and can be executed separately in each staking module.
 
 Rewards can be distributed after node operators' statistics are updated until the next reward is transferred to the module during the next oracle frame.
 
 ---
-
 
 **Start report frame 1**
 1. Oracle first phase: Reach hash consensus.
@@ -906,8 +982,13 @@ Rewards can be distributed after node operators' statistics are updated until th
 
 ---
 
+Once the delivery of third-phase report updates is complete, the Accounting Oracle triggers the Finalization hook (calling the Staking Router's `onValidatorsCountsByNodeOperatorReportingFinished`). Within this method, for each staking module, the `onExitedAndStuckValidatorsCountsUpdated` method should be called. This signals that all Node Operator updates have been successfully delivered and the Accounting Oracle report is finalized.
 
-Also, the new `_updateRewardDistributionState` internal method should be implemented. It should emit the new `RewardDistributionStateChanged` event. This method should be called in a bunch of new and existing methods, such as `_initialize_v3`, `onRewardsMinted`, `updateRefundedValidatorsCount`, `distributeReward`, and `onExitedAndStuckValidatorsCountsUpdated`.
+Currently, rewards distribution in curated-based staking modules occurs within the `onExitedAndStuckValidatorsCountsUpdated` method. The proposed solution is to update this method to mark the module as ready for reward distribution instead of distributing the reward directly. The actual reward distribution will subsequently start within the `distributeReward` method.
+
+It's worth mentioning the existing `onRewardsMinted` method, which is used by the Staking Router during the second phase of the Accounting Oracle report to notify each Staking Module that the total module reward has been transferred to the module. In this method, reward distribution is blocked until the third phase report is finished (as per `onExitedAndStuckValidatorsCountsUpdated` above), ensuring that rewards can be distributed among node operators.
+
+More details about the new reward distribution engine can be found in the [Reward distribution in curated-based modules specification](https://hackmd.io/@lido/HJYbVq5b0).
 
 ```solidity
 event RewardDistributionStateChanged(RewardDistributionState state);
@@ -958,7 +1039,9 @@ function onExitedAndStuckValidatorsCountsUpdated() external {
 
 #### 3.4. New target limit modes
 
-Now it should be possible to update the target validators limit using 3 modes instead of 2: "disabled", "soft mode", and "forced mode". The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` event also should be updated.
+Now it should be possible to have 3 possible states for the target validators limit. More details about the purpose of this change can be found in the [`IStakingModule` interface specification](#1.2.-changes-in-existing-methods) and in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp#VEBO-Improvements).
+
+The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` event also should be updated.
 
 ```solidity
 event TargetValidatorsCountChanged(uint256 indexed nodeOperatorId, uint256 targetValidatorsCount, uint256 targetLimitMode);
@@ -1022,6 +1105,8 @@ All the code of this contract assumes the Solidity v0.8.9 syntax.
 
 The `IStakingRouter` interface should be changed to reflect the new Deposit Security Module logic. The `pauseStakingModule`, `resumeStakingModule` and `getStakingModuleIsDepositsPaused` functions should be removed from the interface, and new `getStakingModuleMinDepositBlockDistance`, `getStakingModuleMaxDepositsPerBlock` and `decreaseStakingModuleVettedKeysCountByNodeOperator` functions should be added.
 
+More details about these changes can be found in the new [DSM specification](https://hackmd.io/@lido/rJrTnEc2a).
+
 ```solidity
 interface IStakingRouter {
     function getStakingModuleMinDepositBlockDistance(uint256 _stakingModuleId) external view returns (uint256);
@@ -1040,7 +1125,9 @@ interface IStakingRouter {
 
 #### 4.2. New keys vetting logic
 
-The keys vetting logic should be changed to support optimistic vetting and vetting without governance. This requires a bunch of new events and methods to be defined:
+Keys may become invalid over time in case of a front-run attack attempt. Therefore, it's important to [introduce a mechanism for unvetting keys](https://hackmd.io/@lido/rJrTnEc2a#Unvetting), which will be uniform and required for all modules. It is proposed to grant the role of decreasing the number of vetted keys to DSM and to modify the `IStakingModule` interface that must be supported by every module. Thus, unvetting occurs through the DSM contract, which calls the corresponding method on the module side through the Staking Router.
+
+This requires a bunch of new events and methods to be defined:
 - New `unvetSigningKeys` external method that unvets signing keys for the given node operators. This method is supposed to be called by the Council Daemon if it finds an invalid key in the deposit queue;
 - Two new `getMaxOperatorsPerUnvetting` and `setMaxOperatorsPerUnvetting` external methods that get and set the maximum number of operators per unvetting;
 - New `_setMaxOperatorsPerUnvetting` internal method that emits the `MaxOperatorsPerUnvettingChanged` event;
@@ -1160,6 +1247,8 @@ function unvetSigningKeys(
 ```
 
 #### 4.3. New deposits pause logic
+
+To support new permissionless modules and eliminate guardians collusion attack, now it should be possible to pause deposits to all modules at once. [The proposed design](https://hackmd.io/@lido/rJrTnEc2a#Pause) no longer allows an operator to trigger a pause, which eliminates the need to isolate pauses by modules and implements an approach of a universal deposit pause, reducing the risks of a guardian collusion attack.
 
 New deposits pause logic requires the following changes:
 - Existing `pauseDeposits` and `unpauseDeposits` external methods should be changed;
@@ -1458,11 +1547,16 @@ uint256 public constant VERSION = 3;
 
 ### 5. `OracleReportSanityChecker` contract changes
 
-To support the new multi-transactional third phase, two oracle sanity checker limits should be reconsidered:
-- Existing `churnValidatorsPerDayLimit` should be replaced with the new `exitedValidatorsPerDayLimit`. It is the maximum possible number of validators that might be reported as `exited` per single day, depends on the Consensus Layer churn limit.
-- New `appearedValidatorsPerDayLimit` should be added. It is the maximum possible number of validators that might be reported as `appeared` per single day.
+With the introduction of new modules, the Accounting Oracle third-phase report might not fit into a single transaction. In the new version of the Accounting Oracle, the ability to split the report's third phase to multiple transactions will be implemented. To support these changes, some of the on-chain sanity checkers in the `OracleReportSanityChecker` contract should be reconsidered.
+
+Currently, the `churnValidatorsPerDayLimit` parameter is used to validate both newly exited validators `checkExitedValidatorsRatePerDay` and newly deposited validators `_checkAppearedValidatorsChurnLimit`. It is proposed to divide this into two distinct parameters, each with more precise values tailored to the respective cases. On the second phase of the Accounting Report, the `checkExitedValidatorsRatePerDay` sanity check will use new `exitedValidatorsPerDayChurnLimit`, and the `_checkAppearedValidatorsChurnLimit` check will use the value from the `appearedValidatorsPerDayLimit`.
+
+- New `exitedValidatorsPerDayLimit` parameter is the maximum possible number of validators that might be reported as `exited` per single day, depends on the Consensus Layer churn limit.
+- New `appearedValidatorsPerDayLimit` parameter is the maximum possible number of validators that might be reported as `appeared` per single day.
 
 All related structures, constants and methods of the `OracleReportSanityChecker` contract should be updated to support these two new limits.
+
+More details about new sanity checkers can be found in the [Expand the third phase in Oracle specification](https://hackmd.io/HCXVrrZAQNCm_IC0lYvJjw).
 
 All the code of this contract assumes the Solidity v0.8.9 syntax.
 
@@ -1701,6 +1795,8 @@ To support multi-transactional third phase of the Accounting Oracle, a number of
 - Second and third phases of the `_processExtraDataItem` internal methods should be updated;
 - Existing `ExtraDataListOnlySupportsSingleTx` error type should be replaced with the new `UnexpectedExtraDataLength` error type.
 
+More implementation details can be found in the [Expand the third phase in Oracle specification](https://hackmd.io/HCXVrrZAQNCm_IC0lYvJjw?view#Implementation-Details).
+
 ```solidity
 error UnexpectedExtraDataLength();
 
@@ -1898,8 +1994,7 @@ function _processExtraDataItems(bytes calldata data, ExtraDataIterState memory i
 
 #### 6.2. Sanity checkers
 
-As the number of assumptions were changed, sanity checkers for Accounting Oracle should be updated as well:
-- The `checkAccountingExtraDataListItemsCount` method of the `IOracleReportSanityChecker` interface should be replaced by the `checkExtraDataItemsCountPerTransaction` method with the same signature.
+Currently the `OracleReportSanityChecker` contains parameters to establish the maximum number of node operators that can be updated during the third phase of the report. Sanity checks in the `IOracleReportSanityChecker` interface should be changed as the multi-transaction approach no longer imposes limits on the entire report size. Rather than validating the entire report size, it is proposed to validate each transaction during the third phase.
 
 ```solidity
 interface IOracleReportSanityChecker {
