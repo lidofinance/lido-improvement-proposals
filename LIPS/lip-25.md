@@ -5,7 +5,7 @@ status: Proposed
 author: Kirill Minenko, Alexander Lukin
 discussions-to: <TODO>
 created: 2024-05-06
-updated: 2024-06-13
+updated: 2024-06-15
 ---
 
 # LIP-25. Staking Router 2.0
@@ -20,7 +20,7 @@ The upgrade focuses on enhancing the Deposit Security Module (DSM), the Validato
 
 In the current implementation of the Curated modules, key vetting (a process of making keys depositable) occurs through the DAO, and in particular EasyTrack motion, which the operator initiates after submitting keys. DSM changes aim to improve the process of key vetting to be able to work without the governance approval and to accommodate future permissionless modules.
 
-The current VEBO mechanism only processes validator exits in response to user withdrawal requests. This limitation hinders the protocol's ability to manage validator exits proactively, especially for permissionless modules. From the Staking Router's side, it is proposed to consider the module's share when prioritizing validators for exit.
+The current VEBO mechanism only requests validators to exit in response to user withdrawal requests. This limitation hinders the protocol's ability to manage validator exits proactively, especially for permissionless modules. From the Staking Router's side, it is proposed to consider the module's share when prioritizing validators for exit.
 
 The introduction of the Community Staking Module, which does not limit the number of node operators, necessitates a scalable solution for the Oracle's third-phase reporting.
 
@@ -30,7 +30,7 @@ Current reward distribution mechanisms, tied to the third-phase finalization hoo
 
 ### 1. `IStakingModule` interface changes
 
-To support the new [automated keys vetting process](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) in the Deposit Security Module and [Boosted Exit Requests](https://hackmd.io/@lido/BJXRTxMRp#Boosted-Exit-Requests1) in the Validator Exit Bus Oracle, the `IStakingModule` interface should endure a number of changes.
+To support the new [unvetting keys process](https://hackmd.io/@lido/rJrTnEc2a#Unvetting) in the Deposit Security Module and [Boosted Exit Requests](https://hackmd.io/@lido/BJXRTxMRp#Boosted-Exit-Requests1) in the Validator Exit Bus Oracle, the `IStakingModule` interface should endure a number of changes.
 
 All the code in this interface assumes the Solidity v0.8.9 syntax.
 
@@ -65,7 +65,6 @@ More details about this change can be found in the [VEBO Improvements specificat
 
 For this improvement, the following changes should be made in the existing `IStakingModule` interface methods:
 - The `isTargetLimitActive` boolean value of the `getNodeOperatorSummary` method should be replaced with the new `targetLimitMode` uint256 value;
-- The `_stuckValidatorsCounts` param of the `updateExitedValidatorsCount` method should be replaced with the   `_exitedValidatorsCounts` param;
 - The `_isTargetLimitActive` boolean param of the `updateTargetValidatorsLimits` method should be replaced with the  `_targetLimitMode` param.
 
 ```solidity
@@ -94,14 +93,6 @@ function getNodeOperatorSummary(uint256 _nodeOperatorId) external view returns (
     uint256 totalDepositedValidators,
     uint256 depositableValidatorsCount
 );
-
-/// @notice Updates the number of the validators in the EXITED state for node operator with given id
-/// @param _nodeOperatorIds bytes packed array of the node operators id
-/// @param _exitedValidatorsCounts bytes packed array of the new number of EXITED validators for the node operators
-function updateExitedValidatorsCount(
-    bytes calldata _nodeOperatorIds,
-    bytes calldata _exitedValidatorsCounts
-) external;
 
 /// @notice Updates the limit of the validators that can be used for deposit
 /// @param _nodeOperatorId Id of the node operator
