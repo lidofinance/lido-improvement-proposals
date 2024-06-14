@@ -30,7 +30,7 @@ Current reward distribution mechanisms, tied to the third-phase finalization hoo
 
 ### 1. `IStakingModule` interface changes
 
-To support the new [automated keys vetting process](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) in the Deposit Security Module and [Boosted Exit Requests](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) in the Validator Exit Bus Oracle, the `IStakingModule` interface should endure a number of changes.
+To support the new [automated keys vetting process](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) in the Deposit Security Module and [Boosted Exit Requests](https://hackmd.io/@lido/BJXRTxMRp#Boosted-Exit-Requests1) in the Validator Exit Bus Oracle, the `IStakingModule` interface should endure a number of changes.
 
 All the code in this interface assumes the Solidity v0.8.9 syntax.
 
@@ -61,7 +61,7 @@ It is proposed to allow modules to signal the Validator Exit Bus Oracle about th
 
 **Boosted exit mode.** Similar to smooth mode, but does not consider demand in WQ. The operator's validators in the amount of targeted validators to exit are prioritized for exit and requested without considering demand in WQ.
 
-More details about this change can be found in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp#Boosted-Exit-Requests1).
+More details about this change can be found in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp).
 
 For this improvement, the following changes should be made in the existing `IStakingModule` interface methods:
 - The `isTargetLimitActive` boolean value of the `getNodeOperatorSummary` method should be replaced with the new `targetLimitMode` uint256 value;
@@ -140,7 +140,7 @@ All the code of this contract assumes the Solidity v0.8.9 syntax.
 
 When validators are exited from one module, its share decreases, while the shares of other modules increase. This can lead to a situation where a module's share significantly exceeds its target share. To solve this problem Staking Router should consider the module's share when prioritizing validators for exit. It is proposed to represent the target share of a module as a range of values: `stakeShareLimit` and `priorityExitShareThreshold`, where `stakeShareLimit <= priorityExitShareThreshold`.
 
-The lower value `stakeShareLimit` represents the maximum share that can be allocated to a module when distributing stakes among modules. This parameter is nothing other than the current `targetShare`. Nevertheless, it is suggested to rename it, as its current name does not fully reflect its essence.
+The lower value `stakeShareLimit` represents the maximum share that can be allocated to a module when distributing stakes among modules. This parameter is the same as the current `targetShare`.
 
 The higher value `priorityExitShareThreshold` represents the module's share threshold, upon crossing which, exits of validators from the module will be prioritized.
 
@@ -460,7 +460,7 @@ The change to the `StakingModule` struct affects the response from some view met
 - `getStakingModuleDigests`;
 - `getAllStakingModuleDigests`.
 
-[Tests](https://github.com/lidofinance/sr-1.5-compatibility-tests) show that backward compatibility remains for both offchain tools and possible onchain integrations. The modified response is correctly decoded using standard Solidity tools and the Ethers library. New bytes in the response are ignored.
+Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests) for both offchain tools and possible onchain integrations. The modified response is correctly decoded using standard Solidity tools and the Ethers library. New bytes in the response are ignored.
 
 #### 2.2. Contract version upgrade
 
@@ -564,7 +564,7 @@ function decreaseStakingModuleVettedKeysCountByNodeOperator(
 
 #### 2.4. New target limit modes
 
-It is proposed to replace the current `isTargetLimitActive` parameter with the new `targetLimitMode` parameter to allow the Staking Router to consider the module's share when prioritizing validators for exit. More details can be found in the [`IStakingModule` interface specification](#1.2.-changes-in-existing-methods) and in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp#VEBO-Improvements).
+It is proposed to replace the current `isTargetLimitActive` parameter with the new `targetLimitMode` parameter to allow the Staking Router to consider the module's share when prioritizing validators for exit. More details can be found in the [`IStakingModule` interface specification](12-changes-in-existing-methods) and in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp).
 
 To implement this improvement the following changes are needed:
 - The `isTargetLimitActive` field in the `NodeOperatorSummary` structure should be replaced with the new `targetLimitMode` field;
@@ -668,7 +668,7 @@ Changing the `StakingModule` struct will affect the following view methods, whic
 - `getStakingModuleDigests`;
 - `getAllStakingModuleDigests`.
 
-[Tests](https://github.com/lidofinance/sr-1.5-compatibility-tests) show that backward compatibility remains for both offchain tooling and possible onchain integrations. The modified methods responses are correctly decoded by standard Solidity decoder and the Ethers library. New bytes in the responses are ignored.
+Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests) for both offchain tooling and possible onchain integrations. The modified methods responses are correctly decoded by standard Solidity decoder and the Ethers library. New bytes in the responses are ignored.
 
 #### 2.6. New internal `_getIStakingModuleById` method
 
@@ -862,7 +862,7 @@ function _initialize_v3() internal {
 
 #### 3.2. New `decreaseVettedSigningKeysCount` method
 
-The new `decreaseVettedSigningKeysCount` method should be implemented. It is called by the Staking Router to decrease the number of vetted keys for the node operator with the given ID. See more details about this change in the [`IStakingModule` interface specification](#1.1.-new-external-methods).
+The new `decreaseVettedSigningKeysCount` method should be implemented. It is called by the Staking Router to decrease the number of vetted keys for the node operator with the given ID. See more details about this change in the [`IStakingModule` interface specification](#11-new-external-methods).
 
 ```solidity
 /// @param _nodeOperatorIds bytes packed array of the node operators id
@@ -1039,7 +1039,7 @@ function onExitedAndStuckValidatorsCountsUpdated() external {
 
 #### 3.4. New target limit modes
 
-Now it should be possible to have 3 possible states for the target validators limit. More details about the purpose of this change can be found in the [`IStakingModule` interface specification](#1.2.-changes-in-existing-methods) and in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp#VEBO-Improvements).
+Now it should be possible to have 3 possible states for the target validators limit. More details about the purpose of this change can be found in the [`IStakingModule` interface specification](#12-changes-in-existing-methods) and in the [VEBO Improvements specification](https://hackmd.io/@lido/BJXRTxMRp).
 
 The `updateTargetValidatorsLimits` public method should be updated to support this change. The existing `TargetValidatorsCountChanged` event also should be updated.
 
