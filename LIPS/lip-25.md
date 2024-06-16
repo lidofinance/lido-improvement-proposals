@@ -432,7 +432,7 @@ function finalizeUpgrade_v2(
 
 #### 2.3. Keys vetting improvements
 
-Support of the [new key vetting logic](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) requires implementation of the new `decreaseStakingModuleVettedKeysCountByNodeOperator` external method. It is proposed to add a `STAKING_MODULE_UNVETTING_ROLE` role and assign it to the DSM.
+Support of the [new key vetting logic](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) requires implementation of the new `decreaseStakingModuleVettedKeysCountByNodeOperator` external method. It is proposed to add a `STAKING_MODULE_UNVETTING_ROLE` and assign this role to the DSM.
 
 ```solidity
 bytes32 public constant STAKING_MODULE_UNVETTING_ROLE = keccak256("STAKING_MODULE_UNVETTING_ROLE");
@@ -1515,3 +1515,13 @@ function allocate(
     return (allocated, buckets);
 }
 ```
+
+## Links
+
+- [Staking Router 2.0 on-chain code](https://github.com/lidofinance/core/tree/feat/sr-1.5);
+- [New Deposit Security Module specification](https://hackmd.io/@lido/rJrTnEc2a);
+- [New Validator Exit Bus Oracle specification](https://hackmd.io/@lido/BJXRTxMRp); 
+- [Expanded third phase of the Accounting Oracle specification](https://hackmd.io/HCXVrrZAQNCm_IC0lYvJjw);
+- [Reward distribution in curated-based modules](https://hackmd.io/@lido/HJYbVq5b0);
+- [LIP-10: Proxy initializations and LidoOracle upgrade](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-10.md);
+- [Backward compatibility tests of the new Staking Router contracts](https://github.com/lidofinance/sr-1.5-compatibility-tests)
