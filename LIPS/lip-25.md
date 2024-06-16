@@ -432,7 +432,7 @@ function finalizeUpgrade_v2(
 
 #### 2.3. Keys vetting improvements
 
-Support of the [new key vetting logic](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) requires implementation of the new `decreaseStakingModuleVettedKeysCountByNodeOperator` external method. Also, the new `STAKING_MODULE_UNVETTING_ROLE` constant should be defined.
+Support of the [new key vetting logic](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) requires implementation of the new `decreaseStakingModuleVettedKeysCountByNodeOperator` external method. It is proposed to add a `STAKING_MODULE_UNVETTING_ROLE` and assign this role to the DSM.
 
 ```solidity
 bytes32 public constant STAKING_MODULE_UNVETTING_ROLE = keccak256("STAKING_MODULE_UNVETTING_ROLE");
@@ -538,7 +538,7 @@ function getNodeOperatorSummary(
 }
 ```
 
-#### 2.5. New deposit parameters
+#### 2.5. New module deposit limits
 
 It is proposed to move the parameters `maxDepositsPerBlock` and `minDepositBlockDistance` from DSM to the Staking Router level. Modules with different properties have different risks when making deposits, so these parameters can be different for different modules. More reasons for this change are provided in the [DSM specification](https://hackmd.io/@lido/rJrTnEc2a#Deposit). New methods for getting these new parameters also should be implemented.
 
@@ -733,11 +733,6 @@ function _updateRewardDistributionState(RewardDistributionState _state) internal
 function onRewardsMinted(uint256 /* _totalShares */) external {
     _auth(STAKING_ROUTER_ROLE);
     _updateRewardDistributionState(RewardDistributionState.TransferredToModule);
-}
-
-function onExitedAndStuckValidatorsCountsUpdated() external {
-    _auth(STAKING_ROUTER_ROLE);
-    _updateRewardDistributionState(RewardDistributionState.ReadyForDistribution);
 }
 
 function onExitedAndStuckValidatorsCountsUpdated() external {
