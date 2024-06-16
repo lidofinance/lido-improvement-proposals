@@ -165,7 +165,6 @@ Support of the new Target Share engine in the `StakingRouter` contract requires 
 - Existing external `updateStakingModule` method should be updated;
 - New internal `_updateStakingModule` method should be created;
 - Three new `priorityExitShareThreshold`, `maxDepositsPerBlock` and `minDepositBlockDistance` fields should be added to the `StakingModule` structure. The existing `targetShare` field should be renamed to `stakeShareLimit`;
-- The `targetShare` field in the `StakingModuleCache` structure should be renamed to `stakeShareLimit`;
 - Signature of the `StakingModuleShareLimitSet` event (former `StakingModuleTargetShareSet`) should be changed;
 - Two new `StakingModuleMaxDepositsPerBlockSet` and `StakingModuleMinDepositBlockDistanceSet` events should be added;
 - Five new error types should be created: `ZeroAddressStakingModule`, `InvalidStakeShareLimit`, `InvalidFeeSum`, `InvalidPriorityExitShareThreshold` and `InvalidMinDepositBlockDistance`. Existing `ValueOver100Percent` error type should be removed;
@@ -230,17 +229,6 @@ struct StakingModule {
     /// @dev must be harmonized with `OracleReportSanityChecker.churnValidatorsPerDayLimit`
     /// (see docs for the `OracleReportSanityChecker.setChurnValidatorsPerDayLimit` function)
     uint64 minDepositBlockDistance;
-}
-
-struct StakingModuleCache {
-    address stakingModuleAddress;
-    uint24 stakingModuleId;
-    uint16 stakingModuleFee;
-    uint16 treasuryFee;
-    uint16 stakeShareLimit;
-    StakingModuleStatus status;
-    uint256 activeValidatorsCount;
-    uint256 availableValidatorsCount;
 }
 
 /**
@@ -375,71 +363,6 @@ function _updateStakingModule(
     emit StakingModuleMaxDepositsPerBlockSet(_stakingModuleId, _maxDepositsPerBlock, msg.sender);
     emit StakingModuleMinDepositBlockDistanceSet(_stakingModuleId, _minDepositBlockDistance, msg.sender);
 }
-
-function _loadStakingModulesCacheItem(
-    uint256 _stakingModuleIndex
-) internal view returns (StakingModuleCache memory cacheItem) {
-    StakingModule storage stakingModuleData = _getStakingModuleByIndex(_stakingModuleIndex);
-
-    cacheItem.stakingModuleAddress = stakingModuleData.stakingModuleAddress;
-    cacheItem.stakingModuleId = stakingModuleData.id;
-    cacheItem.stakingModuleFee = stakingModuleData.stakingModuleFee;
-    cacheItem.treasuryFee = stakingModuleData.treasuryFee;
-    cacheItem.stakeShareLimit = stakingModuleData.stakeShareLimit;
-    cacheItem.status = StakingModuleStatus(stakingModuleData.status);
-
-    (
-        uint256 totalExitedValidators,
-        uint256 totalDepositedValidators,
-        uint256 depositableValidatorsCount
-    ) = IStakingModule(cacheItem.stakingModuleAddress).getStakingModuleSummary();
-
-    cacheItem.availableValidatorsCount = cacheItem.status == StakingModuleStatus.Active
-        ? depositableValidatorsCount
-        : 0;
-
-    // the module might not receive all exited validators data yet => we need to replacing
-    // the exitedValidatorsCount with the one that the staking router is aware of
-    cacheItem.activeValidatorsCount =
-        totalDepositedValidators -
-        Math256.max(totalExitedValidators, stakingModuleData.exitedValidatorsCount);
-}
-
-function _getDepositsAllocation(
-    uint256 _depositsToAllocate
-)
-    internal
-    view
-    returns (uint256 allocated, uint256[] memory allocations, StakingModuleCache[] memory stakingModulesCache)
-{
-    // calculate total used validators for operators
-    uint256 totalActiveValidators;
-
-    (totalActiveValidators, stakingModulesCache) = _loadStakingModulesCache();
-
-    uint256 stakingModulesCount = stakingModulesCache.length;
-    allocations = new uint256[](stakingModulesCount);
-    if (stakingModulesCount > 0) {
-        /// @dev new estimated active validators count
-        totalActiveValidators += _depositsToAllocate;
-        uint256[] memory capacities = new uint256[](stakingModulesCount);
-        uint256 targetValidators;
-
-        for (uint256 i; i < stakingModulesCount; ) {
-            allocations[i] = stakingModulesCache[i].activeValidatorsCount;
-            targetValidators = (stakingModulesCache[i].stakeShareLimit * totalActiveValidators) / TOTAL_BASIS_POINTS;
-            capacities[i] = Math256.min(
-                targetValidators,
-                stakingModulesCache[i].activeValidatorsCount + stakingModulesCache[i].availableValidatorsCount
-        );
-        unchecked {
-            ++i;
-        }
-      }
-
-      (allocated, allocations) = MinFirstAllocationStrategy.allocate(allocations, capacities, _depositsToAllocate);
-    }
-  }
 ```
 
 ##### 2.1.1. Backward compatibility notes
@@ -661,157 +584,7 @@ Changing the `StakingModule` struct will affect the following view methods, whic
 
 Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests) for both offchain tooling and possible onchain integrations. The modified methods responses are correctly decoded by standard Solidity decoder and the Ethers library. New bytes in the responses are ignored.
 
-#### 2.6. New internal `_getIStakingModuleById` method
-
-New internal `_getIStakingModuleById` method should be implemented. The following methods should use this new method to get the `IStackingModule` interface instance:
-- `updateTargetValidatorsLimits`;
-- `updateRefundedValidatorsCount`;
-- `reportRewardsMinted`;
-- `reportStakingModuleExitedValidatorsCountByNodeOperator`;
-- `reportStakingModuleStuckValidatorsCountByNodeOperator`;
-- `decreaseStakingModuleVettedKeysCountByNodeOperator`;
-- `getAllNodeOperatorDigests`;
-- `getNodeOperatorDigests`;
-- `getStakingModuleNonce`.
-
-```solidity
-function _getIStakingModuleById(uint256 _stakingModuleId) internal view returns (IStakingModule) {
-    return IStakingModule(_getStakingModuleAddressById(_stakingModuleId));
-}
-
-/// @notice Updates the number of the refunded validators in the staking module with the given
-///     node operator id
-/// @param _stakingModuleId Id of the staking module
-/// @param _nodeOperatorId Id of the node operator
-/// @param _refundedValidatorsCount New number of refunded validators of the node operator
-function updateRefundedValidatorsCount(
-    uint256 _stakingModuleId,
-    uint256 _nodeOperatorId,
-    uint256 _refundedValidatorsCount
-) external onlyRole(STAKING_MODULE_MANAGE_ROLE) {
-    _getIStakingModuleById(_stakingModuleId).updateRefundedValidatorsCount(_nodeOperatorId, _refundedValidatorsCount);
-}
-
-function reportRewardsMinted(
-    uint256[] calldata _stakingModuleIds,
-    uint256[] calldata _totalShares
-) external onlyRole(REPORT_REWARDS_MINTED_ROLE) {
-    if (_stakingModuleIds.length != _totalShares.length) {
-        revert ArraysLengthMismatch(_stakingModuleIds.length, _totalShares.length);
-    }
-
-    for (uint256 i = 0; i < _stakingModuleIds.length; ) {
-        if (_totalShares[i] > 0) {
-            try _getIStakingModuleById(_stakingModuleIds[i]).onRewardsMinted(_totalShares[i]) {} catch (
-                bytes memory lowLevelRevertData
-            ) {
-                /// @dev This check is required to prevent incorrect gas estimation of the method.
-                ///      Without it, Ethereum nodes that use binary search for gas estimation may
-                ///      return an invalid value when the onRewardsMinted() reverts because of the
-                ///      "out of gas" error. Here we assume that the onRewardsMinted() method doesn't
-                ///      have reverts with empty error data except "out of gas".
-                if (lowLevelRevertData.length == 0) revert UnrecoverableModuleError();
-                emit RewardsMintedReportFailed(_stakingModuleIds[i], lowLevelRevertData);
-            }
-        }
-        unchecked {
-            ++i;
-        }
-    }
-}
-
-/// @notice Updates exited validators counts per node operator for the staking module with
-/// the specified id.
-///
-/// See the docs for `updateExitedValidatorsCountByStakingModule` for the description of the
-/// overall update process.
-///
-/// @param _stakingModuleId The id of the staking modules to be updated.
-/// @param _nodeOperatorIds Ids of the node operators to be updated.
-/// @param _exitedValidatorsCounts New counts of exited validators for the specified node operators.
-///
-function reportStakingModuleExitedValidatorsCountByNodeOperator(
-    uint256 _stakingModuleId,
-    bytes calldata _nodeOperatorIds,
-    bytes calldata _exitedValidatorsCounts
-) external onlyRole(REPORT_EXITED_VALIDATORS_ROLE) {
-    _checkValidatorsByNodeOperatorReportData(_nodeOperatorIds, _exitedValidatorsCounts);
-    _getIStakingModuleById(_stakingModuleId).updateExitedValidatorsCount(_nodeOperatorIds, _exitedValidatorsCounts);
-}
-
-/// @notice Updates stuck validators counts per node operator for the staking module with
-/// the specified id.
-///
-/// See the docs for `updateExitedValidatorsCountByStakingModule` for the description of the
-/// overall update process.
-///
-/// @param _stakingModuleId The id of the staking modules to be updated.
-/// @param _nodeOperatorIds Ids of the node operators to be updated.
-/// @param _stuckValidatorsCounts New counts of stuck validators for the specified node operators.
-///
-function reportStakingModuleStuckValidatorsCountByNodeOperator(
-    uint256 _stakingModuleId,
-    bytes calldata _nodeOperatorIds,
-    bytes calldata _stuckValidatorsCounts
-) external onlyRole(REPORT_EXITED_VALIDATORS_ROLE) {
-    _checkValidatorsByNodeOperatorReportData(_nodeOperatorIds, _stuckValidatorsCounts);
-    _getIStakingModuleById(_stakingModuleId).updateStuckValidatorsCount(_nodeOperatorIds, _stuckValidatorsCounts);
-}
-
-/// @notice Returns node operator digest for each node operator registered in the given staking module
-/// @param _stakingModuleId id of the staking module to return data for
-/// @dev WARNING: This method is not supposed to be used for onchain calls due to high gas costs
-///     for data aggregation
-function getAllNodeOperatorDigests(uint256 _stakingModuleId) external view returns (NodeOperatorDigest[] memory) {
-    return
-        getNodeOperatorDigests(_stakingModuleId, 0, _getIStakingModuleById(_stakingModuleId).getNodeOperatorsCount());
-}
-
-/// @notice Returns node operator digest for passed node operator ids in the given staking module
-/// @param _stakingModuleId id of the staking module where node operators registered
-/// @param _offset node operators offset starting with 0
-/// @param _limit the max number of node operators to return
-/// @dev WARNING: This method is not supposed to be used for onchain calls due to high gas costs
-///     for data aggregation
-function getNodeOperatorDigests(
-    uint256 _stakingModuleId,
-    uint256 _offset,
-    uint256 _limit
-) public view returns (NodeOperatorDigest[] memory) {
-    return
-        getNodeOperatorDigests(
-            _stakingModuleId,
-            _getIStakingModuleById(_stakingModuleId).getNodeOperatorIds(_offset, _limit)
-        );
-}
-
-/// @notice Returns node operator digest for a slice of node operators registered in the given
-///     staking module
-/// @param _stakingModuleId id of the staking module where node operators registered
-/// @param _nodeOperatorIds ids of the node operators to return data for
-/// @dev WARNING: This method is not supposed to be used for onchain calls due to high gas costs
-///     for data aggregation
-function getNodeOperatorDigests(
-    uint256 _stakingModuleId,
-    uint256[] memory _nodeOperatorIds
-) public view returns (NodeOperatorDigest[] memory digests) {
-    IStakingModule stakingModule = _getIStakingModuleById(_stakingModuleId);
-    digests = new NodeOperatorDigest[](_nodeOperatorIds.length);
-    for (uint256 i = 0; i < _nodeOperatorIds.length; ++i) {
-        digests[i] = NodeOperatorDigest({
-            id: _nodeOperatorIds[i],
-            isActive: stakingModule.getNodeOperatorIsActive(_nodeOperatorIds[i]),
-            summary: getNodeOperatorSummary(_stakingModuleId, _nodeOperatorIds[i])
-        });
-    }
-}
-
-function getStakingModuleNonce(uint256 _stakingModuleId) external view returns (uint256) {
-    return _getIStakingModuleById(_stakingModuleId).getNonce();
-}
-```
-
-#### 2.7. Excluded methods for module pausing
+#### 2.6. Excluded methods for module pausing
 Now the protocol should be able to pause deposits to all modules at once. The pausing logic should be moved to the `DepositSecurityModule` contract. More reasons for this change are provided in the new [DSM specification](https://hackmd.io/@lido/rJrTnEc2a#Soft-Pause).
 
 The following methods, events and constants that implement pausing logic in the `StakingRouter` contract should be deleted:
@@ -853,7 +626,7 @@ function _initialize_v3() internal {
 
 #### 3.2. New `decreaseVettedSigningKeysCount` method
 
-The new `decreaseVettedSigningKeysCount` method should be implemented. It is called by the Staking Router to decrease the number of vetted keys for the node operator with the given ID. See more details about this change in the [`IStakingModule` interface specification](#11-new-external-methods).
+The new `decreaseVettedSigningKeysCount` method should be implemented. It is called by the Staking Router to decrease the number of vetted keys for the node operator with the given ID. Also, the existing `setNodeOperatorStakingLimit` external method should be updated. See more details about this change in the [`IStakingModule` interface specification](#11-new-external-methods).
 
 ```solidity
 /// @param _nodeOperatorIds bytes packed array of the node operators id
@@ -894,11 +667,7 @@ function decreaseVettedSigningKeysCount(
     }
     _increaseValidatorsKeysNonce();
 }
-```
 
-Also, the existing `setNodeOperatorStakingLimit` external method and the  `_updateVettedSingingKeysCount` internal method should be updated.
-
-```solidity
 function setNodeOperatorStakingLimit(uint256 _nodeOperatorId, uint64 _vettedSigningKeysCount) external {
     _onlyExistedNodeOperator(_nodeOperatorId);
     _authP(SET_NODE_OPERATOR_LIMIT_ROLE, arr(uint256(_nodeOperatorId), uint256(_vettedSigningKeysCount)));
@@ -906,35 +675,6 @@ function setNodeOperatorStakingLimit(uint256 _nodeOperatorId, uint64 _vettedSign
 
     _updateVettedSingingKeysCount(_nodeOperatorId, _vettedSigningKeysCount, true /* _allowIncrease */);
     _increaseValidatorsKeysNonce();
-}
-
-function _updateVettedSingingKeysCount(
-    uint256 _nodeOperatorId,
-    uint256 _vettedSigningKeysCount,
-    bool _allowIncrease
-) internal {
-    Packed64x4.Packed memory signingKeysStats = _loadOperatorSigningKeysStats(_nodeOperatorId);
-    uint256 vettedSigningKeysCountBefore = signingKeysStats.get(TOTAL_VETTED_KEYS_COUNT_OFFSET);
-    uint256 depositedSigningKeysCount = signingKeysStats.get(TOTAL_DEPOSITED_KEYS_COUNT_OFFSET);
-    uint256 totalSigningKeysCount = signingKeysStats.get(TOTAL_KEYS_COUNT_OFFSET);
-
-    uint256 vettedSigningKeysCountAfter = Math256.min(
-        totalSigningKeysCount, Math256.max(_vettedSigningKeysCount, depositedSigningKeysCount)
-    );
-
-    if (vettedSigningKeysCountAfter == vettedSigningKeysCountBefore) return;
-
-    require(
-        _allowIncrease || vettedSigningKeysCountAfter < vettedSigningKeysCountBefore,
-        "VETTED_KEYS_COUNT_INCREASED"
-    );
-
-    signingKeysStats.set(TOTAL_VETTED_KEYS_COUNT_OFFSET, vettedSigningKeysCountAfter);
-    _saveOperatorSigningKeysStats(_nodeOperatorId, signingKeysStats);
-
-    emit VettedSigningKeysCountChanged(_nodeOperatorId, vettedSigningKeysCountAfter);
-
-    _updateSummaryMaxValidatorsCount(_nodeOperatorId);
 }
 ```
 
@@ -1311,11 +1051,7 @@ The frequency of deposits now should be limited. This way there will be distance
 This improvement requires a number of changes:
 - Existing `canDeposit` external method should be updated;
 - Existing `depositBufferedEther` external method should be updated;
-- New `getLastDepositBlock` external method should be implemented;
 - New `isMinDepositDistancePassed` external method should be implemented;
-- New `_isMinDepositDistancePassed` internal method should be implemented;
-- New `_setLastDepositBlock` internal method should be implemented;
-- Existing `_verifySignatures` internal method should be renamed to`_verifyAttestSignatures` and updated;
 - New `lastDepositBlock` field should be added;
 - New `LastDepositBlockChanged` event should be added;
 - New `ModuleNonceChanged` error type should be added.
@@ -1422,44 +1158,6 @@ function isMinDepositDistancePassed(uint256 stakingModuleId) external view retur
     return _isMinDepositDistancePassed(stakingModuleId);
 }
 
-/**
-* @return lastDepositBlock The block number of the last deposit.
-*/
-function getLastDepositBlock() external view returns (uint256) {
-    return lastDepositBlock;
-}
-
-function _setLastDepositBlock(uint256 newValue) internal {
-    lastDepositBlock = newValue;
-    emit LastDepositBlockChanged(newValue);
-}
-
-function _verifyAttestSignatures(
-    bytes32 depositRoot,
-    uint256 blockNumber,
-    bytes32 blockHash,
-    uint256 stakingModuleId,
-    uint256 nonce,
-    Signature[] memory sigs
-) internal view {
-    bytes32 msgHash = keccak256(
-        abi.encodePacked(ATTEST_MESSAGE_PREFIX, blockNumber, blockHash, depositRoot, stakingModuleId, nonce)
-    );
-
-    address prevSignerAddr = address(0);
-
-    for (uint256 i = 0; i < sigs.length; ) {
-        address signerAddr = ECDSA.recover(msgHash, sigs[i].r, sigs[i].vs);
-        if (!_isGuardian(signerAddr)) revert InvalidSignature();
-        if (signerAddr <= prevSignerAddr) revert SignaturesNotSorted();
-        prevSignerAddr = signerAddr;
-
-        unchecked {
-            ++i;
-        }
-    }
-}
-
 function _isMinDepositDistancePassed(uint256 stakingModuleId) internal view returns (bool) {
     uint256 lastDepositToModuleBlock = STAKING_ROUTER.getStakingModuleLastDepositBlock(stakingModuleId);
     uint256 minDepositBlockDistance = STAKING_ROUTER.getStakingModuleMinDepositBlockDistance(stakingModuleId);
@@ -1564,73 +1262,11 @@ struct LimitsList {
     /// ...
 }
 
-/// @dev The packed version of the LimitsList struct to be effectively persisted in storage
-struct LimitsListPacked {
-    uint16 exitedValidatorsPerDayLimit;
-    uint16 appearedValidatorsPerDayLimit;
-    uint16 oneOffCLBalanceDecreaseBPLimit;
-    uint16 annualBalanceIncreaseBPLimit;
-    uint16 simulatedShareRateDeviationBPLimit;
-    uint16 maxValidatorExitRequestsPerReport;
-    uint16 maxAccountingExtraDataListItemsCount;
-    uint16 maxNodeOperatorsPerExtraDataItemCount;
-    uint64 requestTimestampMargin;
-    uint64 maxPositiveTokenRebase;
-}
-
 bytes32 public constant EXITED_VALIDATORS_PER_DAY_LIMIT_MANAGER_ROLE =
         keccak256("EXITED_VALIDATORS_PER_DAY_LIMIT_MANAGER_ROLE");
 
 bytes32 public constant APPEARED_VALIDATORS_PER_DAY_LIMIT_MANAGER_ROLE =
         keccak256("APPEARED_VALIDATORS_PER_DAY_LIMIT_MANAGER_ROLE");
-
-struct ManagersRoster {
-    address[] allLimitsManagers;
-    address[] exitedValidatorsPerDayLimitManagers;
-    address[] appearedValidatorsPerDayLimitManagers;
-    address[] oneOffCLBalanceDecreaseLimitManagers;
-    address[] annualBalanceIncreaseLimitManagers;
-    address[] shareRateDeviationLimitManagers;
-    address[] maxValidatorExitRequestsPerReportManagers;
-    address[] maxAccountingExtraDataListItemsCountManagers;
-    address[] maxNodeOperatorsPerExtraDataItemCountManagers;
-    address[] requestTimestampMarginManagers;
-    address[] maxPositiveTokenRebaseManagers;
-}
-
-/// @param _lidoLocator address of the LidoLocator instance
-/// @param _admin address to grant DEFAULT_ADMIN_ROLE of the AccessControl contract
-/// @param _limitsList initial values to be set for the limits list
-/// @param _managersRoster list of the address to grant permissions for granular limits management
-constructor(
-    address _lidoLocator,
-    address _admin,
-    LimitsList memory _limitsList,
-    ManagersRoster memory _managersRoster
-) {
-    if (_admin == address(0)) revert AdminCannotBeZero();
-    LIDO_LOCATOR = ILidoLocator(_lidoLocator);
-
-    _updateLimits(_limitsList);
-
-    _grantRole(DEFAULT_ADMIN_ROLE, _admin);
-    _grantRole(ALL_LIMITS_MANAGER_ROLE, _managersRoster.allLimitsManagers);
-    _grantRole(EXITED_VALIDATORS_PER_DAY_LIMIT_MANAGER_ROLE, _managersRoster.exitedValidatorsPerDayLimitManagers);
-    _grantRole(APPEARED_VALIDATORS_PER_DAY_LIMIT_MANAGER_ROLE,
-                   _managersRoster.appearedValidatorsPerDayLimitManagers);
-    _grantRole(ONE_OFF_CL_BALANCE_DECREASE_LIMIT_MANAGER_ROLE,
-                   _managersRoster.oneOffCLBalanceDecreaseLimitManagers);
-    _grantRole(ANNUAL_BALANCE_INCREASE_LIMIT_MANAGER_ROLE, _managersRoster.annualBalanceIncreaseLimitManagers);
-    _grantRole(MAX_POSITIVE_TOKEN_REBASE_MANAGER_ROLE, _managersRoster.maxPositiveTokenRebaseManagers);
-    _grantRole(MAX_VALIDATOR_EXIT_REQUESTS_PER_REPORT_ROLE,
-                   _managersRoster.maxValidatorExitRequestsPerReportManagers);
-    _grantRole(MAX_ACCOUNTING_EXTRA_DATA_LIST_ITEMS_COUNT_ROLE,
-                   _managersRoster.maxAccountingExtraDataListItemsCountManagers);
-    _grantRole(MAX_NODE_OPERATORS_PER_EXTRA_DATA_ITEM_COUNT_ROLE,
-                   _managersRoster.maxNodeOperatorsPerExtraDataItemCountManagers);
-    _grantRole(SHARE_RATE_DEVIATION_LIMIT_MANAGER_ROLE, _managersRoster.shareRateDeviationLimitManagers);
-    _grantRole(REQUEST_TIMESTAMP_MARGIN_MANAGER_ROLE, _managersRoster.requestTimestampMarginManagers);
-}
 
 /// @notice Sets the new value for the exitedValidatorsPerDayLimit
 ///
@@ -1676,102 +1312,8 @@ function checkExitedValidatorsRatePerDay(uint256 _exitedValidatorsCount)
     }
 }
 
-function _checkAppearedValidatorsChurnLimit(
-    LimitsList memory _limitsList,
-    uint256 _appearedValidators,
-    uint256 _timeElapsed
-) internal pure {
-    if (_timeElapsed == 0) {
-        _timeElapsed = DEFAULT_TIME_ELAPSED;
-    }
-
-    uint256 appearedLimit = (_limitsList.appearedValidatorsPerDayLimit * _timeElapsed) / SECONDS_PER_DAY;
-
-    if (_appearedValidators > appearedLimit) revert IncorrectAppearedValidators(_appearedValidators);
-}
-
-function _updateLimits(LimitsList memory _newLimitsList) internal {
-    LimitsList memory _oldLimitsList = _limits.unpack();
-    if (_oldLimitsList.exitedValidatorsPerDayLimit != _newLimitsList.exitedValidatorsPerDayLimit) {
-        _checkLimitValue(_newLimitsList.exitedValidatorsPerDayLimit, 0, type(uint16).max);
-        emit ExitedValidatorsPerDayLimitSet(_newLimitsList.exitedValidatorsPerDayLimit);
-    }
-    if (_oldLimitsList.appearedValidatorsPerDayLimit != _newLimitsList.appearedValidatorsPerDayLimit) {
-        _checkLimitValue(_newLimitsList.appearedValidatorsPerDayLimit, 0, type(uint16).max);
-        emit AppearedValidatorsPerDayLimitSet(_newLimitsList.appearedValidatorsPerDayLimit);
-    }
-    if (_oldLimitsList.oneOffCLBalanceDecreaseBPLimit != _newLimitsList.oneOffCLBalanceDecreaseBPLimit) {
-        _checkLimitValue(_newLimitsList.oneOffCLBalanceDecreaseBPLimit, 0, MAX_BASIS_POINTS);
-        emit OneOffCLBalanceDecreaseBPLimitSet(_newLimitsList.oneOffCLBalanceDecreaseBPLimit);
-    }
-    if (_oldLimitsList.annualBalanceIncreaseBPLimit != _newLimitsList.annualBalanceIncreaseBPLimit) {
-        _checkLimitValue(_newLimitsList.annualBalanceIncreaseBPLimit, 0, MAX_BASIS_POINTS);
-        emit AnnualBalanceIncreaseBPLimitSet(_newLimitsList.annualBalanceIncreaseBPLimit);
-    }
-    if (_oldLimitsList.simulatedShareRateDeviationBPLimit != _newLimitsList.simulatedShareRateDeviationBPLimit) {
-        _checkLimitValue(_newLimitsList.simulatedShareRateDeviationBPLimit, 0, MAX_BASIS_POINTS);
-        emit SimulatedShareRateDeviationBPLimitSet(_newLimitsList.simulatedShareRateDeviationBPLimit);
-    }
-    if (_oldLimitsList.maxValidatorExitRequestsPerReport != _newLimitsList.maxValidatorExitRequestsPerReport) {
-        _checkLimitValue(_newLimitsList.maxValidatorExitRequestsPerReport, 0, type(uint16).max);
-        emit MaxValidatorExitRequestsPerReportSet(_newLimitsList.maxValidatorExitRequestsPerReport);
-    }
-    if (_oldLimitsList.maxAccountingExtraDataListItemsCount != _newLimitsList.maxAccountingExtraDataListItemsCount) {
-        _checkLimitValue(_newLimitsList.maxAccountingExtraDataListItemsCount, 0, type(uint16).max);
-        emit MaxAccountingExtraDataListItemsCountSet(_newLimitsList.maxAccountingExtraDataListItemsCount);
-    }
-    if (_oldLimitsList.maxNodeOperatorsPerExtraDataItemCount != _newLimitsList.maxNodeOperatorsPerExtraDataItemCount) {
-        _checkLimitValue(_newLimitsList.maxNodeOperatorsPerExtraDataItemCount, 0, type(uint16).max);
-        emit MaxNodeOperatorsPerExtraDataItemCountSet(_newLimitsList.maxNodeOperatorsPerExtraDataItemCount);
-    }
-    if (_oldLimitsList.requestTimestampMargin != _newLimitsList.requestTimestampMargin) {
-        _checkLimitValue(_newLimitsList.requestTimestampMargin, 0, type(uint64).max);
-        emit RequestTimestampMarginSet(_newLimitsList.requestTimestampMargin);
-    }
-    if (_oldLimitsList.maxPositiveTokenRebase != _newLimitsList.maxPositiveTokenRebase) {
-        _checkLimitValue(_newLimitsList.maxPositiveTokenRebase, 1, type(uint64).max);
-        emit MaxPositiveTokenRebaseSet(_newLimitsList.maxPositiveTokenRebase);
-    }
-    _limits = _newLimitsList.pack();
-}
-
 event ExitedValidatorsPerDayLimitSet(uint256 exitedValidatorsPerDayLimit);
 event AppearedValidatorsPerDayLimitSet(uint256 appearedValidatorsPerDayLimit);
-
-library LimitsListPacker {
-    function pack(LimitsList memory _limitsList) internal pure returns (LimitsListPacked memory res) {
-        res.exitedValidatorsPerDayLimit = SafeCast.toUint16(_limitsList.exitedValidatorsPerDayLimit);
-        res.appearedValidatorsPerDayLimit = SafeCast.toUint16(_limitsList.appearedValidatorsPerDayLimit);
-        res.oneOffCLBalanceDecreaseBPLimit = _toBasisPoints(_limitsList.oneOffCLBalanceDecreaseBPLimit);
-        res.annualBalanceIncreaseBPLimit = _toBasisPoints(_limitsList.annualBalanceIncreaseBPLimit);
-        res.simulatedShareRateDeviationBPLimit = _toBasisPoints(_limitsList.simulatedShareRateDeviationBPLimit);
-        res.requestTimestampMargin = SafeCast.toUint64(_limitsList.requestTimestampMargin);
-        res.maxPositiveTokenRebase = SafeCast.toUint64(_limitsList.maxPositiveTokenRebase);
-        res.maxValidatorExitRequestsPerReport = SafeCast.toUint16(_limitsList.maxValidatorExitRequestsPerReport);
-        res.maxAccountingExtraDataListItemsCount = SafeCast.toUint16(_limitsList.maxAccountingExtraDataListItemsCount);
-        res.maxNodeOperatorsPerExtraDataItemCount = SafeCast.toUint16(_limitsList.maxNodeOperatorsPerExtraDataItemCount);
-    }
-
-    function _toBasisPoints(uint256 _value) private pure returns (uint16) {
-        require(_value <= MAX_BASIS_POINTS, "BASIS_POINTS_OVERFLOW");
-        return uint16(_value);
-    }
-}
-
-library LimitsListUnpacker {
-    function unpack(LimitsListPacked memory _limitsList) internal pure returns (LimitsList memory res) {
-        res.exitedValidatorsPerDayLimit = _limitsList.exitedValidatorsPerDayLimit;
-        res.appearedValidatorsPerDayLimit = _limitsList.appearedValidatorsPerDayLimit;
-        res.oneOffCLBalanceDecreaseBPLimit = _limitsList.oneOffCLBalanceDecreaseBPLimit;
-        res.annualBalanceIncreaseBPLimit = _limitsList.annualBalanceIncreaseBPLimit;
-        res.simulatedShareRateDeviationBPLimit = _limitsList.simulatedShareRateDeviationBPLimit;
-        res.requestTimestampMargin = _limitsList.requestTimestampMargin;
-        res.maxPositiveTokenRebase = _limitsList.maxPositiveTokenRebase;
-        res.maxValidatorExitRequestsPerReport = _limitsList.maxValidatorExitRequestsPerReport;
-        res.maxAccountingExtraDataListItemsCount = _limitsList.maxAccountingExtraDataListItemsCount;
-        res.maxNodeOperatorsPerExtraDataItemCount = _limitsList.maxNodeOperatorsPerExtraDataItemCount;
-    }
-}
 ```
 
 ### 6. `AccountingOracle` contract changes
@@ -1792,73 +1334,6 @@ More implementation details can be found in the [Expand the third phase in Oracl
 error UnexpectedExtraDataLength();
 
 bytes32 internal constant ZERO_HASH = bytes32(0);
-
-function _handleConsensusReportData(ReportData calldata data, uint256 prevRefSlot) internal {
-    if (data.extraDataFormat == EXTRA_DATA_FORMAT_EMPTY) {
-        if (data.extraDataHash != ZERO_HASH) {
-            revert UnexpectedExtraDataHash(ZERO_HASH, data.extraDataHash);
-        }
-        if (data.extraDataItemsCount != 0) {
-            revert UnexpectedExtraDataItemsCount(0, data.extraDataItemsCount);
-        }
-    } else {
-        if (data.extraDataFormat != EXTRA_DATA_FORMAT_LIST) {
-            revert UnsupportedExtraDataFormat(data.extraDataFormat);
-        }
-        if (data.extraDataItemsCount == 0) {
-            revert ExtraDataItemsCountCannotBeZeroForNonEmptyData();
-        }
-        if (data.extraDataHash == ZERO_HASH) {
-            revert ExtraDataHashCannotBeZeroForNonEmptyData();
-        }
-    }
-
-    ILegacyOracle(LEGACY_ORACLE).handleConsensusLayerReport(
-        data.refSlot,
-        data.clBalanceGwei * 1e9,
-        data.numValidators
-    );
-
-    uint256 slotsElapsed = data.refSlot - prevRefSlot;
-
-    IStakingRouter stakingRouter = IStakingRouter(LOCATOR.stakingRouter());
-    IWithdrawalQueue withdrawalQueue = IWithdrawalQueue(LOCATOR.withdrawalQueue());
-
-    _processStakingRouterExitedValidatorsByModule(
-        stakingRouter,
-        data.stakingModuleIdsWithNewlyExitedValidators,
-        data.numExitedValidatorsByStakingModule,
-        slotsElapsed
-    );
-
-    withdrawalQueue.onOracleReport(
-        data.isBunkerMode,
-        GENESIS_TIME + prevRefSlot * SECONDS_PER_SLOT,
-        GENESIS_TIME + data.refSlot * SECONDS_PER_SLOT
-    );
-
-    ILido(LIDO).handleOracleReport(
-        GENESIS_TIME + data.refSlot * SECONDS_PER_SLOT,
-        slotsElapsed * SECONDS_PER_SLOT,
-        data.numValidators,
-        data.clBalanceGwei * 1e9,
-        data.withdrawalVaultBalance,
-        data.elRewardsVaultBalance,
-        data.sharesRequestedToBurn,
-        data.withdrawalFinalizationBatches,
-        data.simulatedShareRate
-    );
-
-    _storageExtraDataProcessingState().value = ExtraDataProcessingState({
-        refSlot: data.refSlot.toUint64(),
-        dataFormat: data.extraDataFormat.toUint16(),
-        submitted: false,
-        dataHash: data.extraDataHash,
-        itemsCount: data.extraDataItemsCount.toUint16(),
-        itemsProcessed: 0,
-        lastSortingKey: 0
-    });
-}
 
 function _submitReportExtraDataList(bytes calldata data) internal {
     ExtraDataProcessingState memory procState = _storageExtraDataProcessingState().value;
