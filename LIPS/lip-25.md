@@ -378,31 +378,9 @@ Tests show that [backward compatibility remains](https://github.com/lidofinance/
 
 #### 2.2. Contract version upgrade
 
-For correct migration to the new version of the `StakingRouter` contract, the existing `initialize` external method should be updated, and the new `finalizeUpgrade_v2` external method should be implemented. The existing `ZeroAddress` error type should be transformed to the new `ZeroAddressLido` error type. Also, the new `ZeroAddressAdmin` error type should be added. See more details about Lido proxy contracts upgrade requirements in the [LIP-10](https://github.com/lidofinance/lido-improvement-proposals/blob/feat/lip-24/LIPS/lip-10.md).
+For correct migration to the new version of the `StakingRouter` contract, the existing `initialize` external method should be updated, and the new `finalizeUpgrade_v2` external method should be implemented. See more details about Lido proxy contracts upgrade requirements in the [LIP-10](https://github.com/lidofinance/lido-improvement-proposals/blob/feat/lip-24/LIPS/lip-10.md).
 
 ```solidity
-error ZeroAddressLido();
-error ZeroAddressAdmin();
-
-/**
-* @dev proxy initialization
-* @param _admin Lido DAO Aragon agent contract address
-* @param _lido Lido address
-* @param _withdrawalCredentials Lido withdrawal vault contract address
-*/
-function initialize(address _admin, address _lido, bytes32 _withdrawalCredentials) external {
-    if (_admin == address(0)) revert ZeroAddressAdmin();
-    if (_lido == address(0)) revert ZeroAddressLido();
-
-    _initializeContractVersionTo(2);
-
-    _setupRole(DEFAULT_ADMIN_ROLE, _admin);
-
-    LIDO_POSITION.setStorageAddress(_lido);
-    WITHDRAWAL_CREDENTIALS_POSITION.setStorageBytes32(_withdrawalCredentials);
-    emit WithdrawalCredentialsSet(_withdrawalCredentials, msg.sender);
-}
-
 /**
 * @notice A function to finalize upgrade to v2 (from v1). Can be called only once
 * @param _priorityExitShareThresholds array of priority exit share thresholds
