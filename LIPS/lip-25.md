@@ -109,7 +109,7 @@ function updateTargetValidatorsLimits(
 
 The change in the `updateTargetValidatorsLimits` method does not break backward compatibility with the EasyTrack factory `UpdateTargetValidatorLimits` which is used to set limits in the Simple DVT module.
 
-The change from `bool isTargetLimitActive` to `uint8 targetLimitMode` affects the response from the view method `getNodeOperatorSummary`, which may be used in external integrations and offchain tooling. Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests). All modes other than disabled are interpreted by the decoder based on the old interface as the enabled `targetLimit` mode.
+The change from `bool isTargetLimitActive` to `uint8 targetLimitMode` affects the response from the view method `getNodeOperatorSummary`, which may be used in external integrations and off-chain tooling. Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests). All modes other than disabled are interpreted by the decoder based on the old interface as the enabled `targetLimit` mode.
 
 #### 1.3. New events
 
@@ -367,18 +367,18 @@ function _updateStakingModule(
 
 ##### 2.1.1. Backward compatibility notes
 
-The change to the `StakingModule` struct affects the response from some view methods, which may be used in external integrations and offchain tooling:
+The change to the `StakingModule` struct affects the response from some view methods, which may be used in external integrations and off-chain tooling:
 
 - `getStakingModule`;
 - `getStakingModules`;
 - `getStakingModuleDigests`;
 - `getAllStakingModuleDigests`.
 
-Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests) for both offchain tools and possible onchain integrations. The modified response is correctly decoded using standard Solidity tools and the Ethers library. New bytes in the response are ignored.
+Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests) for both off-chain tools and possible on-chain integrations. The modified response is correctly decoded using standard Solidity tools and the Ethers library. New bytes in the response are ignored.
 
 #### 2.2. Contract version upgrade
 
-For correct migration to the new version of the `StakingRouter` contract, the existing `initialize` external method should be updated, and the new `finalizeUpgrade_v2` external method should be implemented. The existing `ZeroAddress` error type should be transformed to the new `ZeroAddressLido` error type. Also, the new `ZeroAddressAdmin` error type should be added.
+For correct migration to the new version of the `StakingRouter` contract, the existing `initialize` external method should be updated, and the new `finalizeUpgrade_v2` external method should be implemented. The existing `ZeroAddress` error type should be transformed to the new `ZeroAddressLido` error type. Also, the new `ZeroAddressAdmin` error type should be added. See more details about Lido proxy contracts upgrade requirements in the [LIP-10](https://github.com/lidofinance/lido-improvement-proposals/blob/feat/lip-24/LIPS/lip-10.md).
 
 ```solidity
 error ZeroAddressLido();
@@ -576,13 +576,13 @@ function getStakingModuleMaxDepositsPerBlock(uint256 _stakingModuleId) external 
 
 ##### 2.5.1. Backward compatibility notes
 
-Changing the `StakingModule` struct will affect the following view methods, which can be used in external integrations and offchain tooling:
+Changing the `StakingModule` struct will affect the following view methods, which can be used in external integrations and off-chain tooling:
 - `getStakingModule`;
 - `getStakingModules`;
 - `getStakingModuleDigests`;
 - `getAllStakingModuleDigests`.
 
-Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests) for both offchain tooling and possible onchain integrations. The modified methods responses are correctly decoded by standard Solidity decoder and the Ethers library. New bytes in the responses are ignored.
+Tests show that [backward compatibility remains](https://github.com/lidofinance/sr-1.5-compatibility-tests) for both off-chain tooling and possible on-chain integrations. The modified methods responses are correctly decoded by standard Solidity decoder and the Ethers library. New bytes in the responses are ignored.
 
 #### 2.6. Excluded methods for module pausing
 Now the protocol should be able to pause deposits to all modules at once. The pausing logic should be moved to the `DepositSecurityModule` contract. More reasons for this change are provided in the new [DSM specification](https://hackmd.io/@lido/rJrTnEc2a#Soft-Pause).
@@ -599,7 +599,7 @@ All the code of this contract assumes the Solidity v0.4.24 syntax.
 
 #### 3.1. Contract initialization engine
 
-The `initialize` method should now call the new internal `_initialize_v3` method. Also, the new `finalizeUpgrade_v3` external method should be implemented.
+The `initialize` method should now call the new internal `_initialize_v3` method. Also, the new `finalizeUpgrade_v3` external method should be implemented. See more details about Lido proxy contracts upgrade requirements in the [LIP-10](https://github.com/lidofinance/lido-improvement-proposals/blob/feat/lip-24/LIPS/lip-10.md).
 
 ```solidity
 function initialize(address _locator, bytes32 _type, uint256 _stuckPenaltyDelay) public onlyInit {
@@ -1472,7 +1472,7 @@ interface IOracleReportSanityChecker {
 
 #### 6.3. Contract version upgrade
 
-For correct migration to the new version of the `AccountingOracle` contract, the existing initialize methods should be updated, and the new `finalizeUpgrade_v2` external method should be implemented.
+For correct migration to the new version of the `AccountingOracle` contract, the existing initialize methods should be updated, and the new `finalizeUpgrade_v2` external method should be implemented. See more details about Lido proxy contracts upgrade requirements in the [LIP-10](https://github.com/lidofinance/lido-improvement-proposals/blob/feat/lip-24/LIPS/lip-10.md).
 
 ```solidity
 function initialize(
