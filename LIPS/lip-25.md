@@ -432,7 +432,7 @@ function finalizeUpgrade_v2(
 
 #### 2.3. Keys vetting improvements
 
-Support of the [new key vetting logic](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) requires implementation of the new `decreaseStakingModuleVettedKeysCountByNodeOperator` external method. It is proposed to add a `STAKING_MODULE_UNVETTING_ROLE` and assign this role to the DSM.
+Support of the [new key vetting logic](https://hackmd.io/@lido/rJrTnEc2a#Automated-Vetting) requires implementation of the new `decreaseStakingModuleVettedKeysCountByNodeOperator` external method. It is proposed to add a `STAKING_MODULE_UNVETTING_ROLE` role and assign it to the DSM.
 
 ```solidity
 bytes32 public constant STAKING_MODULE_UNVETTING_ROLE = keccak256("STAKING_MODULE_UNVETTING_ROLE");
