@@ -5,7 +5,7 @@ status: Proposed
 author: Alexey Potapkin, Greg Shestakov, Eugene Pshenichnyi, Victor Petrenko
 discussions-to: https://research.lido.fi/t/lip-23-negative-rebase-sanity-check-with-second-opinion/7543
 created: 2024-04-17
-updated: 2024-06-05
+updated: 2024-06-17
 ---
 
 # LIP-23: Negative rebase sanity check with second opinion
@@ -80,6 +80,7 @@ interface SecondOpinionOracle {
 	function getReport(uint256 refSlot) external view returns ( 
 		bool success, 
 		uint256 clBalanceGwei, 
+		uint256 withdrawalVaultBalance, 
 		uint256 totalDepositedValidators, 
 		uint256 totalExitedValidators 
 	); 
