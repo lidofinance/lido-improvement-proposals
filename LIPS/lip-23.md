@@ -74,19 +74,21 @@ To start, it is proposed that there be no second opinion source but the interfac
 -   [DendrETH: A trustless oracle for liquid staking protocols](https://research.lido.fi/t/dendreth-a-trustless-oracle-for-liquid-staking-protocols/5136)
 -   [ZK Lido Oracle powered by Succinct](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747)
 
-Other options, like 3rd party Oracle comittee or even a multisig-controlled manual quasi-oracle, may be considered. The interface these Oracles should implement is defined as: 
+Other options, like 3rd party Oracle comittee or even a multisig-controlled manual quasi-oracle, may be considered. The Oracle interface must be implemented as: 
 ```
 interface SecondOpinionOracle { 
 	function getReport(uint256 refSlot) external view returns ( 
 		bool success, 
 		uint256 clBalanceGwei, 
-		uint256 withdrawalVaultBalance, 
+		uint256 withdrawalVaultBalanceWei, 
 		uint256 totalDepositedValidators, 
 		uint256 totalExitedValidators 
 	); 
 }
 ```
-> NOTE: The interface is excessive and provides more data than is used in this check. It was intended to provide a possibility for the more extensive use of ZK-based data in future checks. 
+> NOTE 1: All the parameters in the interface are mandatory. Not all of them are used in the proposed sanity check implementation. It was intended to provide a possibility for the more extensive use of ZK-based data in future checks. 
+
+> NOTE 2: [Withdrawal Vault](https://docs.lido.fi/contracts/withdrawal-vault) balance is essential for the correct sanity check. Otherwise in case of oracles collusion, it is possible to "hide" funds on the Withdrawl Vault contract. Such situation could lead to a negative rebase, which will not be rejected by the sanity check.
 
 ### Matching
 
@@ -145,3 +147,4 @@ The `checkAccountingOracleReport()` function for `OracleReportSanityChecker` is 
 - [[ZKLLVM] Trustless ZK-proof TVL oracle](https://research.lido.fi/t/zkllvm-trustless-zk-proof-tvl-oracle/5028)
 - [DendrETH: A trustless oracle for liquid staking protocols](https://research.lido.fi/t/dendreth-a-trustless-oracle-for-liquid-staking-protocols/5136)
 - [ZK Lido Oracle powered by Succinct](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747)
+
