@@ -94,9 +94,9 @@ interface SecondOpinionOracle {
 	); 
 }
 ```
-> NOTE 1: All the parameters in the interface are mandatory. Not all of them are used in the proposed sanity check implementation. It was intended to provide a possibility for the more extensive use of ZK-based data in future checks. 
+> NOTE 1: All parameters in the interface are mandatory, though not all are used in the proposed sanity check implementation. The intention is to enable the more extensive use of ZK-based data in future checks.
 
-> NOTE 2: [Withdrawal Vault](https://docs.lido.fi/contracts/withdrawal-vault) balance is essential for the correct sanity check. Otherwise in case of oracles collusion, it is possible to "hide" funds on the Withdrawl Vault contract. Such situation could lead to a negative rebase, which will not be rejected by the sanity check.
+> NOTE 2: [Withdrawal Vault](https://docs.lido.fi/contracts/withdrawal-vault) balance is essential for the correct sanity check. Without it, in case of oracle collusion, it is possible to "hide" funds in the Withdrawal Vault contract. Such a situation could lead to a negative rebase, which would not be detected by the sanity check.
 
 ### Matching
 
