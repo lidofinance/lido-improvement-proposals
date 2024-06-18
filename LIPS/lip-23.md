@@ -5,7 +5,7 @@ status: Proposed
 author: Alexey Potapkin, Greg Shestakov, Eugene Pshenichnyi, Victor Petrenko
 discussions-to: https://research.lido.fi/t/lip-23-negative-rebase-sanity-check-with-second-opinion/7543
 created: 2024-04-17
-updated: 2024-06-05
+updated: 2024-06-18
 ---
 
 # LIP-23: Negative rebase sanity check with second opinion
@@ -21,6 +21,14 @@ The `AccountingOracle` contract is a fundamental component of the Lido protocol 
 The current approach to sanity checking allows the Oracle committee to bring up to a 5% reduction of TVL in each report. Given that the governance reaction time has a lower bound of 72 hours, the malicious or compromised Oracles could reduce reported TVL by 15-20%, invoking mass liquidations on lending markets and dropping the price of stETH. However, a real negative rebase has very distinct features that we can take into account to reduce the impact and attack surface while allowing frictionless operation of the protocol even during a mass slashing event.
 
 While a high-precision check is possible using zero-knowledge technologies and EIP-4788, we decided to start with the simplier solution. It limits the impact in a simple but effective way. It privides an easy way to improve the robustness of the solution later.
+
+## Changelog
+
+- 1.2.0 - 2024-06-18: Request withdrawal vault balance from second opinion oracle
+- 1.1.0 - 2024-06-05: Add paragraph about safe call for checkAccountingOracleReport()
+- 1.0.1 - 2024-05-23: Add full forum link to LIP discussion
+- 1.0.0 - 2024-05-22: First public version
+- 0.0.1 - 2024-04-17: Initial version
 
 ## Specification
 
@@ -74,18 +82,21 @@ To start, it is proposed that there be no second opinion source but the interfac
 -   [DendrETH: A trustless oracle for liquid staking protocols](https://research.lido.fi/t/dendreth-a-trustless-oracle-for-liquid-staking-protocols/5136)
 -   [ZK Lido Oracle powered by Succinct](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747)
 
-Other options, like 3rd party Oracle comittee or even a multisig-controlled manual quasi-oracle, may be considered. The interface these Oracles should implement is defined as: 
+Other options, like 3rd party Oracle comittee or even a multisig-controlled manual quasi-oracle, may be considered. The Oracle interface must be implemented as: 
 ```
 interface SecondOpinionOracle { 
 	function getReport(uint256 refSlot) external view returns ( 
 		bool success, 
 		uint256 clBalanceGwei, 
+		uint256 withdrawalVaultBalanceWei, 
 		uint256 totalDepositedValidators, 
 		uint256 totalExitedValidators 
 	); 
 }
 ```
-> NOTE: The interface is excessive and provides more data than is used in this check. It was intended to provide a possibility for the more extensive use of ZK-based data in future checks. 
+> NOTE 1: All parameters in the interface are mandatory, though not all are used in the proposed sanity check implementation. The intention is to enable the more extensive use of ZK-based data in future checks.
+
+> NOTE 2: [Withdrawal Vault](https://docs.lido.fi/contracts/withdrawal-vault) balance is essential for the correct sanity check. Without it, in case of oracle collusion, it is possible to "hide" funds in the Withdrawal Vault contract. Such a situation could lead to a negative rebase, which would not be detected by the sanity check.
 
 ### Matching
 
@@ -144,3 +155,4 @@ The `checkAccountingOracleReport()` function for `OracleReportSanityChecker` is 
 - [[ZKLLVM] Trustless ZK-proof TVL oracle](https://research.lido.fi/t/zkllvm-trustless-zk-proof-tvl-oracle/5028)
 - [DendrETH: A trustless oracle for liquid staking protocols](https://research.lido.fi/t/dendreth-a-trustless-oracle-for-liquid-staking-protocols/5136)
 - [ZK Lido Oracle powered by Succinct](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747)
+
