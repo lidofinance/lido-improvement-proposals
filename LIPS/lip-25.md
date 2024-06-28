@@ -3,9 +3,9 @@ lip: 25
 title: Staking Router 2.0
 status: Proposed
 author: Kirill Minenko, Alexander Lukin
-discussions-to: <TODO>
+discussions-to: https://research.lido.fi/t/lip-25-staking-router-v2-0/7773
 created: 2024-05-06
-updated: 2024-06-15
+updated: 2024-06-28
 ---
 
 # LIP-25. Staking Router 2.0
