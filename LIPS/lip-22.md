@@ -391,7 +391,7 @@ The following expectations are set for the design described.
 ### Pause Token Rate Oracle
 
 #### Reason
-The design offered earlier allows updating the token rate (sourced from L1 wstETH) on the L2 TokenRateOracle by either depositing tokens through a bridge or directly pushing the token rate via the TokenRateNotifier. Deposits can always be paused by the "deposits enabler" role, but pushing token rate cannot be paused. However, there is a risk that the protocol could be compromised, resulting in a malicious token rate being applied. Our team came up with the idea of adding pause to the TokenRateOracle updates, which would allow to react on applied malicious token rate. Additionally, making the TokenRateOracle suspendable would facilitate easier future upgrades of the TokenRateOracle.
+The design offered earlier allows updating the token rate (sourced from L1 wstETH) on the L2 TokenRateOracle by either depositing tokens through a bridge or directly pushing the token rate via the TokenRateNotifier. Deposits can always be paused by the "deposits enabler" role, but pushing token rate cannot be paused. However, there is a risk that the protocol could be compromised, resulting in a malicious token rate being applied. To mitigate this risk, adding a pause feature to the TokenRateOracle updates is proposed. This feature would enable a reaction to any applied malicious token rate. Additionally, making the TokenRateOracle suspendable would facilitate easier future upgrades of the TokenRateOracle.
 
 #### Describe Pause mechanism
 Simply pausing the TokenRateOracle update and retaining the already applied rate will not resolve the issue of an incorrect rate, as it has already been applied. There should be a mechanism to revert the rate to its previous value. The past value should be recent enough for the committee to respond effectively but not so old that it allows the committee to manipulate the rate. Reverting the rate to its value from one day prior seems reasonable, as it aligns with the original design assumptions. As for the resuming method, it should be called with the most recent token rate.
@@ -422,9 +422,7 @@ To understand how pause/resume will work, let's examine a table of typical data 
 TokenRate stores in the array all elements in the format [TokenRate + L1TimeUpgrade + L2TimeReceived], ensuring not to add elements with the same L1TimeUpgrade value. After this input, the array of token rates will look like this: `[{1.1, 0d, 0d+23h}, { 1.2, 1d, 2d+2h}]`. Considering all the logic described above and input data, it will be possible to revert only to the last element with a pause.
 
 #### Pause impact on protocol
-Pause won't revert the transaction and just emits an event if a token rate update is called.
-
-Let's check deposit/withdrawal/rate pause combinations and what impact on protocol they have.
+Pause won't revert the transaction and just emits an event if a token rate update is called. Here are deposit/withdrawal/rate pause combinations and what impact on protocol they have.
 
 | Deposit/Withdrawal Disabled | TokenRateOracle Paused| result |
 |--------|--------|--------|
