@@ -145,7 +145,7 @@ Values in this doc are calculated considering current Ethereum issuance and vote
 
 There is no need for any changes in the Oracle daemon. It MUST work as intended without modification and explicit knowledge about additional sanity checks. It will be able to utilize fastlane mechanics and reach a consensus but will fail to submit report data in the case of a significant decrease until the second opinion is ready. But it will retry until it finally succeeds. However, it can be optimized to avoid this polling loop and reduce resource utilization.
 
-However, new sanity checker implies changes in the report limits. Oracle consumes the limits via the `getOracleReportLimits()` function. For that reason `oneOffCLBalanceDecreaseBPLimit` should be marked as deprecated and all new parameters should be added at the end of the list.
+However, new sanity checker implies changes in the report limits. The off-chain [oracle daemon](https://github.com/lidofinance/lido-oracle) consumes the limits via the `getOracleReportLimits()` function. For that reason, `oneOffCLBalanceDecreaseBPLimit` should be marked as deprecated, and all new parameters should be added at the end of the list.
 
 Also, proposed approach does not require any additional data from Beacon Chain, so oracles are not to be modified. 
 
