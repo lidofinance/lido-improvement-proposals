@@ -24,6 +24,7 @@ While a high-precision check is possible using zero-knowledge technologies and E
 
 ## Changelog
 
+- 1.2.1 - 2024-07-11: getOracleReportLimits() backward compatibility considerations 
 - 1.2.0 - 2024-06-18: Request withdrawal vault balance from second opinion oracle
 - 1.1.0 - 2024-06-05: Add paragraph about safe call for checkAccountingOracleReport()
 - 1.0.1 - 2024-05-23: Add full forum link to LIP discussion
@@ -143,6 +144,8 @@ Values in this doc are calculated considering current Ethereum issuance and vote
 ## Backward compatibility
 
 There is no need for any changes in the Oracle daemon. It MUST work as intended without modification and explicit knowledge about additional sanity checks. It will be able to utilize fastlane mechanics and reach a consensus but will fail to submit report data in the case of a significant decrease until the second opinion is ready. But it will retry until it finally succeeds. However, it can be optimized to avoid this polling loop and reduce resource utilization.
+
+However, new sanity checker implies changes in the report limits. The off-chain [oracle daemon](https://github.com/lidofinance/lido-oracle) consumes the limits via the `getOracleReportLimits()` function. For that reason, `oneOffCLBalanceDecreaseBPLimit` should be marked as deprecated, and all new parameters should be added at the end of the list.
 
 Also, proposed approach does not require any additional data from Beacon Chain, so oracles are not to be modified. 
 
