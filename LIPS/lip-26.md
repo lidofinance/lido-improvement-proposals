@@ -19,7 +19,7 @@ The  [Community Staking Landscape](https://hackmd.io/@lido/Byp775Ay6) describes 
 
 ## Motivation
 
-The fact that the Lido Validator set is permissioned makes it impossible for the community stakers to participate. Since community stakers participation is one of the top priorities of Ethereum, it is crucial to add a permissionless entry to the Lido on Ethereum Node Operator set and enfranchise solo-staker involvement in the protocol to stay aligned with Ethereum. At the same time, it is vital to maintain Lido on Ethereum protocol security, reliability, and capital efficiency on a level equal to or above the existing ones.
+The fact that the Lido Validator set is permissioned makes it impossible for the community stakers to participate. Since community stakers participation is one of the top priorities of Ethereum, it is crucial to add a permissionless entry to the Lido on Ethereum Node Operator set and enfranchise solo-staker involvement in the protocol to stay aligned with Ethereum.
 
 Given the Staking Router architecture introduced in the [Lido V2](https://blog.lido.fi/introducing-lido-v2/) upgrade, it is proposed to implement a staking module that will add a permissionless entry to the Lido on Ethereum Node Operator set, enfranchise solo-staker participation in the protocol, and maintain Lido on Ethereum protocol security, reliability, and capital efficiency on a level equal to or above the existing ones.
 
@@ -49,9 +49,9 @@ As depicted in the scheme above, CSM is a set of Ethereum smart contracts and of
 
 **`HashConsensus.sol`** - a utility contract responsible for reaching consensus between CSM Oracle members. Uses the standard code of the `HashConsensus` contract from the LoE.
 
-**`EasyTrack`** - a utility contract responsible for the application of the reported EL stealing penalties. A part of the common `EasyTrack` setup within LoE.
+**`CSMSettleELStealingPenalty.sol`** (EasyTrack on the scheme) - a utility contract responsible for the application of the reported EL stealing penalties. A part of the common `EasyTrack` setup within LoE.
 
-**`GateSeal`** - a utility contract responsible for the one-time pause of the `CSModule.sol` and `CSAccounting.sol` contracts to prevent possible exploitation of the module through zero-day vulnerability. Uses the standard code of the `GateSeal` contract from LoE.
+**`GateSeal.vy`** (GateSeal on the scheme) - a utility contract responsible for the one-time pause of the `CSModule.sol`, `CSAccounting.sol`, and `CSFeeOracle.sol` contracts to prevent possible exploitation of the module through zero-day vulnerability. Created using `GateSealFactory` contract from LoE.
 
 #### Off-chain tools
 
