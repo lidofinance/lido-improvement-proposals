@@ -13,15 +13,13 @@ updated: 2024-08-02
 
 ## Simple Summary
 
-This proposal introduces Community Staking Module (CSM) — the first permissionless staking module within the [Staking Router](https://research.lido.fi/t/lip-20-staking-router/3790) architecture. This module will not only allow for the permissionless entry to the Lido on Ethereum validator set. Still, it will also create a clear pathway for the existing solo and community stakers to join Lido on Ethereum validator set on privileged conditions thanks to the Early Adoption mechanics.
-
-The  [Community Staking Landscape](https://hackmd.io/@lido/Byp775Ay6) describes the initial motivation for CSM development. The [CSM Architecture](https://hackmd.io/@lido/rJMcGj0Ap) document provides a detailed description of the CSM design principles. This document also provides a detailed description of the technical implementation of CSM and related software, which should be considered an extension of the [CSM Architecture](https://hackmd.io/@lido/rJMcGj0Ap).
+This proposal introduces the Community Staking Module (CSM), a groundbreaking addition to the [Staking Router](https://research.lido.fi/t/lip-20-staking-router/3790) architecture as the first permissionless staking module. CSM facilitates open access to the Lido on Ethereum validator set, enabling solo and community stakers to participate under favorable conditions through the Early Adoption mechanics. This proposal provides an overview of CSM's development motivations and a comprehensive technical description of its architecture and implementation. It should be considered together with the [CSM Architecture](https://hackmd.io/@lido/rJMcGj0Ap).
 
 ## Motivation
 
-The fact that the Lido Validator set is permissioned makes it impossible for the community stakers to participate. Since community stakers participation is one of the top priorities of Ethereum, it is crucial to add a permissionless entry to the Lido on Ethereum Node Operator set and enfranchise solo-staker involvement in the protocol to stay aligned with Ethereum.
+The current permissioned nature of the Lido validator set limits participation from community stakers, which contradicts Ethereum's priority to encourage broader community involvement. To align with Ethereum's goals, it is essential to integrate a permissionless entry mechanism into the Lido on Ethereum Node Operator set, empowering solo stakers to engage with the protocol.
 
-Given the Staking Router architecture introduced in the [Lido V2](https://blog.lido.fi/introducing-lido-v2/) upgrade, it is proposed to implement a staking module that will add a permissionless entry to the Lido on Ethereum Node Operator set, enfranchise solo-staker participation in the protocol, and maintain Lido on Ethereum protocol security, reliability, and capital efficiency on a level equal to or above the existing ones.
+The proposed staking module, built upon the Staking Router architecture from the [Lido V2](https://blog.lido.fi/introducing-lido-v2/) upgrade, aims to open the Lido on Ethereum Node Operator set to permissionless entry. This will enhance solo-staker participation while ensuring that the protocol's security, reliability, and capital efficiency are maintained or improved.
 
 ## Specification
 
