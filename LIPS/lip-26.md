@@ -43,13 +43,13 @@ As depicted in the scheme above, CSM is a set of Ethereum smart contracts and of
 
 **`CSFeeDistributor.sol`** (FeeDistributor on the scheme) - a supplementary contract that stores non-claimed and non-distributed Node Operator rewards on balance and the latest root of a rewards distribution Merkle tree root. It accepts calls from `CSAccounting.sol` with reward claim requests and stores data about already claimed rewards by the Node Operator. It receives non-distributed rewards from the `CSModule.sol` each time the `StakingRouter` mints the new portion of the Node Operators' rewards.
 
-**`CSFeeOracle.sol`** (FeeOracle on the scheme) - a utility contract responsible for the execution of the CSM Oracle report once the consensus is reached in the `HashConsensus.sol` contract, namely, transforming non-distributed rewards to non-claimed rewards stored on the `CSFeeDistributor.sol`, and reporting the latest root of rewards distribution Merkle tree to the `CSFeeDistributor.sol`.  Inherited from the `BaseOracle.sol` from LoE.
+**`CSFeeOracle.sol`** (FeeOracle on the scheme) - a utility contract responsible for the execution of the CSM Oracle report once the consensus is reached in the `HashConsensus.sol` contract, namely, transforming non-distributed rewards to non-claimed rewards stored on the `CSFeeDistributor.sol`, and reporting the latest root of rewards distribution Merkle tree to the `CSFeeDistributor.sol`.  Inherited from the `BaseOracle.sol` from Lido on Ethereum.
 
-**`HashConsensus.sol`** - a utility contract responsible for reaching consensus between CSM Oracle members. Uses the standard code of the `HashConsensus` contract from the LoE.
+**`HashConsensus.sol`** - a utility contract responsible for reaching consensus between CSM Oracle members. Uses the standard code of the `HashConsensus` contract from the Lido on Ethereum.
 
-**`CSMSettleELStealingPenalty.sol`** (EasyTrack on the scheme) - a utility contract responsible for the application of the reported EL stealing penalties. A part of the common `EasyTrack` setup within LoE.
+**`CSMSettleELStealingPenalty.sol`** (EasyTrack on the scheme) - a utility contract responsible for the application of the reported EL stealing penalties. A part of the common `EasyTrack` setup within Lido on Ethereum.
 
-**`GateSeal.vy`** (GateSeal on the scheme) - a utility contract responsible for the one-time pause of the `CSModule.sol`, `CSAccounting.sol`, and `CSFeeOracle.sol` contracts to prevent possible exploitation of the module through zero-day vulnerability. Created using `GateSealFactory` contract from LoE.
+**`GateSeal.vy`** (GateSeal on the scheme) - a utility contract responsible for the one-time pause of the `CSModule.sol`, `CSAccounting.sol`, and `CSFeeOracle.sol` contracts to prevent possible exploitation of the module through zero-day vulnerability. Pause can only be triggered once per GateSeal instance by the sealing committee, It is assumed that a dedicated CSM committee will be formed for that purpose. Created using `GateSealFactory` contract from Lido on Ethereum.
 
 #### Off-chain tools
 
@@ -57,7 +57,7 @@ As depicted in the scheme above, CSM is a set of Ethereum smart contracts and of
 
 **`EL stealing detector`** - a daemon application or EOA responsible for detecting and reporting the EL stealing facts by the CSM validators. Assumed to be EOA controlled by the dev team at the early stages of the MEV monitoring software maturity and later converted to the automated bot to avoid false-positive activations.
 
-**`CSM Oracle`** - a module in the common LoE oracle set. Operated by the existing oracles set alongside Accounting Oracle and Validator Exit Bus Oracle. It is responsible for the calculation of the CSM Node Operators' rewards distribution based on their attestation performance on the CL.
+**`CSM Oracle`** - an oracle [module](https://github.com/lidofinance/lido-oracle?tab=readme-ov-file#how-it-works) in the common Lido on Ethereum oracle set ([Accounting Oracle](https://docs.lido.fi/contracts/accounting-oracle) and [VEBO](https://docs.lido.fi/contracts/validators-exit-bus-oracle)). Operated by the existing oracles set alongside Accounting Oracle and Validator Exit Bus Oracle. It is responsible for the calculation of the CSM Node Operators' rewards distribution based on their attestation performance on the CL.
 
 ### Main flows
 
