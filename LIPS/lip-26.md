@@ -108,7 +108,7 @@ Due to [optimistic vetting approach](https://hackmd.io/gGRgZ0yeTnm-9SSFuHrXwg#De
 
 ![Rewards distribution](./assets/lip-26/rewards-allocation.png)
 
-`StakingRouter` mint rewards for CSM Node Operators on each report of the `AccountingOracle`. `CSModule.sol` bypasses minted rewards to the `CSFeeDistributor.sol`. Once the report slot is reached for the next CSM Oracle report, the rewards distribution tree is [calculated](https://hackmd.io/gGRgZ0yeTnm-9SSFuHrXwg#Performance-Oracle) by each Oracle member. After reaching the quorum, a new Merkle tree root is submitted to the `CSFeeDistributor.sol`, and the corresponding portion of the rewards is transferred from the non-distributed to the non-claimed state.
+`StakingRouter` mints rewards for CSM Node Operators on each report of the `AccountingOracle`. `CSModule.sol` bypasses minted rewards to the `CSFeeDistributor.sol`. Once the report slot is reached for the next CSM Oracle report, the rewards distribution tree is [calculated](https://hackmd.io/gGRgZ0yeTnm-9SSFuHrXwg#Performance-Oracle) by each Oracle member. After reaching the quorum, a new Merkle tree root is submitted to the `CSFeeDistributor.sol`, and the corresponding portion of the rewards is transferred from the non-distributed to the non-claimed state.
 
 #### Rewards claim
 
