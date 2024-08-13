@@ -36,12 +36,14 @@ The Simple Delegation represents an updated implementation of `Voting` and `Voti
 Using new mechanics introduced in the `Voting` contract, each token holder can assign themself a delegate address and thus become a delegated voter. That address could be any except for a zero address, a holder's address, or the holder's previous delegate address. They also can unassign a delegate at any moment. Assigning a delegate doesn't affect the holder's LDO balance in any way.
 
 A delegated voter:
+
 - retains the right to participate in votes;
 - have a right to overwrite the delegate's vote made on their behalf;
 - can assign only one delegate address at a time;
 - can obtain information about which address is listed as their delegate.
 
 A delegate:
+
 - can use delegated voting power to participate in votes;
 - can change their decision and re-vote with a different option, using the voting power of one or more delegated voters;
 - can participate in votes on behalf of themself.
@@ -49,6 +51,7 @@ A delegate:
 ### Voting contract
 
 Below, we'll take a closer look at the implementation details of Simple Delegation. In order to have a complete understanding of the implementation of mechanics described above, it's necessary to understand how it answers the following questions:
+
 1. [How can one delegate voting power?](#Delegating-voting-power)
 2. [How can a delegate assigned by token holders participate in the vote?](#Voting-as-a-delegate)
 3. [How do tradeoffs affect technical implementation?](#Mitigating-design-tradeoffs)
@@ -59,51 +62,54 @@ The code examples presume the Solidity **v0.4.24** syntax.
 
 #### Delegating voting power
 
-The delegation allows token holders to delegate their voting power to other addresses. To assign a delegate, one can use the `setDelegate` method.
+The delegation allows token holders to delegate their voting power to other addresses. To assign a delegate, one can use the `assignDelegate` method.
 
 ```solidity
-function setDelegate(address _delegate) public
+function assignDelegate(address _delegate) public
 ```
 
 To successfully assign a delegate, the following requirements must be met:
+
 - `_delegate` must not be a zero address;
 - `_delegate` must not match with a caller's address;
 - `_delegate` must not match with a current caller's delegate address;
 - caller must have a non-zero LDO amount on their account;
 
-If all requirements are met, the state will be updated, and the `SetDelegate` event will be emitted.
+If all requirements are met, the state will be updated, and the `AssignDelegate` event will be emitted.
 
 ```solidity
-event SetDelegate(
+event AssignDelegate(
     address indexed voter,
-    address indexed delegate
+    address indexed assignedDelegate
 );
 ```
 
 Where:
+
 - `voter` is the caller's address;
-- `delegate` is the address passed from the `_delegate` argument.
+- `assignedDelegate` is the address passed from the `_delegate` argument.
 
-
-A token holder can unassign a delegate at any time. To do that, they can use the `resetDelegate` method.
+A token holder can unassign a delegate at any time. To do that, they can use the `unassignDelegate` method.
 
 ```solidity
-function resetDelegate() public
+function unassignDelegate() public
 ```
-If the delegate wasn't assigned before, the call will be reverted. Otherwise, the state will be updated, and the `ResetDelegate` event will be emitted.
+
+If the delegate wasn't assigned before, the call will be reverted. Otherwise, the state will be updated, and the `UnassignDelegate` event will be emitted.
 
 ```solidity
-event ResetDelegate(
+event UnassignDelegate(
     address indexed voter,
-    address indexed delegate
+    address indexed unassignedDelegate
 );
 ```
 
 Where:
-- `voter` is the caller's address;
-- `delegate` is the address of the current delegate.
 
-Both `setDelegate` and `resetDelegate` are calling two internal methods to make the changes in the state:
+- `voter` is the caller's address;
+- `unassignedDelegate` is the address of the current delegate.
+
+Both `assignDelegate` and `unassignDelegate` are calling two internal methods to make the changes in the state:
 
 ```solidity
 function _addDelegatedAddressFor(
@@ -120,32 +126,33 @@ function _removeDelegatedAddressFor(
 The state itself consists of two new variables:
 
 ```solidity
-struct DelegatedAddressList {
+struct DelegatedVoters {
         address[] addresses;
 }
 // delegate -> [delegated voter address]
-mapping(address => DelegatedAddressList) private delegatedVoters;
+mapping(address /* delegate */ => DelegatedVoters) private delegatedVoters;
 
 struct Delegate {
         address delegate;
         uint96 voterIndex;
 }
 // voter -> delegate
-mapping(address => Delegate) private delegates;
+mapping(address /* voter */ => Delegate) private delegates;
 ```
 
 - `delegatedVoters` is a mapping containing all delegated voters' addresses for a given delegate.
 
-    We chose to use an array to store delegated voters' addresses because we want to allow delegates to vote for multiple delegated voters at once. This structure, combined with new getters described below, will enable delegates to retrieve a list of addresses and then cast a vote for them.
-- `delegates` is a mapping containing a current delegate address and its index in the delegate's `DelegatedAddressList` array for a delegated voter's address.
+  We chose to use an array to store delegated voters' addresses because we want to allow delegates to vote for multiple delegated voters at once. This structure, combined with new getters described below, will enable delegates to retrieve a list of addresses and then cast a vote for them.
 
-    The choice of `uint96` type for `voterIndex` was made due to storage optimization: delegate and `voterIndex` take up only one 32-byte slot together.
+- `delegates` is a mapping containing a current delegate address and its index in the delegate's `DelegatedVoters` array for a delegated voter's address.
 
-    However, this optimization imposes a certain restriction on the maximum size of the `DelegatedAddressList` array; the corresponding condition check was added to the `_addDelegatedAddressFor` method to avoid an overflow:
+  The choice of `uint96` type for `voterIndex` was made due to storage optimization: delegate and `voterIndex` take up only one 32-byte slot together.
+
+  However, this optimization imposes a certain restriction on the maximum size of the `DelegatedVoters` array; the corresponding condition check was added to the `_addDelegatedAddressFor` method to avoid an overflow:
 
 ```solidity
 ...
-uint256 delegatedVotersCount = delegatedVoters[_delegate].addresses.length;
+uint256 delegatedVotersCount = votersList.length;
 require(delegatedVotersCount <= UINT_96_MAX, ERROR_MAX_DELEGATED_VOTERS_REACHED);
 ...
 ```
@@ -157,41 +164,41 @@ After a holder assigns themself a delegate, the delegate can participate in voti
 To allow delegates to use delegated voting power in votes, the following method has been added:
 
 `attemptVoteForMultiple`
+
 - **Arguments**:
-    - `uint256 _voteId`;
-    - `bool _supports` - whether the delegate's vote is "yea" or "nay";
-    - `address[] _voters` - an array of addresses that the delegate is going to vote on behalf of.
+  - `uint256 _voteId`;
+  - `bool _supports` - whether the delegate's vote is "yea" or "nay";
+  - `address[] _voters` - an array of addresses that the delegate is going to vote on behalf of.
 - **Visibility**: `external`
 - **Modifiers**: `voteExists(_voteId)`
 
 Specific requirements must be met for a delegate's vote to be accepted; those can be divided into two categories:
 
 1. Requirements inherited from the `vote` method:
-    - the vote must be **open**: not expired and not yet executed;
-    - a voter (delegate) must not cast a "yea" vote during the objection phase;
-    - a voter must have a non-zero amount of LDO by the time the vote has started.
+
+   - the vote must be **open**: not expired and not yet executed;
+   - a voter (delegate) must not cast a "yea" vote during the objection phase;
+   - a voter must have a non-zero amount of LDO by the time the vote has started.
 
 2. Requirements related to the delegation:
-    - **each** voter from the `_voters` array must have the caller's address as their assigned delegate;
-    - **each** voter from the `_voters` array must not have a vote cast by themself before the call.
+   - **each** voter from the `_voters` array must have the caller's address as their assigned delegate;
+   - **each** voter from the `_voters` array must not have a vote cast by themself before the call.
 
 If one of the requirements from (1) isn't met, the call will be reverted. However, requirements from (2) would not cause a revert. Voters who haven't met the requirements will be skipped. But if all of voters from the `_voters` were skipped, the call will be reverted.
 
-Otherwise, the voting state will be updated, and in addition to existing `CastVote` and `CastObjection` events, one new event will be emitted per voter.
+Otherwise, the voting state will be updated, and in addition to existing `CastVote` and `CastObjection` events, one new event will be emitted.
 
 ```solidity
-event CastVoteAsDelegate(
+event AttemptCastVoteAsDelegate(
     uint256 indexed voteId,
     address indexed delegate,
-    address indexed voter,
-    bool supports,
-    uint256 stake
+    address[] voters,
 )
 ```
 
 - `voteId` is the `_voteId`;
 - `delegate` is the caller's address;
-- `voter` is a voter's address from the `_voters` array;
+- `voters` is the `_voters` list no matter how many voters were skipped;
 - `supports` is the flag that indicates whether a caller supports voting decisions.
 
 If a delegate wants to vote on behalf of a single delegated voter, they can use the `attemptVoteFor` method, which is basically a wrapper over the `attemptVoteForMultiple`.
@@ -201,7 +208,7 @@ function attemptVoteFor(
     uint256 _voteId,
     bool _supports,
     address _voter
-) external voteExists(_voteId) {
+) external {
     address[] memory voters = new address[](1);
     voters[0] = _voter;
     attemptVoteForMultiple(_voteId, _supports, voters);
@@ -219,55 +226,64 @@ For delegates to obtain an up-to-date list of delegated voters, the correspondin
 
 The following getters have been added to the contract, the use of which will mitigate these restrictions. First, let's look at the new internal getter.
 
-`_getDelegatedVotersAt`
+`getDelegatedVoters`
+
 - **Arguments**:
-    - `address _delegate`;
-    - `uint256 _offset` - number of addresses in a delegated voters array to skip;
-    - `uint256 _limit` - amount of addresses to get;
-    - `uint256 _blockNumber` - block number for which LDO balances will be requested.
+  - `address _delegate`;
+  - `uint256 _offset` - number of addresses in a delegated voters array to skip;
+  - `uint256 _limit` - maximum amount of addresses to get;
+- **Visibility**: `external`
+- **Mutability**: `view`
+- **Returns**: `address[] memory voters`
+
+The `getDelegatedVoters` returns a sliced array of addresses of voters who have assigned the `_delegate` as their delegate.
+To avoid a potential attack that could end by flooding delegate's voters list, it was decided to implement this getter with `offset` and `limit` arguments, which will return a list in a range specified by users.
+
+Knowing the LDO balances of voters is necessary to prepare a list of candidates for a delegate's vote. That is why the following getter was introduced.
+
+`_getVotingPowerMultipleAt`
+
+- **Arguments**:
+  - `address[] _voters` - list of voters whose balances need to be obtained;
+  - `uint256 _blockNumber` - block number for which LDO balances will be requested.
 - **Visibility**: `internal`
 - **Mutability**: `view`
-- **Returns**: `(address[] memory votersList, uint256[] memory votingPowerList)`
+- **Returns**: `uint256[] memory balances`
 
-To avoid a potential attack, it was decided to implement getters as functions with `offset` and `limit` arguments, which will return a list in a range specified by users.
+This method returns the list of LDO balances for the requested list of voters.
 
-The `_getDelegatedVotersAt` returns a sliced array of addresses of voters who have assigned the `_delegate` as their delegate and an array of LDO balances of those addresses on the specified block number.
+To make this data accessible to users, two external getters were introduced. Those methods are just wrappers over `_getVotingPowerMultipleAt`.
 
-The decision for this getter to return a list of balances alongside a list of addresses was made to ease off-chain operations; it will allow off-chain code to easily filter, sort, and prepare a valid list of delegated voters.
+`getVotingPowerMultiple`
 
-To make the data accessible to users, two public getters were introduced. Those methods are just wrappers over `_getDelegatedVotersAt`.
-
-`getDelegatedVoters`
 - **Arguments**:
-    - `address _delegate`;
-    - `uint256 _offset` - number of addresses in the delegated voters array to skip;
-    - `uint256 _limit` - amount of addresses to get.
-- **Visibility**: `public`
+  - `address[] _voters` - list of voters whose balances need to be obtained.
+- **Visibility**: `external`
 - **Mutability**: `view`
-- **Returns**: `(address[] memory, uint256[] memory)`
+- **Returns**: `uint256[] memory balances`
 
-This method returns the list of voters and the list of LDO balances on the current block.
+This method returns the list of LDO balances at the current block.
 
-`getDelegatedVotersAtVote`
+`getVotingPowerMultipleAtVote`
+
 - **Arguments**:
-    - `address _delegate`;
-    - `uint256 _offset` - number of addresses in the delegated voters array to skip;
-    - `uint256 _limit` - amount of addresses to get;
-    - `uint256 _voteId`.
-- **Visibility**: `public`
+  - `uint256 _voteId`;
+  - `address[] _voters` - list of voters whose balances need to be obtained.
+- **Visibility**: `external`
 - **Mutability**: `view`
 - **Modifiers**: `voteExists(_voteId)`
-- **Returns**: `(address[] memory, uint256[] memory)`
+- **Returns**: `uint256[] memory balances`
 
-This method works similarly to the `getDelegatedVoters`, with the difference that the user's balance will be returned at the time of the block specified in the vote. Using this getter, a delegate can easily get a list of those eligible to participate in a specified vote.
+This method works similarly to the `getVotingPowerMultiple`, with the difference that the users' balances will be returned at the block number specified in the vote. Using this getter, a delegate can easily compose a list of those eligible to participate in a specified vote.
 
 But there is one more thing to consider. As mentioned above, a delegate can't vote on behalf of someone who voted for themself earlier. To consider this fact when preparing a list of delegated voters, the delegate must know the `VoterState` of each voter for the specified voting.
 
-`getVotersStateAtVote`
+`getVoterStateMultipleAtVote`
+
 - **Arguments**:
-    - `uint256 _voteId`;
-    - `address[] _voters`.
-- **Visibility**: `public`
+  - `uint256 _voteId`;
+  - `address[] _voters`.
+- **Visibility**: `external`
 - **Mutability**: `view`
 - **Modifiers**: `voteExists(_voteId)`
 - **Returns**: `(VoterState[] memory voterStatesList)`
@@ -282,11 +298,11 @@ enum VoterState { Absent, Yea, Nay, DelegateYea, DelegateNay }
 
 This and other changes to the contract code will be examined in the next section
 
-#### Changes made to existing code
+### Changes made to existing code
 
 Integrating the delegation feature into the `Voting` contract is inevitably connected with a need to change existing code.
 
-##### Changes in the `_vote`
+#### Changes in the `_vote`
 
 First of all, the `bool _isDelegate` argument was added to the internal `_vote` method. Considering the updated enum, this addition allows us to update `VoterState` properly.
 
@@ -302,77 +318,51 @@ if (_supports) {
 ...
 ```
 
-It also allows us to specify the condition under which the new event will be emitted.
+To optimize delegates' gas spending, it was decided to introduce two more arguments to the `_vote` method:
+
+- `uint256 _votingPower` - since the call of `token.balanceOfAt(blockNumber)` leads to the increase of gas amount needed for the transaction execution, it was decided to pass the `votingPower` value to the `_vote` directly from an external method.
+- `VotePhase _votePhase` - for the same reason, it is proposed to calculate the `votePhase` value from an external method.
+
+Another small optimization is the additional `if` statement that wraps the change in the number of tokens voted for one or another option.
 
 ```solidity
-...
-if (_isDelegate) {
-    emit CastVoteAsDelegate(_voteId, msg.sender, _voter, _supports, voterStake);
+if (state != VoterState.Absent) {
+    if (state == VoterState.Yea || state == VoterState.DelegateYea) {
+        vote_.yea = vote_.yea.sub(_votingPower);
+    } else { // Remaining states are Nay and DelegateNay
+        vote_.nay = vote_.nay.sub(_votingPower);
+    }
 }
-...
 ```
 
-##### Changes in the invariants
+#### Changes in the invariants
 
-As described above, some of the requirements for delegate voting are the same as those for direct voting. However, due to the fact that in the case of delegate voting these requirements are checked inside of a loop, the decision was made to optimize these checks by rearranging them in such a way as to minimize the number of calls within the loop. This led to:
+As described above, some of the requirements for delegatd voting are the same as those for direct voting. However, due to the fact that in the case of delegated voting these requirements are checked inside of a loop, the decision was made to optimize t hese checks by rearranging them in such a way as to minimize the number of calls within the loop. This led to:
 
-- removal of `_canVote` function;
-- addition of the functions `_isValidPhaseToVote` and
-`_hasVotingPower`;
+- removal of `_canVote` method;
+- introduction of `_isValidPhaseToVote` method;
+- removal of `_isVoteOpen` method;
 - changes in functions `vote` and `canVote`.
 
+It was also decided to remove `_isVoteOpen` and use updated `getVotePhase` instead.
+
 `_isValidPhaseToVote`
+
 - **Arguments**:
-    - `uint256 _voteId`;
-    - `bool _supports`.
+  - `VotePhase`;
+  - `bool _supports`.
 - **Visibility**: `internal`
 - **Mutability**: `view`
 - **Returns**: `(bool)`
 
-
 This function returns true if:
+
 - the vote is open, meaning not expired and not yet executed;
 - `_supports` can be applied at the current vote phase.
 
-`_hasVotingPower`
-- **Arguments**:
-    - `Vote storage _vote`;
-    - `address _voter`.
-- **Visibility**: `internal`
-- **Mutability**: `view`
-- **Returns**: `(bool)`
-
-This function returns true if the `_voter` address has a non-zero LDO balance at the block number that the vote started.
-
 Since `_canVote` was removed, new functions replaced it in the existing code.
 
-
-```solidity
-function vote(
-    uint256 _voteId,
-    bool _supports,
-    bool _executesIfDecided_deprecated
-) external voteExists(_voteId) {
-    Vote storage vote_ = votes[_voteId];
-    require(_isValidPhaseToVote(vote_, _supports), ERROR_CAN_NOT_VOTE);
-    require(_hasVotingPower(vote_, msg.sender), ERROR_NO_VOTING_POWER);
-    _vote(_voteId, _supports, msg.sender, false);
-}
-```
-
-```solidity
-function canVote(
-    uint256 _voteId,
-    address _voter
-) external view voteExists(_voteId) returns (bool) {
-    Vote storage vote_ = votes[_voteId];
-    return _isValidPhaseToVote(vote_, false) && _hasVotingPower(vote_, _voter);
-}
-```
-
-But there's one more thing that was removed alongside the `_canVote`.
-
-#### Deprecations
+### Deprecations
 
 During the development, it was decided to remove the `bool _castVote` argument from the internal `_newVote` method. Since that there's no more "execute before timelock" option, it seems that creating new vote and casting vote in the same transaction is not useful anymore, so in the sake of code consistency, it was decided to remove the following lines:
 
@@ -386,41 +376,7 @@ if (_castVote && canVote(voteId, msg.sender)) {
 
 This change was followed by changes in `newVote` and `forward` functions.
 
-### VotingAdapter contract
-
-To give TRP participants the option to delegate their LDO rewards to other addresses,it's proposed to update `VotingAdapter`, one of the TRP contracts, by updating existing code stubs with method calls introduced in the `Voting` update.
-
-The code examples presume the Vyper **v0.3.7** syntax.
-
-
-```vyper
-@external
-def delegate(abi_encoded_params: Bytes[1000]):
-    delegate: address = empty(address)
-    delegate = _abi_decode (abi_encoded_params, (address))
-    if delegate == ZERO_ADDRESS:
-        IVoting(DELEGATION_CONTRACT_ADDR).resetDelegate()
-    else:
-        IVoting(DELEGATION_CONTRACT_ADDR).setDelegate(delegate)
-```
-
-Where:
-- `address` is the address to which the TRP participant is going to delegate their voting power.
-- `IVoting` is the interface of the `Voting` contract supplemented with new methods:
-
-```vyper
-interface IVoting:
-    def setDelegate(
-        _delegate: address,
-    ): nonpayable
-    def resetDelegate(): nonpayable
-```
-- `DELEGATION_CONTRACT_ADDR` is the address of the `Voting` contract that will be set by deployer.
-
-
-## Considerations
-
 ## Links
 
-- [Voting update](https://github.com/lidofinance/aragon-apps/pull/34)
-- [VotingAdapter update](https://github.com/lidofinance/lido-vesting-escrow/pull/9)
+- [Voting app](https://github.com/lidofinance/aragon-apps/tree/master/apps/voting)
+- [Simple Delegation PR](https://github.com/lidofinance/aragon-apps/pull/34)
