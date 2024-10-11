@@ -1,7 +1,7 @@
 ---
 lip: 24
 title: Governance decision forwarding to non-L2 networks using AAVE Delivery Infrastructure
-status: WIP
+status: Implemented
 author: Yuri Tkachenko, Eugene Mamin
 discussions-to: https://research.lido.fi/t/network-expansion-workgroup-initiative-governance-decision-forwarding-to-non-l2-networks-lip-24/7446
 created: 2024-02-27
