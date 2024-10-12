@@ -1,7 +1,7 @@
 ---
 lip: 18
 title: Vault Contract for Self-Cover Purposes
-status: Proposed
+status: Implemented
 author: Azat Serikov
 created: 2022-09-13
 updated: 2022-10-03
