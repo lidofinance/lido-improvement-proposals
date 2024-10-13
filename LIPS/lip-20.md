@@ -1,7 +1,7 @@
 ---
 lip: 20
 title: LIP-20. Staking Router
-status: Draft
+status: Implemented
 author: Nikita Logachev, Eugene Pshenichnyy, Mihail Semenkin, Azat Serikov
 discussions-to: https://research.lido.fi/t/lip-20-staking-router/
 created: 2022-08-29
