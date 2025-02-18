@@ -12,29 +12,30 @@ updated: 2024-02-17
 
 ## Simple Summary
 
-Introduce extended accounting principles for the Lido on Ethereum protocol, enabling the protocol to manage stETH issuance and redemption backed by ether (ETH) that is outside of the Lido Core staking pool.
+Introduce extended accounting principles for the Lido on Ethereum protocol, enabling the protocol to manage stETH minting backed by ether (ETH) that is outside of the Lido Core staking pool.
 
 These rules allow for the controlled minting and burning of stETH shares, ensuring that external ether sources become part of the total ether backing stETH, while preserving key invariants, accounting integrity, and protocol solvency.
 
 ## Abstract
 
-The Lido on Ethereum protocol currently tracks pooled ether under its direct management — such as buffered ether, validators’ balances on the Consensus Layer (CL), and transient validator states — forming the protocol's ["total pooled ether"](https://docs.lido.fi/contracts/lido#gettotalpooledether).
+The Lido on Ethereum protocol currently tracks pooled ether under its direct management — buffered ether, validators’ balances on the Consensus Layer (CL), and transient validator states — forming the protocol's ["total pooled ether"](https://docs.lido.fi/contracts/lido#gettotalpooledether).
 
-This proposal extends the accounting model to include an additional ether supply external to the protocol’s direct purview (outside of the Lido Core pool).
+This proposal extends the accounting model to include an additional ether supply external to the protocol’s direct purview (aside of the Lido Core staking pool).
 
 ### Mint external shares
 
-A newly introduced "external accounting contract" (trusted by the [`Lido/stETH`](https://docs.lido.fi/contracts/lido) protocol contract) is allowed to mint stETH shares to a specified recipient. The amount of external stETH shares minted is fully backed by an equivalent external ether amount (abstracted as an external balance).
+A newly introduced "external ether accounting contract" (trusted by the [`Lido/stETH`](https://docs.lido.fi/contracts/lido) protocol contract) is allowed to mint stETH shares to a specified recipient.
+The amount of external stETH shares minted MUST be fully backed via an equivalent external ether amount locked by the external ether accounting contract.
 
-This increases the protocol’s stored `externalShares` value while increasing the total ether backing stETH by locking the corresponding external ether amount.
+NB: The mint operation MUST NOT incur the stETH token rebase.
 
-If we denote:
+Upon external shares minting the `Lido` contract increases the stored `externalShares`, i.e., denoting:
 
 - $\Delta ETH_{\text{ext}}$ as the external ether amount to be used for minting stETH,
-- $\Delta S_{\text{ext}}$ as the number of external shares to be minted and backed by $\Delta ETH_{\text{ext}}$  ether,
+- $\Delta S_{\text{ext}}$ as the number of external shares to be minted and backed by $\Delta ETH_{\text{ext}}$,
 - $\text{shareRate} = \frac{\text{totalPooledEther}}{\text{totalShares}}$ as the current stETH in-protocol share rate maintaining `1 stETH = 1 ETH` submit and redemption target balance,
 
-then the relationship between incremental external shares and ether amounts is given by:
+one can conclude the relationship between incremental external shares and ether amounts is given by:
 
 ```math
 \Delta ETH_{\text{ext}} = \Delta S_{\text{ext}} \times \text{shareRate}.
@@ -46,7 +47,7 @@ Inversely, if the external ether contribution $\Delta ETH_{\text{ext}}$ is known
 \Delta S_{\text{ext}} = \frac{\Delta ETH_{\text{ext}}}{\text{shareRate}}.
 ```
 
-After minting, the external shares value is updated as:
+After minting, the external shares value gets updated as:
 
 ```math
 \text{externalShares}_{\text{new}} = \text{externalShares}_{\text{old}} + \Delta S_{\text{ext}}
@@ -54,11 +55,10 @@ After minting, the external shares value is updated as:
 
 ### Burn external shares
 
-The mentioned before "external accounting contract" can also burn a specified amount of stETH shares from its own balance. This operation represents a redemption of externally backed ether from the system’s perspective, decreasing the stored `externalShares` value by the corresponding ether amount.
+The "external accounting contract" can also burn a specified amount of stETH shares from its own balance to unlock the corresponding ether amount from the external accounting contract,
+decreasing the stored `externalShares`, i.e., denoting:
 
-For burning:
-
-- $\Delta S_{\text{ext, burn}}$ is the number of external shares to burn is:
+- $\Delta S_{\text{ext, burn}}$ as the number of external shares to burn:
 
 ```math
 \Delta S_{\text{ext, burn}} = \frac{\Delta ETH_{\text{ext, burn}}}{ \text{shareRate}}.
@@ -70,9 +70,9 @@ Thus, the external shares value becomes:
 \text{externalShares}_{\text{new}} = \text{externalShares}_{\text{old}} - \Delta S_{\text{ext, burn}}.
 ```
 
-### stETH token rebase
+### Total pooled ether
 
-The total pooled ether (`totalPooledEther`) considering the external balance is:
+The total pooled ether (`totalPooledEther`) considering the external balance becomes:
 
 ```math
 \text{totalPooledEther} = \text{bufferedEther} + \text{CLbalance} + \text{transientEther} + \text{externalEther}.
@@ -81,11 +81,14 @@ The total pooled ether (`totalPooledEther`) considering the external balance is:
 If we denote:
 
 ```math
-\text{internalEther} = \text{bufferedEther} + \text{CLbalance} + \text{transientEther}.
+\text{internalEther} = \text{bufferedEther} + \text{CLbalance} + \text{transientEther}
+```
+
+```math
 \text{internalShares} = \text{totalShares} - \text{externalShares}
 ```
 
-and having:
+and taking into account:
 
 ```math
 \text{shareRate} = \frac{\text{totalPooledEther}}{\text{totalShares}} = \frac{\text{internalEther}}{\text{internalShares}}
@@ -94,20 +97,19 @@ and having:
 Then:
 
 ```math
-\text{externalEther} = \frac{\text{externalShares} \times \text{internalEther}}{\text{internalShares}}
+\text{externalEther} = \text{externalShares} \times \text{shareRate} = \frac{\text{externalShares} \times \text{internalEther}}{\text{internalShares}}
 ```
 
-Any changes in `shareRate` affect `externalEther` as a part of the regular stETH token rebase induced by `AccountingOracle`.
+NB: Any changes in `shareRate` affect `externalEther` as a part of the regular stETH token rebase induced by `AccountingOracle`.
+Therefore, the external ether accounting contract MUST update the locked ether amount as a part of the token rebase.
 
-### Reward and fees distribution
+### stETH rebase rewards
 
-Rewards and fees are distributed proportionally to all stETH holders, including those stETH shares minted from external sources.
+### stETH rebase fees
 
-#### stETH rebase rewards
+### External ether update
 
-#### stETH rebase fees
 
-#### External ether update
 
 ## Motivation
 
