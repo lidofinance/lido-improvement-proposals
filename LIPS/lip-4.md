@@ -8,6 +8,9 @@ created: 2021-09-28
 updated: 2022-06-06
 ---
 
+> :information_source: **LIP-4 has been suppressed by the [voting duration change](https://research.lido.fi/t/optimizing-lido-on-chain-voting-timelines-for-inclusive-governance/8265) conducted via [Aragon Vote on March 21, 2025](https://vote.lido.fi/vote/184).** :information_source:  
+> As the number of delegates increased and different situations arose among them, the Lido DAO took steps to create a more accommodating environment to improve overall governance engagement: **the existing three-day on-chain voting duration was extended to eight days**.
+
 # Protocol safeguards. 72h Aragon Votes
 
 Currently Aragon votes on Lido DAO are 24h long. This timeframe has proved to be short enough for reaching the quorum even on non-contentios votes. While most routine DAO operations are expected to switch to EasyTracks (vehicle for default-pass DAO actions), any custom blockchain action on behalf of DAO would still require the Aragon vote. The proposal is to make Aragon votes longer, allowing more LDO holders to participate.
