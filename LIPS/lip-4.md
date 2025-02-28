@@ -8,7 +8,7 @@ created: 2021-09-28
 updated: 2022-06-06
 ---
 
-> :information_source: **LIP-4 has been amended by the [voting duration change](https://research.lido.fi/t/optimizing-lido-on-chain-voting-timelines-for-inclusive-governance/8265) conducted via [Aragon Vote on March 21, 2025](https://vote.lido.fi/vote/184).** :information_source:  
+> :information_source: **LIP-4 was amended due to a [change in the voting duration](https://research.lido.fi/t/optimizing-lido-on-chain-voting-timelines-for-inclusive-governance/8265) through the [Aragon Vote #184](https://vote.lido.fi/vote/184) on March 21, 2025.** :information_source:
 > As the number of delegates increased and different situations arose among them, the Lido DAO took steps to create a more accommodating environment to improve overall governance engagement: **the existing three-day on-chain voting duration was extended to eight days**.
 
 # Protocol safeguards. 72h Aragon Votes
