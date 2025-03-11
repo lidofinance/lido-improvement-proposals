@@ -5,7 +5,7 @@ status: Implemented
 author: Victor Suzdalev, Sam Kozin, Eugene Mamin
 discussions-to: https://research.lido.fi/t/increase-the-dao-voting-duration/1048, https://research.lido.fi/t/increase-aragon-voting-duration-to-72-hours-operation-plan/1915
 created: 2021-09-28
-updated: 2022-06-06
+updated: 2025-03-21
 ---
 
 > :information_source: **LIP-4 was amended due to a [change in the voting duration](https://research.lido.fi/t/optimizing-lido-on-chain-voting-timelines-for-inclusive-governance/8265) through the [Aragon Vote #184](https://vote.lido.fi/vote/184) on March 21, 2025.** :information_source:  
