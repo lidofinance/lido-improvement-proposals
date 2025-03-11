@@ -7,7 +7,7 @@ status: Implemented
 author: Eugene Mamin, Alexey Potapkin
 discussions-to: https://research.lido.fi/t/announcement-merge-ready-protocol-service-pack/2184
 created: 2022-05-11
-updated: 2022-06-06
+updated: 2025-03-21
 ---
 
 # Protocol safeguards. Resume role
