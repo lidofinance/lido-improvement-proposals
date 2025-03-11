@@ -7,7 +7,7 @@ status: Implemented
 author: Alexey Potapkin, Sam Kozin
 discussions-to: https://research.lido.fi/t/proposal-last-minute-vote-mitigation/2162/14
 created: 2022-06-01
-updated: 2022-08-26
+updated: 2025-03-21
 ---
 
 > :information_source: **LIP-16 was amended due to a [change in the voting duration](https://research.lido.fi/t/optimizing-lido-on-chain-voting-timelines-for-inclusive-governance/8265) through the [Aragon Vote #184](https://vote.lido.fi/vote/184) on March 21, 2025.** :information_source:  
