@@ -11,7 +11,7 @@ updated: 2025-03-21
 ---
 
 > :information_source: **LIP-16 was amended due to a [change in the voting duration](https://research.lido.fi/t/optimizing-lido-on-chain-voting-timelines-for-inclusive-governance/8265) through the [Aragon Vote #184](https://vote.lido.fi/vote/184) on March 21, 2025.** :information_source:  
-> As the number of delegates increased and different situations arose among them, the Lido DAO took steps to create a more accommodating environment to improve overall governance engagement: **the existing three-day on-chain voting duration was extended to five days**. The two-phase voting approach remains unchanged: **the Main Phase (72 hours) followed by the Objection Phase (48 hours)**.
+> The Lido DAO took steps to create a more accommodating environment to improve overall governance engagement: **the existing three-day on-chain voting duration was extended to 120 hours**. The two-phase voting approach remains unchanged: **the Main Phase (72 hours) followed by the Objection Phase (48 hours)**.
 
 # Protocol safeguards. Two-phase voting
 
