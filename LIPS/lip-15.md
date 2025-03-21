@@ -7,7 +7,7 @@ status: Implemented
 author: Eugene Mamin, Alexey Potapkin
 discussions-to: https://research.lido.fi/t/announcement-merge-ready-protocol-service-pack/2184
 created: 2022-05-11
-updated: 2022-06-06
+updated: 2025-03-21
 ---
 
 # Protocol safeguards. Resume role
@@ -18,7 +18,10 @@ Add `RESUME_ROLE`, which would allow to call `unpause` function of the `Lido.sol
 
 ## Motivation
 
-By completing the protocol-wide `PAUSE_ROLE` with `RESUME_ROLE` we would allow to push protocol on hold by a special emergency entity (e.g. emergency multisig committee) while resume the protocol only by the conventional quorum-reached Lido DAO vote using Aragon Voting. Voting lasts for 72h since [LIP-4](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-4.md) was implemented and it could be too long to wait in case of the protocol emergency.
+By completing the protocol-wide `PAUSE_ROLE` with `RESUME_ROLE` we would allow to push protocol on hold by a special emergency entity (e.g. emergency multisig committee) while resume the protocol only by the conventional quorum-reached Lido DAO vote using Aragon Voting. Voting lasts for 72h* since [LIP-4](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-4.md) was implemented and it could be too long to wait in case of the protocol emergency.
+
+_\* The voting duration was further extended to 120 hours after [Aragon Vote #184](https://vote.lido.fi/vote/184) passed. See the [discussion in the Research Forum](https://research.lido.fi/t/optimizing-lido-on-chain-voting-timelines-for-inclusive-governance/8265)._
+
 
 ## Specification
 
