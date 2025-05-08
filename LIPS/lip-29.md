@@ -34,9 +34,7 @@ The scheme above depicts CSM's smart contracts architecture and changes made in 
 ##### `CSModule.sol`
 *CSM on the scheme* 
 
-:::info
-Changed in v2
-:::
+> Changed in v2
 
 `CSModule.sol` is a core module contract conforming to the `IStakingModule` interface. It stores information about Node Operators and deposit data (DD). This contract is responsible for all interactions with the `StakingRouter`, namely, the DD queue management and some of the Node Operator's parameters. Node Operators manage their validator keys and other parameters they can modify through this contract.
 
@@ -52,9 +50,7 @@ Changed in v2
 ##### `CSAccounting.sol`
 *Accounting in the scheme* 
 
-:::info
-Changed in v2
-:::
+> Changed in v2
 
 `CSAccounting.sol` is a supplementary contract responsible for the management of bond, rewards, and penalties. It stores bond tokens as `stETH` shares, provides information about the bond required, and provides interfaces for the penalties. Node Operators claim rewards and top-up bonds using this contract.
 
@@ -65,9 +61,7 @@ Changed in v2
 ##### `CSVerifier.sol`
 *Verifier on the scheme*
 
-:::info
-Changed in v2
-:::
+> Changed in v2
 
 `CSVerifier.sol` is a utility contract responsible for validating the CL data proofs using EIP-4788. It accepts proof of the validator withdrawals and reports these facts to the `CSModule.sol` if the proof is valid.
 
@@ -78,18 +72,14 @@ Changed in v2
 ##### `CSEarlyAdoption.sol`
 *EarlyAdoption on the scheme*
 
-:::warning
-Removed in v2
-:::
+> Removed in v2
 
 A contract is **removed** in CSM v2 and replaced with the instance of the `VettedGate.sol`.
 
 ##### `CSFeeDistributor.sol`
 *FeeDistributor on the scheme*
 
-:::info
-Changed in v2
-:::
+> Changed in v2
 
 `CSFeeDistributor.sol` is a supplementary contract that stores non-claimed and non-distributed Node Operator rewards on its balance. This contract stores the latest root of a rewards distribution Merkle tree. It accepts calls from `CSAccounting.sol` with reward claim requests and stores data about already claimed rewards by the Node Operator. It receives non-distributed rewards from the `CSModule.sol` each time the `StakingRouter` mints the new portion of the module's rewards. This contract transfers excess rewards allocated by `StakingRouter` due to variable Node Operator reward share back to Lido treasury.
 
@@ -100,9 +90,7 @@ Changed in v2
 ##### `CSFeeOracle.sol`
 *FeeOracle on the scheme*
 
-:::info
-Changed in v2
-:::
+> Changed in v2
 
 `CSFeeOracle.sol` is a utility contract responsible for the execution of the CSM Oracle report once the consensus is reached in the `HashConsensus.sol` contract, namely, transforming non-distributed rewards to non-claimed rewards stored on the `CSFeeDistributor.sol` and reporting the latest root of rewards distribution Merkle tree to the `CSFeeDistributor.sol`. Alongside rewards distribution, a contract manages strikes data delivery to the `CSStrikes.sol`. A contract is Inherited from the [`BaseOracle.sol`](https://github.com/lidofinance/core/blob/master/contracts/0.8.9/oracle/BaseOracle.sol) from Lido on Ethereum (LoE) core.
 
@@ -117,54 +105,42 @@ Changed in v2
 ##### `CSParametersRegistry.sol`
 *ParametersRegistry on the scheme*
 
-:::info
-New in v2
-:::
+> New in v2
 
 `CSParametersRegistry.sol` is a utility contract that stores Node-Operator-type-related parameters fetched by the other smart contracts related to CSM. A contract requires a mandatory default value for all parameters to ensure consistency. The custom value is returned if it is set for a particular parameter. Otherwise, the default value is returned.
 
 ##### `CSStrikes.sol`
 *StrikesRegistry on the scheme*
 
-:::info
-New in v2
-:::
+> New in v2
 
 `CSStrikes.sol` is a utility contract that stores information about strikes assigned to the CSM validators by CSM Performance Oracle. It has a permissionless method to prove that a particular validator should be ejected because the number of strikes is above the threshold for this validator. It calls `CSEjector.sol` to perform a strikes threshold check and eject the validator.
 
 ##### `PermissionlessGate.sol`
 *PermissionlessGate on the scheme*
 
-:::info
-New in v2
-:::
+> New in v2
 
 `PermissionlessGate.sol` is a supplementary contract that enables permissionless Node Operator creation in `CSModule.sol`, serving as an entry point.
 
 ##### `VettedGate.sol`
 *VettedGates on the scheme*
 
-:::info
-New in v2
-:::
+> New in v2
 
 `VettedGate.sol` is a supplementary contract that enables Node Operator creation for the vetted addresses, which serves as an entry point to `CSModule.sol`. Alongside Node Operator creation, a contract can assign a custom Node Operator type (bondCurveId) in `CSAccounting.sol`. Deployed using `VettedGateFactory.sol` to allow the addition of the new instances later without additional code security audits. The list of the vetted participants is upgradable for each instance of the `VettedGate.sol` individually.
 
 ##### `CSEjector.sol`
 *Ejector on the scheme*
 
-:::info
-New in v2
-:::
+> New in v2
 
 `CSEjector.sol` is a supplementary contract responsible for interactions with EIP-7002-powered Lido Withdrawal credentials via `VEB`. Node Operators can voluntarily eject their validators. `CSStrikes.sol` uses `CSEjector.sol` to trigger exits for validators that have surpassed the strike threshold.
 
 ##### `CSExitPenalties.sol`
 *ExitPenalties on the scheme*
 
-:::info
-New in v2
-:::
+> New in v2
 
 `CSExitPenalties.sol` is a supplementary contract responsible for processing and storing information about exit-related penalties, namely:
 - Delayed exit penalty;
@@ -178,9 +154,7 @@ New in v2
 
 ##### `GateSeal`
 
-:::info
-Changed in v2
-:::
+> Changed in v2
 
 `GateSeal` is a utility contract responsible for the one-time pause of the `CSModule.sol`, `CSAccounting.sol`, `CSFeeOracle.sol`, `VettedGate.sol`, `CSEjector.sol`, and `CSVerifier.sol` contracts to prevent possible module exploitation through zero-day vulnerabilities. Uses the [standard code](https://github.com/lidofinance/gate-seals) of the `GateSeal` contract from Lido on Ethereum (LoE).
 
@@ -191,9 +165,7 @@ Changed in v2
 
 ##### `CSM Bot`
 
-:::info
-Changed in v2
-:::
+> Changed in v2
 
 `CSM Bot` is a daemon application responsible for monitoring and reporting the withdrawal events associated with the CSM validators. Also responsible for validator ejection invocation due to strikes.
 
@@ -207,9 +179,7 @@ Changed in v2
 
 ##### `CSM Oracle`
 
-:::info
-Changed in v2
-:::
+> Changed in v2
 
 `CSM Oracle` (also known as CSM Performance Oracle) is a module in the common Lido on Ethereum (LoE) Oracle set. It is operated by the existing Oracles set alongside [Accounting Oracle](https://docs.lido.fi/contracts/accounting-oracle) and [Validator Exit Bus Oracle](https://docs.lido.fi/contracts/validators-exit-bus-oracle). It is responsible for calculating the CSM Node Operators' reward distribution and strike assignment based on their performance on the CL.
 
@@ -224,11 +194,9 @@ Changed in v2
 
 #### Create Node Operator
 
-:::info
-Changed in v2
-
-- Node Operator creation is now done via Gates;
-:::
+> Changed in v2
+>
+> - Node Operator creation is now done via Gates;
 
 ![create-no-permissionless](./assets/lip-29/create-no-permissionless.png)
 ![create-no-vetted](./assets/lip-29/create-no-vetted.png)
@@ -252,11 +220,9 @@ If deposit data has not been deposited yet, the Node Operator can request its de
 
 #### Top-up bond without deposit data upload
 
-:::info
-Changed in v2
-
-- Top-up bond is now done via `CSAccounting.sol`;
-:::
+> Changed in v2
+> 
+> - Top-up bond is now done via `CSAccounting.sol`;
 
 ![top-up](./assets/lip-29/top-up.png)
 
@@ -264,11 +230,9 @@ CSM Node Operators can top-up bond balance at any time to have an excess bond in
 
 #### Stake allocation
 
-:::info
-Changed in v2
-
-- Priority queues added;
-:::
+> Changed in v2
+> 
+> - Priority queues added;
 
 CSM utilizes the FIFO queue to determine the next portion of the validator keys to be deposited. Changes to the deposit queue in CSM v2 are described in the [features doc](https://hackmd.io/@lido/csm-v2-tech#Priority-Queues).
 
@@ -286,11 +250,9 @@ Due to the [optimistic vetting approach](https://hackmd.io/gGRgZ0yeTnm-9SSFuHrXw
 
 #### Rewards distribution
 
-:::info
-Changed in v2
-
-- Variable fee and rebate to treasury added;
-:::
+> Changed in v2
+> 
+> - Variable fee and rebate to treasury added;
 
 ![rewards-distribution](./assets/lip-29/rewards-distribution.png)
 
@@ -298,11 +260,9 @@ Changed in v2
 
 #### Rewards claim
 
-:::info
-Changed in v2
-
-- Rewards claim is now done via `CSAccounting.sol`;
-:::
+> Changed in v2
+> 
+> - Rewards claim is now done via `CSAccounting.sol`;
 
 ![rewards-claim](./assets/lip-29/rewards-claim.png)
 
@@ -314,12 +274,10 @@ If there are no new rewards to pull from the `CSFeeDistributor.sol` Node Operato
 
 #### EL stealing penalty
 
-:::info
-Changed in v2
-
-- Additional fine is now configurable for the Node Operator type;
-- Reset bond curve removed due to the introduction of the Node Operator types associated with the bond curve;
-:::
+> Changed in v2
+> 
+> - Additional fine is now configurable for the Node Operator type;
+> - Reset bond curve removed due to the introduction of the Node Operator types associated with the bond curve;
 
 ![el-stealing-penalty](./assets/lip-29/el-stealing-penalty.png)
 
@@ -327,35 +285,27 @@ If the Node Operator commits EL rewards stealing (or violates the [Lido on Ether
 
 #### Validator ejection due to strikes
 
-:::info
-New in v2
-:::
+> New in v2
 
 ![eject-strikes](./assets/lip-29/eject-strikes.png)
-
 
 If the validator has reached the strikes threshold (`actual strikes >= threshold`) `CSM Bot` will initiate validator ejection using a permissionless method. `CSStrikes.sol` validates the proof and makes a call to `CSEjector.sol` if the number of strikes >= threshold. `CSEjector.sol` notify `VEBO` about the required validator ejection. Corresponding penalties are recorded in `CSExitPenalties.sol`.
 
 #### Voluntary validator ejection
 
-:::info
-New in v2
-:::
+> New in v2
 
 ![eject-voluntary](./assets/lip-29/eject-voluntary.png)
-
 
 If Node Operators want to use EIP-7002 to exit their validators, they can do so via a dedicated method in the `CSEjector.sol` contract. In this case, `CSEjector.sol` will notify `VEBO` about the required validator ejection.
 
 
 #### Withdrawal reporting
 
-:::info
-Changed in v2
-
-- Stuck penalty and TE fee are applied upon validator withdrawal if reported before;
-- Reset bond curve removed due to the introduction of the Node Operator types associated with the bond curve;
-:::
+> Changed in v2
+>
+> - Stuck penalty and TE fee are applied upon validator withdrawal if reported before;
+> - Reset bond curve removed due to the introduction of the Node Operator types associated with the bond curve;
 
 ![withdrawal-reporting](./assets/lip-29/withdrawal-reporting.png)
 
@@ -363,31 +313,23 @@ Once the CSM validator is withdrawn, the CSM Bot will report it using a permissi
 
 If the validator is reported as stuck, the recorded stuck penalty is applied, and the recorded TE fee is confiscated. If the validator was not reported as stuck but the TE fee is recorded, the TE fee is ignored.
 
-:::warning
-TE fee confiscation limit is introduced to protect Node Operators from excessive bond confiscation due to theoretically unlimited TE fees.
-:::
+
+> TE fee confiscation limit is introduced to protect Node Operators from excessive bond confiscation due to theoretically unlimited TE fees.
 
 #### Stuck validators ejection penalty
 
-:::info
-New in v2
-:::
+> New in v2
 
 ![notify-delay](./assets/lip-29/notify-delay.png)
-
 ![notify-te-fee](./assets/lip-29/notify-te-fee.png)
 
 With its updated functionality, `VEBO` can now trigger exits for the validators requested for exit in the `VEBO` report. However, the time when requested validators can be ejected is not limited. Hence, `CSModule.sol` should be notified by `StakingRouter` about the validator exits and the time between the request and ejection. If the time exceeds the threshold, the Node Operator should be penalized for not exiting their validators in time. If Triggerable Exit (TE) was used for the validator, depending on the exit type and if the validator was delayed to exit, the TE fee should be confiscated from the Node Operator's bond. Both stuck penalty and TE fee are recorded in `CSExitPenalties.sol` and applied upon validator withdrawal described above.
 
-:::info
-The validator is considered "stuck" if the proof is delivered stating that it was not exited for more than `allowedExitDelay` seconds since the moment it was requested/available for exit. `allowedExitDelay` is a parameter that can be set per-Node-Operator-type.
-:::
+> The validator is considered "stuck" if the proof is delivered stating that it was not exited for more than `allowedExitDelay` seconds since the moment it was requested/available for exit. `allowedExitDelay` is a parameter that can be set per-Node-Operator-type.
 
 #### Referral program
 
-:::info
-New in v2
-:::
+> New in v2
 
 ![referral-program](./assets/lip-29/referral-program.png)
 
