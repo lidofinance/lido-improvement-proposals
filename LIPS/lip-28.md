@@ -16,7 +16,7 @@ created: 2025-05-08
 
 ## Abstract
 
-The Dual Governance is a dynamic timelock mechanism allowing stETH holders to exit Lido on Ethereum in face of contentious Lido DAO governance motion. Given the dynamic nature of Ethereum staking, usual timelocks aren’t a feasible solution.
+The Dual Governance is a dynamic timelock mechanism allowing stETH holders to exit Lido on Ethereum in face of contentious Lido DAO governance motion. Given the dynamic nature of Ethereum staking and validator exits, usual timelocks aren’t a feasible solution.
 
 Dual Governance introduces timelock contract between Lido DAO governance motions and execution. The timelock is connected to escrow, allowing stETH holders to voice their intention to exit the protocol by depositing stETH, wstETH and stETH withdrawal NFTs into a specific escrow contract. Once the amount locked there crosses the “first seal” threshold (proposed to be 1% of Lido on Ethereum TVL), the timelock duration starts growing proportionately. As the amount locked crosses the “second seal” threshold (proposed to be 10% of Lido on Ethereum TVL), the rage quit mechanics is triggered: execution of any motions under Dual Governance is blocked until all the stETHs in escrow are withdrawn to ether.
 
