@@ -36,7 +36,7 @@ The final code version is published on GitHub https://github.com/lidofinance/dua
 
 ## Numerical parameters
 
-Soundness of the Dual Governance relies on the reasonable choice of numerical parameters going into the deployment. The parameters pick had been [researched by Lido Analytics workstream](https://research.lido.fi/t/dual-governance-analytics-note-on-parameters-values/9905), as well as [Collectif Labs](https://github.com/collectif-dao/dg-research/blob/main/Lido%20Dual%20Governance%20Simulation%20Report.pdf) and [20[]](https://github.com/20squares/dual-governance-public) teams.
+Soundness of the Dual Governance relies on the reasonable choice of numerical parameters going into the deployment. The parameters pick had been [researched by Lido Analytics workstream](https://research.lido.fi/t/dual-governance-analytics-note-on-parameters-values/9905), as well as [Collectif Labs](https://github.com/collectif-dao/dg-research/blob/main/Lido%20Dual%20Governance%20Simulation%20Report.pdf) and [20[ ]](https://github.com/20squares/dual-governance-public) teams.
 
 The parameters proposed for the initial deployment:
 | Parameter name | Value | Description |
