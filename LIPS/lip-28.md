@@ -39,8 +39,9 @@ The final code version is published on GitHub https://github.com/lidofinance/dua
 Soundness of the Dual Governance relies on the reasonable choice of numerical parameters going into the deployment. The parameters pick had been [researched by Lido Analytics workstream](https://research.lido.fi/t/dual-governance-analytics-note-on-parameters-values/9905), as well as [Collectif Labs](https://github.com/collectif-dao/dg-research/blob/main/Lido%20Dual%20Governance%20Simulation%20Report.pdf) and [20[]](https://github.com/20squares/dual-governance-public) teams.
 
 The parameters proposed for the initial deployment:
-| FirstSealRageQuitSupport | 1% | Share of total stETH supply that is needed to switch dual governance to the Veto Signaling state |
+| Parameter name | Value | Description |
 | --- | --- | --- |
+| FirstSealRageQuitSupport | 1% | Share of total stETH supply that is needed to switch dual governance to the Veto Signaling state |
 | SecondSealRageQuitSupport | 10% | Share of total stETH required to change from Veto Signalling state to Rage Quit state |
 | ProposalExecutionMinTimelock | 3 days | The minimum number of days a proposal will be held in Dual Governance before execution (unless the Veto signaling state is entered) |
 | DynamicTimelockMinDuration | 5 days | The minimum duration of the dynamic timelock, as long as the share of stETH locked in the Veto Signaling contract is higher than the First Seal Rage Quit Support threshold |
