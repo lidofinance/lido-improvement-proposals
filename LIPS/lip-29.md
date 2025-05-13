@@ -158,6 +158,14 @@ A contract is **removed** in CSM v2 and replaced with the instance of the `Vette
 
 `GateSeal` is a utility contract responsible for the one-time pause of the `CSModule.sol`, `CSAccounting.sol`, `CSFeeOracle.sol`, `VettedGate.sol`, `CSEjector.sol`, and `CSVerifier.sol` contracts to prevent possible module exploitation through zero-day vulnerabilities. Uses the [standard code](https://github.com/lidofinance/gate-seals) of the `GateSeal` contract from Lido on Ethereum (LoE).
 
+The list of sealable contracts:
+- `CSModule.sol`
+- `CSAccounting.sol`
+- `CSFeeOracle.sol`
+- `CSVerifier.sol` (new)
+- `CSVettedGate.sol` (new)
+- `CSEjector.sol` (new)
+
 **Changes in v2:**
 - New sealable contracts added;
 
