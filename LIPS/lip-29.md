@@ -517,6 +517,9 @@ This results in a small edge case when the validator was not exited within `allo
 
 Since there is no motivation for the external actor to request TE for Lido validators, it is assumed that this edge case can only occur due to the bug in the TE bot developed and maintained by Lido DAO contributors. Should there be a bug in the bot code, the TE fee can always be transferred back to the Node Operator's bond from the Lido treasury based on the Lido DAO decision.
 
+### Possible 'resell' of the beneficial Node Operator types
+With the introduction of Node Operator types and the ability to claim beneficial type using `VettedGate` (applies to both addition to the vetted list and referral program participation), it becomes more likely that Node Operators will consider a 'resell' of the benefits. This is partially mitigated by the requirement that the eligible address be the ultimate owner of the Node Operator. Hence, it is assumed that Node Operators will think twice before giving away Node Operator ownership to a third party for claiming benefits, since the bond will be at risk in this case. However, this does not fully mitigate the issue. The private key of the eligible address can still be sold. Given that, it is proposed to limit benefits for the custom Node Operator types to avoid massive abuse.
+
 ### Known issues
 #### Permissionless withdrawal reporting vulnerability
 It is crucial to distinguish partial and full withdrawals to accept permissionless reports about validator withdrawals. For this purpose, the following condition is used (also used by Rocket Pool in [some form](https://github.com/rocket-pool/rocketpool/blob/6a9dbfd85772900bb192aabeb0c9b8d9f6e019d1/contracts/contract/minipool/RocketMinipoolDelegate.sol#L515)):
