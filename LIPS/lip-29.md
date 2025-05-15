@@ -17,7 +17,7 @@ Community Staking Module (CSM) v2 is an evolutionary step in the CSM development
 
 ## Motivation
 
-The current version of the Community Staking Module (CSM) is a great step towards the decentralization of Lido on Ethereum. It allows Node Operators to join Lido on Ethereum protocol permissionlessly and benefit from the outstanding Node Operator rewards. However, there are still some limitations and challenges that need to be addressed to make CSM more robust, flexible, and competitive. One of the main challenges is the need to support different types of Node Operators, such as anonymous permissionless operators and identified community stakers. This requires a more sophisticated architecture that can accommodate different types of Node Operators and specific parameters for each.
+The current version of the Community Staking Module (CSM) is a great step towards the decentralization of Lido on Ethereum. It allows Node Operators to join Lido on Ethereum protocol permissionlessly and benefit from the outstanding Node Operator rewards. However, there are still some limitations and challenges that need to be addressed to make CSM more robust, flexible, and competitive. One of the main challenges is the need to support different types of Node Operators, such as anonymous permissionless operators, identified community stakers, professional operators, etc. This requires a more sophisticated architecture that can accommodate different types of Node Operators and specific parameters for each. While CSM v1 already supports basic Node Operator types (EA members and permissionless operators), it lacks the ability to have more than 2 types and support for custom parameters for these types, except for the bond curves. 
 
 ## Specification
 
