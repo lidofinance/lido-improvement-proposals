@@ -1,11 +1,11 @@
 ---
 lip: 27
 title: Ensuring Compatibility with Ethereum’s Pectra Upgrade
-status: WIP
+status: Implemented
 author: George Avsetsin
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lip-27-ensuring-compatibility-with-ethereum-s-pectra-upgrade/9444
 created: 2024-12-16
-updated: 2025-01-30
+updated: 2025-04-09
 ---
 
 # Ensuring Compatibility with Ethereum’s Pectra Upgrade
