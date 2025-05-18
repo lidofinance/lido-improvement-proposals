@@ -5,7 +5,7 @@ status: Implemented
 author: Dmitry Gusakov, Sergey Khomutinin, Dmitry Chernukhin, Vladimir Gorkovenko
 discussions-to: https://research.lido.fi/t/community-staking-module/5917
 created: 2024-08-02
-updated: 2024-11-01
+updated: 2025-05-02
 ---
 
 
@@ -141,17 +141,17 @@ Once the CSM validator is withdrawn, the CSM Bot will report it. The report is s
 
 ### Contracts specifications
 
-#### [`CSModule.sol`](https://github.com/lidofinance/community-staking-module/blob/main/docs/src/src/CSModule.sol/contract.CSModule.md)
+#### [`CSModule.sol`](https://github.com/lidofinance/community-staking-module/blob/v1.0/docs/src/src/CSModule.sol/contract.CSModule.md)
 
-#### [`CSAccounting.sol`](https://github.com/lidofinance/community-staking-module/blob/main/docs/src/src/CSAccounting.sol/contract.CSAccounting.md)
+#### [`CSAccounting.sol`](https://github.com/lidofinance/community-staking-module/blob/v1.0/docs/src/src/CSAccounting.sol/contract.CSAccounting.md)
 
-#### [`CSVerifier.sol`](https://github.com/lidofinance/community-staking-module/blob/main/docs/src/src/CSVerifier.sol/contract.CSVerifier.md)
+#### [`CSVerifier.sol`](https://github.com/lidofinance/community-staking-module/blob/v1.0/docs/src/src/CSVerifier.sol/contract.CSVerifier.md)
 
-#### [`CSEarlyAdoption.sol`](https://github.com/lidofinance/community-staking-module/blob/main/docs/src/src/CSEarlyAdoption.sol/contract.CSEarlyAdoption.md)
+#### [`CSEarlyAdoption.sol`](https://github.com/lidofinance/community-staking-module/blob/v1.0/docs/src/src/CSEarlyAdoption.sol/contract.CSEarlyAdoption.md)
 
-#### [`CSFeeDistributor.sol`](https://github.com/lidofinance/community-staking-module/blob/main/docs/src/src/CSFeeDistributor.sol/contract.CSFeeDistributor.md)
+#### [`CSFeeDistributor.sol`](https://github.com/lidofinance/community-staking-module/blob/v1.0/docs/src/src/CSFeeDistributor.sol/contract.CSFeeDistributor.md)
 
-#### [`CSFeeOracle.sol`](https://github.com/lidofinance/community-staking-module/blob/main/docs/src/src/CSFeeOracle.sol/contract.CSFeeOracle.md)
+#### [`CSFeeOracle.sol`](https://github.com/lidofinance/community-staking-module/blob/v1.0/docs/src/src/CSFeeOracle.sol/contract.CSFeeOracle.md)
 
 ### Administrative actions
 
@@ -226,7 +226,7 @@ Roles are not used for this contract.
 
 ### Upgradability
 
-`CSmodule.sol`, `CSAccounting.sol`,  `CSFeeOracle.sol`, and `CSFeeDistributor.sol` are upgradable using [OssifiableProxy](https://github.com/lidofinance/community-staking-module/blob/main/src/lib/proxy/OssifiableProxy.sol) contracts.
+`CSmodule.sol`, `CSAccounting.sol`,  `CSFeeOracle.sol`, and `CSFeeDistributor.sol` are upgradable using [OssifiableProxy](https://github.com/lidofinance/community-staking-module/blob/v1.0/src/lib/proxy/OssifiableProxy.sol) contracts.
 
 `CSVerifier.sol` is not upgradable and should be re-deployed if needed.
 
@@ -265,7 +265,7 @@ Given no losses for the protocol, a significant cost of attack (1 or 8 ETH), and
 
 ## Links
 
-- [CSM On-chain code](https://github.com/lidofinance/community-staking-module/tree/main);
+- [CSM On-chain code](https://github.com/lidofinance/community-staking-module/tree/v1.0);
 - [CSM Prover Tool (CSM Bot)](https://github.com/lidofinance/csm-prover-tool)
 - [CSM Performance Oracle](https://github.com/lidofinance/lido-oracle/tree/csm-oracle-via-module)
 - [CSM Settle El Rewards Stealing Penalty ET](https://github.com/lidofinance/easy-track/tree/feat/csm-el-stealing-penalty-settling)
