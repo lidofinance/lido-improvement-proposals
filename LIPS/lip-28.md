@@ -88,12 +88,12 @@ The general idea of the transition to Dual Governance is: 1) Aragon Voting to re
 
 There’s a proposal to host a smoke test on Dual Governance smart contracts before proposing the DAO to switch the mechanics on in mainnet. Smoke test is to trial emergency activation and execution flows before the DAO moves the smart contract roles and permissions under the Dual Governance, allowing for contingencies where needed.
 
-1. Deploy the whole setup with temporary `emergency governance` multisig, so that the contracts can be properly set up before the DAO vote;
+1. Deploy the whole setup with a temporary `emergency governance` multisig with Lido Contributors as signers, so that the contracts can be properly set up before the DAO vote;
 2. Trigger the emergency reset through Emergency Activation and Execution committees; 
-3. Set the contracts up as described on the params list through the temporary `emergency governance`, removing the temporary parts altogether;
-4. Start the Lido DAO Aragon vote to set the onchain rights roles;
-5. Submit the “revoke agent forward role from voting” as the Dual Governance action in the vote.
-6. Once executed, the motion fully switches on Dual Governance mechanics for Lido on Ethereum protocol.
+3. Set the contracts up as described on the params list through the temporary `emergency governance` and remove the temporary parts altogether;
+4. Start the Lido DAO Aragon vote to 1) pass the relevant smart contract roles and ownerships under the Dual Governance, and 2) submit the “revoke `Agent.forward` role from Voting contract” as the Dual Governance action;
+5. Unless the "revoke `Agent.forward` role" action has passed the Dual Governance, Aragon Voting has the control rights other the Agent contract which is holding most smart contract rights and roles to be "protected by Dual Governance". That mitigates the outcome of 1) moving the roles under Dual Governance while 2) Dual Governance for some unforseen reason not allowing to execute motions;
+6. Once the latter motion is executed, the Dual Governance mechanics for Lido on Ethereum protocol is fully switched on.
 
 ## Operational concerns
 
