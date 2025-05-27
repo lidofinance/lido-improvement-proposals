@@ -5,7 +5,7 @@ status: Proposed
 author: Dmitry Gusakov, Sergey Khomutinin, Dmitry Chernukhin, Vladimir Gorkavenko
 discussions-to: https://research.lido.fi/t/community-staking-module/5917
 created: 2025-05-02
-updated: 2025-05-02
+updated: 2025-05-27
 ---
 
 
@@ -414,7 +414,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | `ACCOUNTING_MANAGER_ROLE` | Removed in v2 and replaced with `DEFAULT_ADMIN_ROLE` |
 | `MANAGE_BOND_CURVES_ROLE` | Not assigned by default                              |
 | `SET_BOND_CURVE_ROLE`     | CSM Committee Multisig and `VettedGate.sol`          |
-| `RESET_BOND_CURVE_ROLE`   | Removed in v2                                      |
+| `RESET_BOND_CURVE_ROLE`   | Removed in v2                                        |
 | `RECOVERER_ROLE`          | Not assigned by default                              |
 
 #### `CSFeeDistributor.sol`
@@ -464,14 +464,15 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 
 #### `VettedGate.sol`
 
-| Role                 | Assignee                               |
-| -------------------- | -------------------------------------- |
-| `DEFAULT_ADMIN_ROLE` | Aragon Agent                           |
-| `PAUSE_ROLE`         | GateSeal contract                      |
-| `RESUME_ROLE`        | Not assigned by default                |
-| `SET_TREE_ROOT_ROLE` | CSM Committee Multisig or Gate Manager |
-| `START_REFERRAL_SEASON_ROLE` | Aragon Agent  |
-| `END_REFERRAL_SEASON_ROLE` | CSM Committee Multisig or Gate Manager |
+| Role                         | Assignee                               |
+| ---------------------------- | -------------------------------------- |
+| `DEFAULT_ADMIN_ROLE`         | Aragon Agent                           |
+| `PAUSE_ROLE`                 | GateSeal contract                      |
+| `RESUME_ROLE`                | Not assigned by default                |
+| `SET_TREE_ROOT_ROLE`         | CSM Committee Multisig or Gate Manager |
+| `START_REFERRAL_SEASON_ROLE` | Aragon Agent                           |
+| `END_REFERRAL_SEASON_ROLE`   | CSM Committee Multisig or Gate Manager |
+| `RECOVERER_ROLE`             | Not assigned by default                |
 
 #### `CSEjector.sol`
 
@@ -480,6 +481,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | `DEFAULT_ADMIN_ROLE`         | Aragon Agent            |
 | `PAUSE_ROLE`                 | GateSeal contract       |
 | `RESUME_ROLE`                | Not assigned by default |
+| `RECOVERER_ROLE`             | Not assigned by default |
 
 #### `CSStrikes.sol`
 
@@ -493,7 +495,10 @@ This contract does not have roles.
 
 #### `PermissionlessGate.sol`
 
-This contract does not have roles.
+| Role                         | Assignee                |
+| ---------------------------- | ----------------------- |
+| `DEFAULT_ADMIN_ROLE`         | Aragon Agent            |
+| `RECOVERER_ROLE`             | Not assigned by default |
 
 ### Upgradability
 `CSModule.sol`, `CSAccounting.sol`,  `CSFeeOracle.sol`, `CSFeeDistributor.sol`, `CSParametersRegistry.sol`, `CSStrikes.sol`, `CSExitPenalties.sol`, and `VettedGate.sol` are upgradable using [OssifiableProxy](https://github.com/lidofinance/community-staking-module/blob/main/src/lib/proxy/OssifiableProxy.sol) contracts.
