@@ -1,6 +1,6 @@
 ---
 lip: 32
-title: GateSeal V2.0 – Streamlining Emergency Governance
+title: GateSeal V2.0 — Streamlining one-time emergency buttons
 status: WIP
 author: Alexey Komarov
 discussions-to: <https://research.lido.com/t/gateseal-v2-0-proposal-thread>
@@ -16,11 +16,11 @@ GateSeal V2.0 introduces a more flexible, long-lived version of Lido’s emergen
 
 ## Abstract
 
-We propose to deploy a new version of the GateSeal contract that will support a configurable initial expiry of up to 3 years and allow a limited number of on-chain expiry prolongations. Each prolongation may increase the contract's lifetime by up to 6 months, subject to conditions proving the committee’s liveness. The maximum pause window will also be increased from 14 to 21 days. The new implementation will be written in Vyper 0.4.1, improving security and gas efficiency while maintaining backward compatibility with existing PausableUntil-based contracts.
+We propose to deploy a new version of the GateSeal contract that will support a configurable initial expiry of up to 3 years and allow a limited number of on-chain expiry prolongations. Each prolongation may increase the contract's lifetime by up to 6 months, subject to conditions proving the committee’s liveness. The maximum pause window will also be increased from 14 to 21 days. The new implementation will be written in Vyper 0.4.1, improving security, auditability and expressiveness while maintaining backward compatibility with existing PausableUntil-based contracts.
 
 ## Motivation
 
-GateSeal V1 has never been triggered but has been repeatedly re-deployed due to its hardcoded 1-year expiry. This creates governance overhead and operational burden for the emergency committee. Its inability to prolong lifespan without full redeployment exposes the DAO to unnecessary coordination cycles and short renewal windows. A more sustainable, long-lived model is needed to preserve the utility of the emergency switch without recurring maintenance.
+GateSeal V1 has never been triggered but has been repeatedly re-deployed due to its hardcoded 1-year expiry. This creates governance overhead and operational burden for the Lido DAO. Its inability to prolong lifespan without full redeployment exposes the DAO to unnecessary coordination cycles and short renewal windows. A more sustainable, long-lived model is needed to preserve the utility of the emergency switch without recurring maintenance.
 
 ## Specification
 
@@ -40,7 +40,7 @@ The main tradeoff considered was between maintaining operational safety and redu
 ### Technical Specification
 
 - Contract will be written in Vyper ≥0.4.1.
-- Public method `prolong()` will be gated by internal checks:
+- Public method `extendLifetime()` will be gated by internal checks:
   - `not activated`
   - `not expired`
   - `prolongations_remaining > 0`
@@ -70,7 +70,7 @@ The main tradeoff considered was between maintaining operational safety and redu
 
 - If the committee becomes inactive and all prolongations are used, the GateSeal will expire, requiring a redeploy.
 - Incorrectly configured parameters (e.g., excessive max prolongations or duration) may reduce accountability.
-- Misuse of the prolongation function is mitigated by strict internal checks and public transparency of calls.
+- Misuse of the prolongation function is mitigated by strict internal checks and public transparency of calls from the reference deployment factory.
 
 ## Copyright
 
