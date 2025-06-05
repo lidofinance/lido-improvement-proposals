@@ -35,7 +35,7 @@ GateSeal V2 will retain the one-time activation logic but allow:
 
 ### Rationale
 
-The main tradeoff considered was between maintaining operational safety and reducing coordination overhead. Adding a prolongation mechanism shifts responsibility for validity renewal from the DAO to the committee, enforcing drills through real multisig action. Limiting prolongations and enforcing liveness checks maintains a balance between flexibility and rigor. The switch to Vyper 0.4.1 removes compiler-level bugs and increases auditability. The model stays true to the one-time-use principle to ensure GateSeal remains a high-trust, high-scrutiny tool.
+The main tradeoff considered was between maintaining operational safety and reducing coordination overhead. Adding a prolongation mechanism shifts execution of the validity renewal from the DAO to the emergency committee, enforcing drills through real multisig action. Limiting prolongations and enforcing liveness checks maintains a balance between flexibility and rigorness. Vyper 0.4.1 brings substantial improvements in security, gas efficiency, and maintainability by fixing known compiler issues, adding full support for the EVM Cancun hard fork, and refining gas-cost optimizations. For the full changelog, refer to the [official release notes](https://docs.vyperlang.org/en/stable/release-notes.html#v0-4-1-tokara-habu). The model stays true to the one-time-use principle to ensure GateSeal remains a high-trust, high-scrutiny tool.
 
 ### Technical Specification
 
