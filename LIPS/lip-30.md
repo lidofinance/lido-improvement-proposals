@@ -14,43 +14,47 @@ updated: 2025-06-08
 
 Introduce overcollaterized accounting system for the stETH, enabling backing via ether supply outside of the Lido Core staking pool.
 
-The stETH token improves collaterilization to manage slashing risks, remaining fungible and redeemable 1:1 via primary market.
+The stETH token changes total token supply ether components approach, managing slashing risks of the extended validator set, remaining fungible and redeemable 1:1 via primary market.
 
 ## Motivation
 
-The current implementation of the stETH accounting system presumes that stETH gets minted 1:1 against the ether submitted to the Lido Core pool which means that stETH fungibility layer is tightly coupled with the Lido Core pool validator set, its parameters, policies, and state.
+The current implementation of the stETH accounting system presumes that stETH gets minted 1:1 against the ether submitted to the Lido Core pool, presuming that stETH fungibility layer is tightly coupled with the underlying Lido Core pool validator set, its chosen parameters, established policies, and observed state.
 
-Given that staking setups have become more nuanced, customizable, and fine-tunable, this proposal describes the accounting system where stETH fungibility layer extended beyond Lido Core pool validator set only to enable external staking setups contribute to the total stETH token supply.
+As staking setups have become more nuanced, customizable, and fine-tunable, this proposal describes the accounting system with the stETH fungibility layer extended beyond Lido Core pool validator set to enable external staking setups representation in the total stETH token supply.
 
-This approach broaden options and future compatibility: new direct integrations with node operators, use cases for institutions, and products of the emerging staking flavors and technologies that can enjoy stETH liquidity layer access.
+This approach broaden options and future composability: new direct delegated staking with stETH minting integrations for node operators, institutions-enabled use cases, and potential products atop of the emerging staking flavors and technologies that can enjoy stETH liquidity layer.
 
 ## Abstract
 
-The Lido on Ethereum protocol currently tracks pooled ether under its direct management — buffered ether, validators’ balances on the Consensus Layer (CL), and transient validator states — forming the protocol's ["total pooled ether"](https://docs.lido.fi/contracts/lido#gettotalpooledether).
+The Lido on Ethereum protocol currently tracks pooled ether under its direct management — triad of buffered ether, validators’ balances on the Consensus Layer (CL), and transient validator states — forming  protocol's ["total pooled ether"](https://docs.lido.fi/contracts/lido#gettotalpooledether).
 
-This proposal extends the accounting model by including an additional ether supply external to the protocol’s direct purview (aside of the Lido Core staking pool) for stETH, allowing customized and isolated staking approaches beyond the established ones via Staking Router and corresponding Staking Modules. The changes are additive to the currently existing Lido version and extends the operations of minting, burning, redeeming, reward and penalties handling, and fee distribution. 
+This proposal extends the accounting model by including an additional ether supply external to the protocol’s direct purview (outside of the Lido Core staking pool validator set) for stETH, allowing customized and isolated staking approaches and ether deposit distribution beyond the established ones via Staking Router and corresponding Staking Modules. 
+
+The changes are additive to the currently existing Lido version and extends the operations of minting, burning, redeeming, reward and penalties handling, and fee distribution. 
 
 ### High-level token design concepts
 
 #### Design principles to uphold
 
-Three main properties of the stETH token are to be preserved.
+Three key properties of the stETH token are to be preserved.
 
 #### Collaterilization
 
-External ether as backing: every minted stETH has underlying ether source, either inside the Lido Core pool or external ether locked (i.e., acting as the external stETH minting collateral) by the protocol. New accounting model suggests overcollatalized minting approach for the external part of the token supply to manage slashing risks against the relaxed staking setup requirements behind this part of collateral.
+Every minted stETH has corresponding ether-nominated value, either inside the Lido Core pool or external ether locked (i.e., acting as the external stETH minting collateral) by the protocol. 
+
+New accounting model suggests overcollatalized minting approach for the external part of the token supply to manage slashing risks against the diverse staking setups without enforced policies and requirements behind this part of collateral except only those covered in the current proposal.
 
 #### Redemability
 
 Every minted stETH must be redeemable either Lido Core pool, or the external minting collateral. 
 
-This collateral must be potentially accessible by the protocol under certain conditions (e.g., collateral shortage or Lido Core pool depletion), allowing write off minted stETH external ether source liability by moving collateralized ether to the Lido Core pool in 1:1 mannder.
+This collateral must be potentially accessible by the protocol under certain conditions (e.g., collateral shortage or Lido Core pool depletion), allowing writing-off minted stETH external ether source liability by moving the corresponding external ether to the Lido Core pool (treating 1 stETH = 1 ETH).
 
 #### Fungibility
 
-The stETH token contract remains to be ERC-20 deployed under the same address on Ethereum mainnet.
+The existing stETH token contract remains to be ERC-20 deployed under the same address on Ethereum mainnet.
 
-Minting or burning new stETH does not trigger stETH token rebase, rebases remain solely driven by the establed `AccountingOracle` report lifecycle as a part of the main phase of the report. Rewards and penalties accrues for stETH rebase remain to be defined by the Lido Core pool validator set (i.e., stETH minted against the external minting collateral doesn't change the embedded stETH staking rebase rate or, more generally, its APR). 
+Minting or burning new stETH does not trigger stETH token rebase, rebases keep happenning inside the establed `AccountingOracle` report lifecycle as a part of the main phase of the report data delivery. Rewards and penalties, accrued for stETH rebase, remain to be defined by the Lido Core pool validator set (i.e., stETH minted against the external minting collateral doesn't change the embedded stETH staking APR). 
 
 ### Key accounting changes
 
@@ -86,7 +90,7 @@ Then:
 \text{externalEther} = \text{externalShares} \times \text{shareRate} = \frac{\text{externalShares} \times \text{internalEther}}{\text{internalShares}}
 ```
 
-NB: Any changes in `shareRate` affect `externalEther` as a part of the regular stETH token rebase induced by `AccountingOracle`.
+> NB: Any changes in `shareRate` affect `externalEther` as a part of the regular stETH token rebase induced by `AccountingOracle`.
 Therefore, the external ether source must must maintain the reserve sufficient to update the total collaterized ether amount as a part of the token rebase.
 
 #### Mint external shares
@@ -181,8 +185,32 @@ Accounting oracle report happen in the same cadence.
 
 Token rebase implements in a way that `externalEther` gets updated according to the newly delivered Lido Core pool changes after reward and fees distributed.
 
-##### Rewards and fees
+##### Rewards, penalties, and fees
 
+Rewards and penalties, accrued by the Lido Core pool validator set define the stETH token rebase:
+
+Transient balance as observed during the report gathering:
+```math
+transientCLBalance_{report} = 32ETH \times (CLValidators_{report} - CLValidators_{pre})
+```
+Principal CL balance as observed during the report: 
+```math
+principalCLbalance_{report} = CLbalance_{pre} + transientCLBalance_{report}
+```
+Rewards accrued as observed during the report:
+```math
+CLrewards_{report} = [CLbalance_{report} + withdrawalVault.balance_{report}] - principalCLbalance_{report}
+```
+Internal ether received the following update:
+```math
+internalEther_{\text{post}} = 
+    internalEther_{pre} + CLrewards_{report} + elRewardsVault.balance_{report} - wqWithdrawals_{report}
+```
+Internal shares before fees:
+```math
+internalShares_{\text{post}} = 
+    internalShares_{pre} - sharesToBurn_{report}
+```
 
 
 ### Failure modes
@@ -194,6 +222,10 @@ Token rebase implements in a way that `externalEther` gets updated according to 
 #### Bad debt handling
 
 ### Security considerations
+
+#### Global limits
+
+#### Reserve ratio
 
 ### Backward compatibility
 
