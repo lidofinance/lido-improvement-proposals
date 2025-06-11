@@ -5,7 +5,7 @@ status: Proposed
 author: Dmitry Gusakov, Sergey Khomutinin, Dmitry Chernukhin, Vladimir Gorkavenko
 discussions-to: https://research.lido.fi/t/community-staking-module/5917
 created: 2025-05-02
-updated: 2025-05-27
+updated: 2025-06-11
 ---
 
 
@@ -469,7 +469,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | `DEFAULT_ADMIN_ROLE`         | Aragon Agent                           |
 | `PAUSE_ROLE`                 | GateSeal contract                      |
 | `RESUME_ROLE`                | Not assigned by default                |
-| `SET_TREE_ROOT_ROLE`         | CSM Committee Multisig or Gate Manager |
+| `SET_TREE_ROLE`              | Dedicated EasyTrack                    |
 | `START_REFERRAL_SEASON_ROLE` | Aragon Agent                           |
 | `END_REFERRAL_SEASON_ROLE`   | CSM Committee Multisig or Gate Manager |
 | `RECOVERER_ROLE`             | Not assigned by default                |
