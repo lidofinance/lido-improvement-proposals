@@ -1,6 +1,6 @@
 ---
 lip: 30
-title: Extended ether backing for stETH
+title: Expanding the stETH liquidity layer with over-collateralized minting
 status: WIP
 author: Alexey Potapkin, Eugene Mamin, Eugene Pshenichnyi
 discussions-to: TBA
@@ -8,29 +8,26 @@ created: 2024-12-06
 updated: 2025-06-08
 ---
 
-# Extended ether backing for stETH
+# Expanding the stETH liquidity layer with over-collateralized minting
 
 ## Simple Summary
 
-Introduce overcollaterized accounting system for the stETH, enabling backing via ether supply outside of the Lido Core staking pool.
-
-The stETH token changes total token supply ether components approach, managing slashing risks of the extended validator set, remaining fungible and redeemable 1:1 via primary market.
-
-## Motivation
-
-The current implementation of the stETH accounting system presumes that stETH gets minted 1:1 against the ether submitted to the Lido Core pool, presuming that stETH fungibility layer is tightly coupled with the underlying Lido Core pool validator set, its chosen parameters, established policies, and observed state.
-
-As staking setups have become more nuanced, customizable, and fine-tunable, this proposal describes the accounting system with the stETH fungibility layer extended beyond Lido Core pool validator set to enable external staking setups representation in the total stETH token supply.
-
-This approach broaden options and future composability: new direct delegated staking with stETH minting integrations for node operators, institutions-enabled use cases, and potential products atop of the emerging staking flavors and technologies that can enjoy stETH liquidity layer.
+Introduce an over‑collateralized accounting system for stETH that allows the token to be safely backed by additional ether that resides outside of the Lido Core staking pool. All stETH tokens remain fungible, 1:1‑redeemable for ETH, and benefit from risk‑segregation between the Core pool and any external collateral sources.
 
 ## Abstract
 
-The Lido on Ethereum protocol currently tracks pooled ether under its direct management — triad of buffered ether, validators’ balances on the Consensus Layer (CL), and transient validator states — forming  protocol's ["total pooled ether"](https://docs.lido.fi/contracts/lido#gettotalpooledether).
+Lido V3 extends staking beyond the single Core pool by recognising staking vaults — contracts that contribute ETH stake yet wish to mint the common liquidity token, stETH. To keep stETH fully‑backed and fungible, this LIP formalises a reserve‑based, over‑collateralised minting model: every staking vault must lock a configurable percentage of its stake as a reserve buffer before stETH can be issued.  The buffer works as on‑chain first‑loss insurance against slashing and penalties, ensuring that any risk is contained within the originating source.  This document defines the required state variables, oracle extensions, and protocol invariants that together upgrade Lido’s core accounting layer without prescribing how individual staking vaults (e.g., being plain staking vaults, customized strategy modules atop of a vault, or even separate staking vault-centered pools) are implemented.
 
-This proposal extends the accounting model by including an additional ether supply external to the protocol’s direct purview (outside of the Lido Core staking pool validator set) for stETH, allowing customized and isolated staking approaches and ether deposit distribution beyond the established ones via Staking Router and corresponding Staking Modules. 
+## Motivation
 
-The changes are additive to the currently existing Lido version and extends the operations of minting, burning, redeeming, reward and penalties handling, and fee distribution. 
+The current Lido protocol (known as Lido V2) mints stETH at a 1:1 ratio against deposits into a single diversified validator set. As the protocol grows to support heterogeneous validators and custom staking arrangements, that model becomes brittle: a poorly‑performing subset could impose a network‑wide negative rebase on all stETH holders. 
+
+The proposed reserve mechanism:
+
+- Localises Risk — losses are first absorbed by a staking vault own reserve, shielding global stETH holders.
+- Enables modular growth — any future enhanced staking vault flavors can integrate by respecting the collateral rules, keeping one unified liquidity token.
+- Preserves fungibility — users and DeFi integrations treat every stETH identically; complexity is buried inside the accounting layer.
+- Helps broader decentralization — reserve ratios can be tuned by DAO governance to incentivise decentralisation and appropriately penalise correlated risk.
 
 ### High-level token design concepts
 
