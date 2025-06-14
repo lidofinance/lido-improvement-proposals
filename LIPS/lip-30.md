@@ -1,35 +1,54 @@
 ---
 lip: 30
-title: Expanding the stETH liquidity layer with over-collateralized minting
+title: Expanding stETH liquidity layer with over-collateralized minting
 status: WIP
 author: Alexey Potapkin, Eugene Mamin, Eugene Pshenichnyi
 discussions-to: TBA
 created: 2024-12-06
-updated: 2025-06-08
+updated: 2025-06-14
 ---
 
-# Expanding the stETH liquidity layer with over-collateralized minting
+# Expanding stETH liquidity layer with over-collateralized minting
 
 ## Simple Summary
 
-Introduce an over‑collateralized accounting system for stETH that allows the token to be safely backed by additional ether that resides outside of the Lido Core staking pool. All stETH tokens remain fungible, 1:1‑redeemable for ETH, and benefit from risk‑segregation between the Core pool and any external collateral sources.
+Introduce an **over‑collateralised accounting system** for **stETH**, enabling the token to be backed by ether supplied **outside the Lido Core pool** while preserving full fungibility and 1:1 redeemability.
 
 ## Abstract
 
-Lido V3 extends staking beyond the single Core pool by recognising staking vaults — contracts that contribute ETH stake yet wish to mint the common liquidity token, stETH. To keep stETH fully‑backed and fungible, this LIP formalises a reserve‑based, over‑collateralised minting model: every staking vault must lock a configurable percentage of its stake as a reserve buffer before stETH can be issued.  The buffer works as on‑chain first‑loss insurance against slashing and penalties, ensuring that any risk is contained within the originating source.  This document defines the required state variables, oracle extensions, and protocol invariants that together upgrade Lido’s core accounting layer without prescribing how individual staking vaults (e.g., being plain staking vaults, customized strategy modules atop of a vault, or even separate staking vault-centered pools) are implemented.
+Lido’s next proposed upgrade (known as Lido V3) generalises stETH minting rules. Any entity that can algorithmically prove possession of ≥100% collateral **plus a safety reserve** may mint stETH against the *effective* portion of that collateral.  The system refers to such entities as staking vaults. A staking vault might be just a delegated staking vault, separate vault-centered staking pool, a sophisticated staking product with the staking vault in its code, or any possible future staking gadget.
+
+Core changes boils down to:
+
+1. **Collateral registry (aka VaultHub)** – on‑chain ledger of every vault’s *total value* (TV) and *locked value* (or just `locked`).  
+2. **Accounting Oracle v3** – reports aggregated state root of the staking vaults to drive collateral registry bookkeeping.  
+3. **External shares mint and burn** – LidoCore enforces `stETH.totalSupply() ≤ Σ core pool total supply + Σ locked`, refusing mints that would exceed it.  
+4. **Reserve‑breach hooks** – if a staking vault reserve buffer falls below governance‑set limits, Core blocks further mints from that staking vault and may trigger containment routines.
+
+The proposal **does not prescribe** how an staking vault implements reserves or validator operations; it only defines **the proofs and invariants** the core contract must be able to verify and enforce.
 
 ## Motivation
 
-The current Lido protocol (known as Lido V2) mints stETH at a 1:1 ratio against deposits into a single diversified validator set. As the protocol grows to support heterogeneous validators and custom staking arrangements, that model becomes brittle: a poorly‑performing subset could impose a network‑wide negative rebase on all stETH holders. 
+The V2 model implicitly assumes that every new ETH deposit is equal‑risk socialized and immediately mintable 1:1. As Lido scales to heterogeneous validator sets and diverse product lines, that assumption is no longer holds. Without structural safeguards a single high‑risk source of ether supply for stETH could:
+* slash enough stake to force a global negative rebase, or  
+* mint stETH minutes before an exit, externalising risk to the broader holder base.
 
-The proposed reserve mechanism:
+By hard‑coding **over‑collateralisation at the protocol level** and measuring backing **per‑vault**, the design contains such tail risks while unlocking new ether supply lines.  stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not socialised.
 
-- Localises Risk — losses are first absorbed by a staking vault own reserve, shielding global stETH holders.
-- Enables modular growth — any future enhanced staking vault flavors can integrate by respecting the collateral rules, keeping one unified liquidity token.
-- Preserves fungibility — users and DeFi integrations treat every stETH identically; complexity is buried inside the accounting layer.
-- Helps broader decentralization — reserve ratios can be tuned by DAO governance to incentivise decentralisation and appropriately penalise correlated risk.
+## Specification
 
-### High-level token design concepts
+### Glossary
+
+| Concept | Definition | 
+|---------|------------|
+| **Staking Vault** | Any contract or module that locks ETH and requests stETH mints. |
+| **Total Value (TV)** | Sum of all ETH the staking vault controls on EL + CL, incl. pending deposits. | 
+| **Reserve Ratio (RR)** | Minimum share of TV that **must not** be represented by stETH. |
+| **Locked** | `locked = TV × (1 – RR)` (floored) |
+| **Liability** | stETH value minted against the staking vault position (rebases with stETH) |
+| **Global backing invariant** | `stETH.totalSupply() ≤ Σ core pool total supply + Σ locked` |
+| **Reserve Breach** | If `TV – liability < RR × TV`, staking vault enters *unhealthy* state. |
+| **Bad debt** | If `liability > TV`, staking vault enters *bad debt* state |
 
 #### Design principles to uphold
 
@@ -287,12 +306,14 @@ Lido Core acts as a validation performance benchmark oracle in a sense that stET
 
 ## Security considerations
 
-### External shares backing
+### No unbacked stETH
 
-External shares should be reasonably overcollaterized to accommodate
-locked external ether increase due to the positive stETH token rebase.
+Invariant is enforced upon every mew stETH mint.
 
-Overcollaterization has to be controlled with an additional ether reserve and its rate against the stETH minted.
+For the already minted, external shares should stay reasonably overcollaterized to accommodate locked increase due to the historically-positive stETH token rebase.
+Overcollaterization is controlled with the appropriately chosen `RR` and `FRT` values to allow fine-grainted control:
+- block new minting requests when the `RR` threshold breached
+- allow force rebalance to be made by the protocol when the `FRT` threshold breached
 
 ### stETH redemptions risk
 
@@ -300,6 +321,8 @@ The Lido Core pool must maintain reasonable amount of `internalShares` and `inte
 redeemability of the stETH token (backed both by internal and external ether supply).
 
 To mitigate these risks, minting security limits should be enforced together with properly aligned incentives between internal and external supply sides.
+
+Under severe Lido Core pool depleting conditions, the protocol may require redemption requests to be handled using staking vaults, attributing the `redemptions` counter nominated in ether accordingly. That would require from vault either voluntary burning `stETH` from its balance, decreasing simultaneously `liability` and `redemptions`, or rebalancing the `redemptions` amount, satisfying the assigned obligation.
 
 ### Implementation risk
 
@@ -309,27 +332,41 @@ Rigid code reviews, external audits, well-defined access controls, emergency mec
 
 ### Staking limits and pause
 
-Pausing staking is unaffected by external shares per se.
+Pausing staking is unaffected by external shares handling.
 
-However, if the protocol is under stress or paused, external share minting/burning might also be restricted.
+However, if the protocol is under stress or paused, external share minting/burning might also be temporary unoperational.
 
 ### One new minter and one new burner for stETH
 
-This LIP introduces a new class of minter and burner (the external accounting contract),
-increasing the importance of access control, deployment configuration, and monitoring.
+This LIP introduces a new source of minting and burning, increasing the importance of access control, deployment configuration, and monitoring.
 
-The burning is allowed only from the own external accounting contract balance.
+To limit the control surface, all minting and burning of external shares is authorized only via the single `VaultHub` contract. There is a global minting limit preventing external shares to exceed the sane limits upon initial proposal adoption.
 
 ## Failure modes
 
 ### External ether drained
 
-If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply.
+If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply (i.e., the `liability > TV` invariant broken for a vault or a group of vaults).
 
 Losses can be covered by:
-- replenishing the external ether source with additional funds;
-- implementing a coverage application mechanism by burning stETH from the donor sources;
-- socializing the losses via token rebase (i.e., as it would have been with staking penalties) among all stETH holders as a part of an explicit governance decision.
+- replenishing the staking vaults accrued bad debt with additional funds;
+- socializing the bad debt among vaults containing slashed validors of the same node operator;
+- executing a self-coverage application (see [LIP-18](./lip-18.md));
+- internalizing the losses to protocol, decreasing stETH token rebase (as it would have been with the Lido Core pool staking penalties) within the next oracle report
+
+### Emergency pause
+
+The collateral registry contract (`VaultHub`) and auxiliary parts implement an emergency pause mechanism, allowing to minimize the potential impact of the discovered vulnerability or unspecified critical protocol state. 
+
+Paused state prevents:
+- a new staking vault from being registered in the collateral registry;
+- already registered vaults can't be disconnected;
+- stETH can't be minted or burned against staking vaults;
+- ether can't be funded or withdrawn from the registered vaults;
+- rebalance operations are paused;
+- staking vaults can't receive oracle reports;
+- ether can't be deposited to beacon chain from staking vaults
+- assigned obligations of staking vaults (redemptions and fees) can't be settled
 
 ## Reference implementation
 
