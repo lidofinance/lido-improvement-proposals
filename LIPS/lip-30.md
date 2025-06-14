@@ -16,16 +16,20 @@ Introduce an **over‑collateralised accounting system** for **stETH**, enabling
 
 ## Abstract
 
-Lido’s next proposed upgrade (known as Lido V3) generalises stETH minting rules. Any entity that can algorithmically prove possession of ≥100% collateral **plus a safety reserve** may mint stETH against the *effective* portion of that collateral.  The system refers to such entities as staking vaults. A staking vault might be just a delegated staking vault, separate vault-centered staking pool, a sophisticated staking product with the staking vault in its code, or any possible future staking gadget.
+Lido V3 generalises stETH minting rules. Any entity that can
+provably lock ≥100 % collateral **plus a safety reserve** may mint stETH against the *effective* portion of that collateral. Such an entity is called a **staking vault**. The proposal defines the *in‑protocol* collateral accounting, mint / burn flow, and health‑monitoring hooks; it purposely does **not** impose implementation details on vaults themselves.
 
-New key concepts and changes:
+Key protocol additions:
 
-1. **Collateral registry (aka VaultHub)** – on‑chain ledger of every vault’s *total value* (TV) and *locked value* (or just `locked`).  
-2. **Accounting Oracle v3** – reports aggregated state root of the staking vaults to drive collateral registry bookkeeping in an asynchronous manner.  
-3. **External shares mint and burn** – LidoCore enforces `stETH.totalSupply() ≤ Σ core pool total supply + Σ locked`, refusing mints that would exceed it.  
-4. **Reserve‑breach hooks** – if a staking vault reserve buffer falls below governance‑set limits, Core blocks further mints from that staking vault and may trigger containment routines.
-
-The proposal **does not prescribe** how an staking vault implements reserves or validator operations; it only defines **the proofs and invariants** the core contract must be able to verify and enforce.
+1. **Collateral Registry (`VaultHub`)** – on‑chain ledger of every vault’s
+   *total value* (TV) and *locked* portion.  
+2. **Accounting Oracle v3** – extends the existing oracle by publishing the
+   Merkle‑root of per‑vault balances; `VaultHub` verifies inclusion proofs
+   asynchronously (“lazy oracle” pattern).  
+3. **External‑shares mint / burn** – `Lido` contract enforces  
+   `totalSupply ≤ internalEther + Σ locked`, refusing mints that break it.  
+4. **Reserve‑breach hooks** – if a vault’s buffer drops below certain
+   thresholds (`RR`, `FRT`), Lido Core blocks fresh mints and can order an on‑chain rebalance (partial debt repayment).
 
 ## Motivation
 
@@ -221,42 +225,61 @@ internalShares_{\text{post}} =
     internalShares_{pre} - sharesToBurn_{report}
 ```
 
-TODO: penalties, fees, bad debt internalizing
+Lido Core continues to be the sole source of *token* rebases; however, the
+oracle now carries the extra field `vaultsRoot`, containing the Merkle root of each vault’s `TV`, `fees`, `liability`, `slashing reserve`.
+
+The on‑chain `AccountingOracle` stores the last accepted root. `VaultHub.processVaultReport(proof, values)` can be called permissionlessly
+throughout the oracle period to update individual vaults lazily.
+
+If there is a bad debt to be internalized, `Lido` **burns** an equal amount of stETH (supply‑side negative rebase) **after** fees are applied and **before** share rate is recalculated, exactly mirroring the current V2 slashing path. This keeps the “one global APR” invariant intact.
 
 ## Specification (minimal)
 
-### Total value
+#### Function: `Lido.totalPooledEther() → uint256`
 
-#### Function: `totalPooledEther()`
-
-TODO
-
-### Mint external shares
+Returns  
+`internalEther  + externalEther`, where `externalEther` is
+`externalShares * shareRate`.  
 
 #### Function: `Lido.mintExternalShares(address receiver, uint256 sharesAmount)`
+*Requirements*
 
-    Input:
-        `receiver`: The address that will receive the newly minted external stETH.
-        `sharesAmount`: The number of shares to mint.
-    Actions:
-        - Compute the corresponding external ether amount `deltaExternalBalance` at the current stETH's `shareRate`.
-        - Increase `externalBalance` by `deltaExternalBalance`.
-        - Mint `sharesAmount` of stETH to receiver.
+1. **caller** must be `VaultHub`.
+2. `sharesAmount` ≤ vault’s **mintableShares()**  
+   (computed in `VaultHub` as `maxSharesForTV - liabilityShares`).
+3. Global backing invariant must hold after the mint.
 
-### Burn external shares
+*Effects*
+
+1. `externalShares += sharesAmount`  
+   `externalEther  += sharesAmount * shareRate` (implicitly).
+2. Mint `sharesAmount` stETH to `receiver`.
+
+*Events*  
+`ExternalSharesMinted(vault, receiver, sharesAmount, shareRate)`.
 
 #### Function: `Lido.burnExternalShares(uint256 sharesAmount)`
+*Requirements* – same gating via `VaultHub`.
 
-    Input:
-        `sharesAmount`: The number of shares to burn from the caller’s balance.
-    Actions:
-        - Compute the external ether redemption ΔETHext, burnΔETHext, burn​.
-        - Decrease `externalBalance` by ΔETHext, burnΔETHext, burn​.
-        - Burn `sharesAmount` of stETH from the caller’s balance.
+*Effects*
 
-### Rebalance
+1. Burn caller’s `sharesAmount` stETH.
+2. `externalShares -= sharesAmount`;  
+   `externalEther  -= sharesAmount * shareRate` (implicitly).
 
-TODO
+*Events*  
+`ExternalSharesBurnt(vault, payer, sharesAmount, shareRate)`.
+
+#### Function: `VaultHub.rebalance(uint256 ethAmount)`
+*(single entry point used by the protocol or the vault owner)*
+
+1. Checks vault is **unhealthy** (`TV - liability < RR·TV`) to allow protocol intervention otherwise callable only by the owner.
+2. Calculates `sharesToWriteOff = ethAmount / shareRate`.
+3. Calls `Lido.rebalanceExternalEtherToInternal()`, which    
+   * decreases `externalShares`, increases `internalShares`, keeps totals.  
+4. Marks `locked` and `TV` decreased by `ethAmount`.  
+5. Transfers `ethAmount` to Core’s deposit buffer.  
+6. Emits `ExternalEtherTransferredToBuffer(uint256 etherAmount)`.
 
 ## Rationale
 
@@ -283,20 +306,26 @@ Overcollaterization is controlled with the appropriately chosen `RR` and `FRT` v
 - block new minting requests when the `RR` threshold breached
 - allow force rebalance to be made by the protocol when the `FRT` threshold breached
 
-### Collateral updates
+### Collateral updates (RR & FRT guidance)
 
-TODO: `RR` and `FRT` values should be chosen to: 
-- address slashing risks according to the approved level
-- have a reasonable time offset between mint capacity exhaustion due to breaching `RR` and force-rebalance activation due to `FRT`
-- account for the oracle report cadence and asynchronous nature of the report delivery
+* **RR** (e.g., 10 %) must at minimum cover the *validator correlated slashing* scenario contemplated by the risk assessment framework analysis.
+* **FRT** should be chosen such that the staking vault with the fully inactive validators can move from breaching `RR` to `FRT` on a scale of a few months.
+
+Detailed analysis is presented withing the [risk assessment framework](https://research.lido.fi/t/risk-assessment-framework-for-stvaults/9978).
 
 ### Oracle tamper resistance
 
-TODO: continues quorum-enforced sumbission + on-chain sanity‑checker pattern.
+* Unchanged **quorum‑of‑N** multi‑sig scheme (same addresses as V2) signs the
+  updated `AccountingOracle` payload.
+* On‑chain *sanity checks* as a part of the lazy oracle flow (applies at the moment of the report unroll).
 
 ### Isolation
 
-TODO: staking vault bug cannot drain Lido Core supply; worst case, staking vault’s own `TV` is lost and its stETH mints halt.
+* `StakingVault` contract is **upgradeably pinned**;
+  `VaultHub` enforces deterministic code‑hash per vault type.
+* A logic flaw in a vault can only evaporate that vault’s TV; the
+  `VaultHub` guard prevents it from ever minting beyond its last reported
+  `TV – RR·TV`.
 
 ### stETH redemptions risk
 
