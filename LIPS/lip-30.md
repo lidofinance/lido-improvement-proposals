@@ -2,7 +2,7 @@
 lip: 30
 title: Expanding stETH liquidity layer with over-collateralized minting
 status: WIP
-author: Alexey Potapkin, Eugene Mamin, Eugene Pshenichnyi
+author: Alexey Potapkin, Eugene Mamin, Eugene Pshenichnyi, Max Merkulov
 discussions-to: TBA
 created: 2024-12-06
 updated: 2025-06-14
@@ -18,10 +18,10 @@ Introduce an **over‑collateralised accounting system** for **stETH**, enabling
 
 Lido’s next proposed upgrade (known as Lido V3) generalises stETH minting rules. Any entity that can algorithmically prove possession of ≥100% collateral **plus a safety reserve** may mint stETH against the *effective* portion of that collateral.  The system refers to such entities as staking vaults. A staking vault might be just a delegated staking vault, separate vault-centered staking pool, a sophisticated staking product with the staking vault in its code, or any possible future staking gadget.
 
-Core changes boils down to:
+New key concepts and changes:
 
 1. **Collateral registry (aka VaultHub)** – on‑chain ledger of every vault’s *total value* (TV) and *locked value* (or just `locked`).  
-2. **Accounting Oracle v3** – reports aggregated state root of the staking vaults to drive collateral registry bookkeeping.  
+2. **Accounting Oracle v3** – reports aggregated state root of the staking vaults to drive collateral registry bookkeeping in an asynchronous manner.  
 3. **External shares mint and burn** – LidoCore enforces `stETH.totalSupply() ≤ Σ core pool total supply + Σ locked`, refusing mints that would exceed it.  
 4. **Reserve‑breach hooks** – if a staking vault reserve buffer falls below governance‑set limits, Core blocks further mints from that staking vault and may trigger containment routines.
 
@@ -43,7 +43,8 @@ By hard‑coding **over‑collateralisation at the protocol level** and measurin
 |---------|------------|
 | **Staking Vault** | Any contract or module that locks ETH and requests stETH mints. |
 | **Total Value (TV)** | Sum of all ETH the staking vault controls on EL + CL, incl. pending deposits. | 
-| **Reserve Ratio (RR)** | Minimum share of TV that **must not** be represented by stETH. |
+| **Reserve Ratio (RR)** | Minimum share of TV that **should not** be represented by stETH. |
+| **Force Rebalance Threshold (FRT)** | Minimum share of TV that incurs force rabalance if becomes represented by stETH, `FRT < RR` |
 | **Locked** | `locked = TV × (1 – RR)` (floored) |
 | **Liability** | stETH value minted against the staking vault position (rebases with stETH) |
 | **Global backing invariant** | `stETH.totalSupply() ≤ Σ core pool total supply + Σ locked` |
@@ -74,11 +75,11 @@ Minting or burning new stETH does not trigger stETH token rebase, rebases keep h
 
 ### Key accounting changes
 
-> For simplicity, 'external ether' means 'external stETH minting ether collateral', and 'external shares' are stETH shares minted against that ether source.
+> For simplicity, 'external ether' means 'staking vault minting collateral', and 'external shares' are stETH shares minted against staking vaults.
 
 #### Total pooled ether update
 
-The total pooled ether (`totalPooledEther`) considering the external balance becomes:
+The total pooled ether (`totalPooledEther`) including the staking vault ether becomes:
 
 ```math
 \text{totalPooledEther} = \text{bufferedEther} + \text{CLbalance} + \text{transientEther} + \text{externalEther}.
@@ -107,13 +108,11 @@ Then:
 ```
 
 > NB: Any changes in `shareRate` affect `externalEther` as a part of the regular stETH token rebase induced by `AccountingOracle`.
-Therefore, the external ether source must must maintain the reserve sufficient to update the total collaterized ether amount as a part of the token rebase.
+Therefore, the staking vault must must maintain the reserve sufficient to update the total collaterized ether amount as a part of the token rebase.
 
 #### Mint external shares
 
-A newly introduced "external ether accounting contract" (trusted by the [`Lido/stETH`](https://docs.lido.fi/contracts/lido) protocol contract) is allowed to mint stETH shares to a specified recipient.
-
-The amount of external stETH shares minted MUST be fully backed via an equivalent external ether amount locked by the external ether accounting contract.
+The amount of external stETH shares minted MUST be fully backed via a staking vault (including `RR`).
 
 > NB: The mint operation MUST NOT incur the stETH token rebase.
 
@@ -143,7 +142,7 @@ After minting, the external shares value gets updated as:
 
 #### Burn external shares
 
-The "external accounting contract" can also burn a specified amount of stETH shares from its balance to unlock the corresponding external ether collateral,
+A staking vault can also burn a specified amount of stETH shares from its balance to unlock the corresponding external ether collateral,
 decreasing the stored `externalShares`, i.e., denoting:
 
 - $\Delta S_{\text{ext, burn}}$ as the number of external shares to burn:
@@ -189,12 +188,6 @@ internalShares_{new} = internalShares_{new} + \frac{\Delta ETH_{\text{ext}}}{sha
 
 Rebalance can be used to improve the collateral reserve during its shortfall, e.g., to handle penalties and slashings.
 
-#### Lock and unlock
-
-To mitigate the risks of collateral shortage due to token rebases, penalties and slashings, additional reserve is locked upon minting as a part of the overall collateral.
-
-This reserve depends on the risk approach used and, in general, must be enough to cover normal protocol operation and non-catastrophic slashings for the external ether used to back minted stETH.
-
 #### Oracle reports
 
 Accounting oracle report happen in the same cadence.
@@ -228,46 +221,19 @@ internalShares_{\text{post}} =
     internalShares_{pre} - sharesToBurn_{report}
 ```
 
+TODO: penalties, fees, bad debt internalizing
 
-### Failure modes
+## Specification (minimal)
 
-#### Slashing handling
+### Total value
 
-#### Redemption of the depleted pool
+#### Function: `totalPooledEther()`
 
-#### Bad debt handling
-
-### Security considerations
-
-#### Global limits
-
-#### Reserve ratio
-
-### Backward compatibility
-
-### Test cases
-
-### Total pooled ether
-
-### stETH rebase rewards
-
-### stETH rebase fees
-
-### External ether update
-
-### Risks addressed
-
-TBA
-
-### Risks to be managed
-
-TBA
-
-## Specification
+TODO
 
 ### Mint external shares
 
-#### Function: `mintExternalShares(address receiver, uint256 sharesAmount)`
+#### Function: `Lido.mintExternalShares(address receiver, uint256 sharesAmount)`
 
     Input:
         `receiver`: The address that will receive the newly minted external stETH.
@@ -279,7 +245,7 @@ TBA
 
 ### Burn external shares
 
-#### Function: `burnExternalShares(uint256 sharesAmount)`
+#### Function: `Lido.burnExternalShares(uint256 sharesAmount)`
 
     Input:
         `sharesAmount`: The number of shares to burn from the caller’s balance.
@@ -288,7 +254,9 @@ TBA
         - Decrease `externalBalance` by ΔETHext, burnΔETHext, burn​.
         - Burn `sharesAmount` of stETH from the caller’s balance.
 
-### 
+### Rebalance
+
+TODO
 
 ## Rationale
 
@@ -306,7 +274,7 @@ Lido Core acts as a validation performance benchmark oracle in a sense that stET
 
 ## Security considerations
 
-### No unbacked stETH
+### No unbacked mint
 
 Invariant is enforced upon every mew stETH mint.
 
@@ -314,6 +282,21 @@ For the already minted, external shares should stay reasonably overcollaterized 
 Overcollaterization is controlled with the appropriately chosen `RR` and `FRT` values to allow fine-grainted control:
 - block new minting requests when the `RR` threshold breached
 - allow force rebalance to be made by the protocol when the `FRT` threshold breached
+
+### Collateral updates
+
+TODO: `RR` and `FRT` values should be chosen to: 
+- address slashing risks according to the approved level
+- have a reasonable time offset between mint capacity exhaustion due to breaching `RR` and force-rebalance activation due to `FRT`
+- account for the oracle report cadence and asynchronous nature of the report delivery
+
+### Oracle tamper resistance
+
+TODO: continues quorum-enforced sumbission + on-chain sanity‑checker pattern.
+
+### Isolation
+
+TODO: staking vault bug cannot drain Lido Core supply; worst case, staking vault’s own `TV` is lost and its stETH mints halt.
 
 ### stETH redemptions risk
 
@@ -336,7 +319,7 @@ Pausing staking is unaffected by external shares handling.
 
 However, if the protocol is under stress or paused, external share minting/burning might also be temporary unoperational.
 
-### One new minter and one new burner for stETH
+### One new minter/burner for stETH
 
 This LIP introduces a new source of minting and burning, increasing the importance of access control, deployment configuration, and monitoring.
 
@@ -367,6 +350,27 @@ Paused state prevents:
 - staking vaults can't receive oracle reports;
 - ether can't be deposited to beacon chain from staking vaults
 - assigned obligations of staking vaults (redemptions and fees) can't be settled
+
+## Rationale
+
+TODO:
+- a single fungibility layer (one token, many backers) simplifies existing and future DeFi integration, avoiding liquidity fragmentation;
+- source‑level risk accounting – every staking vault self‑insures via locked reserves; honest participants are unaffected by others’ failures;
+- upgradeable & extensible – new staking vault type would require only an oracle plug‑in and a separate collateral registry entry
+- minimal Lido Core pool surface – core gains a few new contracts (Collateral registry (VaultHub) + Lido/Accounting updates + upgraded Oracle) and tight invariant checks yet remains agnostic to business logic inside staking vaults and strategies built atop.
+
+## Backward compatibility
+
+TODO: 
+- existing deposit flow stays intact
+- wstETH wrappers on L1 and L2 are remain compatible with stETH
+- withdrawal NFTs and oracle consumer APIs remain untouched
+
+The only observable changes are:
+- `totalSupply` may grow more slowly than beacon‑chain TVL (because of reserves).    
+- New events added, the old ones are untouched
+    
+No action required from existing stETH/wstETH integrators.
 
 ## Reference implementation
 
