@@ -202,7 +202,7 @@ contract ValidatorsExitBusOracle {
 
 The **Validator Exit Bus** contract is pausable using the [GateSeal](https://github.com/lidofinance/gate-seals?tab=readme-ov-file#what-is-a-gateseal) to prevent unexpected behavior that could harm the protocol.
 
-When the contract is paused, it prevents any submitting, revealing data or triggering of exits.
+When the contract is paused, it prevents hash submissions, data reveals, and exits triggering.
 
 ---
 
@@ -338,7 +338,7 @@ In the **Node Operators Registry**, all logic related to **stuck keys** and corr
 
 When a late validator is reported, the module will not take any direct action other than **emitting a late event**. The same applies when a validator is exited through a triggerable withdrawal — the event will be emitted, but no penalty logic will be executed.
 
-⚠️ This update applies to both the **Curated Module** and the **sDVT Module**. ⚠
+⚠️ This update applies to both the Curated Module and the sDVT Module. ⚠️
 
 ### 4.9 Lido Locator
 
@@ -362,7 +362,7 @@ The following changes will be applied to the **off-chain VEBO exit order**:
 - **Remove the "stuck and delayed key" predicate** – since Node Operators will no longer be able to intentionally delay exits (because of TW), this check is obsolete.
 - **Remove the 1% Penetration in Ethereum Stake predicate** – originally designed to prevent newly onboarded Node Operators from immediately exiting validators after receiving stake. However, this logic is currently non-functional and adds unnecessary configuration complexity. 
 
-Updated Predicate List:
+Updated Sorting List:
 ```
 | Sorting | Module                                      | Node Operator                                         | Validator              |
 | ------- | ------------------------------------------- | ----------------------------------------------------- | ---------------------- |
@@ -395,35 +395,27 @@ All functionality related to reporting stuck keys will be removed from Accountin
 
 ### 5.3 Validator Ejector
 
-[//]: # (- TBD)
-[//]: # ()
-[//]: # (The current **whitelisting logic in the Validator Ejector** will require adjustments. With the introduction of Triggerable Withdrawals, not only Oracles but also permissionless actors may unpack reports. The original whitelisting mechanism was intended to mitigate risks from compromised nodes.)
-[//]: # ()
-[//]: # (**Required Changes:**)
-[//]: # ()
-[//]: # (- **Update Node Operator Policy** – Node Operators should configure the Ejector to work with **local Execution Layer &#40;EL&#41; nodes**, minimizing external trust dependencies.)
-[//]: # (- **Additional Security Improvement** – Implement additional checks to verify whether the submitted report hash was delivered by a **trusted actor**.)
-[//]: # (- **Logic Change** – The Validator Ejector previously relied on `lastRequestedValidatorIndex`, but there is no longer an assumption that validators exit sequentially in ascending order. Going forward, the Ejector will primarily rely on `ValidatorExitRequest` ****events.)
+Some changes will also be required in the Validator Ejector. Currently, we have an allowlist of oracle addresses that protects Node Operators from man-in-the-middle attacks between the ejector and EL node. In the new version of the protocol, reports can be delivered through governance votes and Easy Track motions, which will require updates to support this new functionality.
+
+This will be addressed by introducing new parameters that can whitelist the creator of an Easy Track motion or specific transactions that revealed an exit report. Additionally, if a Node Operator hosts their own Execution Layer node or fully trusts their provider, there will be an option to disable this protection entirely to reduce the operational overhead of managing allowlists.
 
 #### 5.4 Trigger Exits Bot
 
 Lido requires an automated mechanism to **trigger validator exits** when delays occur, ensuring that withdrawal requests are not unnecessarily stalled and users experience smooth exits.
 
 The bot will:
-
 - Scan for validators marked as requested-to-exit in the Validator Exit Bus (VEB).
 - Monitor whether they have completed their exit in a timely manner.
 - Estimate and use optimal gas prices for efficient execution.
 - Operate permissionlessly—**anyone can run the bot** to help execute exits.
 - Depend on Staking Modules to expose clear rules or public methods for determining which validators are delayed.
 - Serve as a **fallback mechanism** when Node Operators fail to execute voluntary exits on time, by submitting TWRs through the EL.
-- 
+
 #### 5.5 Validator Late Prover Bot
 
 Lido also requires an automated tool to **detect and report late validators** who have failed to exit within the required timeframe after an exit request.
 
 The bot will:
-
 - Continuously track validator exit status on the CL.
 - Compare current status to the timestamp of the `ExitRequested` event from VEB.
 - Generate and submit **proofs of delinquency** if a validator has overstayed its exit window.
@@ -466,9 +458,68 @@ Mitigation:
 Analytics research:
 - Global Limit on Maximum TW - https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view
 
-## 7. **Appendix**
+## 8. Proposed params
 
-#### **Appendix A – Limit Implementation**
+Below is a list of configuration values and roles that will be assigned as part of the upcoming upgrade. If certain parameters are not listed, they will either remain unchanged or are defined by network-level constraints.
+
+#### ValidatorExitBusOracle.sol
+
+| Name                         | Value      | Description                                                           |
+|------------------------------|------------|-----------------------------------------------------------------------|
+| `maxValidatorExitsPerReport` | 600        | Maximum number of validators that can be delivered in a single report |
+| `maxExitRequestsLimit`       | 11200      | Maximum quota can be accumulated                                      |
+| `exitsPerFrame`              | 1          | Amount of quota replenished per frame                                 |
+| `frameDuration`              | 48 seconds | Duration of each frame                                                |
+
+| Role                              | Assignee                                                                                                                               |
+|-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `DEFAULT_ADMIN_ROLE`              | Aragon Agent                                                                                                                           |
+| `SUBMIT_REPORT_HASH_ROLE`         | [Easy Track Motion](https://docs.lido.fi/guides/easy-track-guide/) will be used by Node Operators and sDVTComeette to eject validators |
+| `EXIT_REQUEST_LIMIT_MANAGER_ROLE` | Not assigned by default                                                                                                                |
+| `PAUSE_ROLE`                      | GateSeal contract                                                                                                                      |
+| `RESUME_ROLE`                     | ResealManager contract                                                                                                                 |
+
+#### TriggerableWithdrawalsGateway.sol
+
+| Name                   | Value      | Description                           |
+|------------------------|------------|---------------------------------------|
+| `maxExitRequestsLimit` | 11200      | Maximum quota can be accumulated      |
+| `exitsPerFrame`        | 1          | Amount of quota replenished per frame |
+| `frameDuration`        | 48 seconds | Duration of each frame                |
+
+| Role                               | Assignee                           |
+|------------------------------------|------------------------------------|
+| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                       |
+| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` contract |
+| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default            |
+| `PAUSE_ROLE`                       | GateSeal contract                  |
+| `RESUME_ROLE`                      | ResealManager contract             |
+
+#### StakingRouter.sol
+
+| Role                                   | Assignee                                 |
+|----------------------------------------|------------------------------------------|
+| `DEFAULT_ADMIN_ROLE`                   | Aragon Agent                             |
+| `REPORT_VALIDATOR_EXITING_STATUS_ROLE` | `ValidatorExitDelayVerifier` contract    |
+| `REPORT_VALIDATOR_EXIT_TRIGGERED_ROLE` | `TriggerableWithdrawalsGateway` contract |
+
+#### NoderOperatorRegistry.sol
+
+| Role                        | Assignee                 |
+|-----------------------------|--------------------------|
+| `DEFAULT_ADMIN_ROLE`        | Aragon Agent             |
+| `MANAGE_NODE_OPERATOR_ROLE` | Easy Track Motion        |
+| `STAKING_ROUTER_ROLE`       | `StakingRouter` contract |
+
+### Curated and sDVT Staking Module
+
+| Name                    | Value  | Description                                                                                                                        |
+|-------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------|
+| `exitDeadlineInSeconds` | 432000 | Number of seconds within which Node Operators must complete validator exit. This is set using the getStuckPenaltyDelay() function. |
+
+## 8. **Appendix**
+
+### **Appendix A – Limit Implementation**
 
 To protect the Lido protocol from excessive validator exits and prevent abuse, a **rate-limiting mechanism** is introduced for VEB and TWG. This mechanism enforces a dynamic quota system that gradually grows over time and is consumed as exits are triggered.
 
@@ -491,9 +542,7 @@ For each full frame passed, `exitsPerFrame` units are restored. The updated quot
 The request amount is subtracted from the restored quota. This new value becomes the `prevExitRequestsLimit` for future calculations.
 The `prevTimestamp` is advanced by `framesPassed * frameDuration`, anchoring the system for the next round of quota restoration.
 
-#### Appendix B - Threshold changes in NOR
-
-#### Appendix C - Easy Tracks for VEB
+### Appendix B - Easy Tracks for VEB
 
 To simplify the exit request process for Node Operators (NOs) from the **Curated** and **sDVT Staking Modules**, **Easy Tracks** will be set up to facilitate exit requests.
 
@@ -505,135 +554,7 @@ To simplify the exit request process for Node Operators (NOs) from the **Curated
 
 **Technical specification:** https://hackmd.io/f2ilNvRnQ1uONfVZ93wnhw?view#EVM-Script-Specification
 
-#### Appendix C - handles for GOV
-Submit not more than `MAX_VALIDATORS_PER_BATCH` validators, but recommended 100.
-
-`MAX_VALIDATORS_PER_BATCH` can be fetched with `getMaxValidatorsPerReport()` func.
-
-Validators report should look like Oracle reports
-
-```
-struct ExitRequestsData {
-    bytes data;
-    uint256 dataFormat;
-}
-```
-
-Where bytes are
-
-```bash
-    /// MSB <------------------------------------------------------- LSB
-    /// |  3 bytes   |  5 bytes   |     8 bytes      |    48 bytes     |
-    /// |  moduleId  |  nodeOpId  |  validatorIndex  | validatorPubkey |
-```
-
-When hash is summited any one can deliver data to the ``submitExitRequestsData`` function and emit corresponding events.
-
-**Tweak exit deadline on NOR modules**
-
-Deadline to exit for validators could be tweaked via next function
-
-```solidity
-/// @notice Sets the validator exit deadline threshold and the reporting window for late exits.
-/// @dev Updates the cutoff timestamp before which validators are protected from penalization.
-///      Prevents penalizing validators whose exit eligibility began before the new policy took effect.
-/// @param _threshold The number of seconds a validator has to exit after becoming eligible.
-/// @param _reportingWindow The additional number of seconds during which a late exit can still be reported.
-function setExitDeadlineThreshold(uint256 _threshold, uint256 _reportingWindow) external;
-```
-
-setExitDeadlineThreshold  
-  
-The `setExitDeadlineThreshold` function also sets the `nonPenalizableBefore` timestamp to:  
-  
-`current_timestamp - current_threshold - reporting_window`,  
-  
-where `reporting_window` defines the period during which the **Late Validator Bot** can report late exits.  
-  
-All validators that were requested to exit before this timestamp **cannot be reported** after the exit deadline is changed. This ensures that previously exited or outdated validators are not penalized under newly introduced policies (e.g., if the threshold was reduced).  
-  
-There is an edge case where the bot might report a recently requested validator as late **before the governance vote to reduce the exit period is enacted**. Although the validator was originally allowed more time to exit, it would still be marked as late. Such cases will be handled operationally by **announcing the policy change in advance before the governance vote is enacted**. This way, despite the on-chain parameters not yet being updated, Node Operators will already be expected to follow the new policy approved by the DAO through a Snapshot vote.
-
-### 8. Roles to actors mapping
-
-***New and related to TW update roles only***
-
-#### `ValidatorExitBusOracle.sol`
-
-| Role                              | Assignee                                                                                                                               |
-|-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `DEFAULT_ADMIN_ROLE`              | Aragon Agent                                                                                                                           |
-| `SUBMIT_REPORT_HASH_ROLE`         | [Easy Track Motion](https://docs.lido.fi/guides/easy-track-guide/) will be used by Node Operators and sDVTComeette to eject validators |
-| `EXIT_REQUEST_LIMIT_MANAGER_ROLE` | Not assigned by default                                                                                                                |
-| `PAUSE_ROLE`                      | GateSeal contract                                                                                                                      |
-| `RESUME_ROLE`                     | ResealManager contract                                                                                                                 |
-
-#### `TriggerableWithdrawalsGateway.sol`
-
-| Role                               | Assignee                           |
-|------------------------------------|------------------------------------|
-| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                       |
-| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` contract |
-| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default            |
-| `PAUSE_ROLE`                       | GateSeal contract                  |
-| `RESUME_ROLE`                      | ResealManager contract             |
-
-#### `StakingRouter.sol`
-
-| Role                                   | Assignee                                 |
-|----------------------------------------|------------------------------------------|
-| `DEFAULT_ADMIN_ROLE`                   | Aragon Agent                             |
-| `REPORT_VALIDATOR_EXITING_STATUS_ROLE` | `ValidatorExitDelayVerifier` contract    |
-| `REPORT_VALIDATOR_EXIT_TRIGGERED_ROLE` | `TriggerableWithdrawalsGateway` contract |
-
-#### `NoderOperatorRegistry.sol`
-
-| Role                        | Assignee                 |
-|-----------------------------|--------------------------|
-| `DEFAULT_ADMIN_ROLE`        | Aragon Agent             |
-| `MANAGE_NODE_OPERATOR_ROLE` | Easy Track Motion        |
-| `STAKING_ROUTER_ROLE`       | `StakingRouter` contract |
-
-
-### 10. Proposed parameters for contracts
-
-Validators Exit Bus
-
-| Param                       | Value |
-|-----------------------------|-------|
-| `MAX_VALIDATORS_PER_REPORT` | 300   |
-| `MAX_EXIT_LIMIT`            | 11200 |
-| `EXITS_PER_FRAME`           | 1     |
-| `FRAME_DURATION_IN_SECONDS` | 48    |
-
-Triggerable Withdrawal Gateway
-
-| Param                       | Value |
-|-----------------------------|-------|
-| `MAX_EXIT_LIMIT`            | 11200 |
-| `EXITS_PER_FRAME`           | 1     |
-| `FRAME_DURATION_IN_SECONDS` | 48    |
-
-Validators Exit Delay Verifier
-
-| Param                       | Value |
-|-----------------------------|-------|
-| `MAX_EXIT_LIMIT`            | 11200 |
-| `EXITS_PER_FRAME`           | 1     |
-| `FRAME_DURATION_IN_SECONDS` | 48    |
-
-[//]: # (gIFirstValidatorPrev	0x0000000000000000000000000000000000000000000000000096000000000028)
-[//]: # (gIFirstValidatorCurr	0x0000000000000000000000000000000000000000000000000096000000000028)
-[//]: # (gIHistoricalSummariesPrev	0x0000000000000000000000000000000000000000000000000000000000005b00)
-[//]: # (gIHistoricalSummariesCurr	0x0000000000000000000000000000000000000000000000000000000000005b00)
-[//]: # (firstSupportedSlot	1)
-[//]: # (pivotSlot	1)
-[//]: # (slotsPerEpoch	32)
-[//]: # (secondsPerSlot	12)
-[//]: # (genesisTime	TBD)
-[//]: # (shardCommitteePeriodInSeconds	2 ** 8 * 32 * 12)
-
-### 11. References
+### 9. References
 
 - [**Pull request**](https://github.com/lidofinance/core/pull/1018/)
 - [**Audit scope**](https://hackmd.io/@lido/HJKEEyHbee)
