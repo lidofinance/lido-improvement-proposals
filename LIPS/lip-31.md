@@ -70,7 +70,6 @@ Off-chain Components:
 
 - [Lido Oracle](https://github.com/lidofinance/lido-oracle/pull/685)
 - [Validator Ejector](https://github.com/lidofinance/validator-ejector)
-- Various monitoring
 - [New] Trigger Exits Bot
 - [New] Validator Late Prover Bot
 
@@ -184,7 +183,7 @@ The Validator Exit Bus is the core contract for coordinating validator exit requ
 
 ---
 
-#### ⚠️ Removal of Last Requested Validator Indexes from On-Chain Storage ⚠️
+#### ⚠️ Removal of Last Requested Validator Indexes from On-Chain Storage
 
 Since reports will be delivered not only by Oracles, the contract can no longer guarantee that all validators under a single Node Operator will be requested to exit in order based on their validator indexes on the CL. As a result, functionality relying on this assumption becomes obsolete.
 
@@ -209,8 +208,6 @@ When the contract is paused, it prevents hash submissions, data reveals, and exi
 #### Limits enforcement
 
 This contract uses the **Limits Library** to enforce rate limiting. Each **Validator Exit Request** consumes one unit of quota. All Validator Exit Requests, except those from Oracle reports, are subject to a single global limit. Oracle reports are limited with Oracle Sanity Checker contract.
-
-Analytics Limit Calculations: https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view
 
 Technical implementation: [**Appendix A – Limit Implementation**](#Appendix-A-–-Limit-Implementation)
 
@@ -338,7 +335,7 @@ In the **Node Operators Registry**, all logic related to **stuck keys** and corr
 
 When a late validator is reported, the module will not take any direct action other than **emitting a late event**. The same applies when a validator is exited through a triggerable withdrawal — the event will be emitted, but no penalty logic will be executed.
 
-⚠️ This update applies to both the Curated Module and the sDVT Module. ⚠️
+⚠️ This update applies to both the Curated Module and the sDVT Module.
 
 ### 4.9 Lido Locator
 
@@ -350,8 +347,6 @@ The following new contract addresses are planned to be added to the **Lido Locat
 ### 4.10 Accounting Oracle
     
 The Accounting Oracle is no longer responsible for delivering stuck keys to the staking modules. Therefore, the data format related to stuck keys has been deprecated. Extra data tx from Oracles will be reverted in case if there are stuck keys info.
-
----
 
 ## 5. Offchain Components
 
@@ -399,7 +394,7 @@ Some changes will also be required in the Validator Ejector. Currently, we have 
 
 This will be addressed by introducing new parameters that can whitelist the creator of an Easy Track motion or specific transactions that revealed an exit report. Additionally, if a Node Operator hosts their own Execution Layer node or fully trusts their provider, there will be an option to disable this protection entirely to reduce the operational overhead of managing allowlists.
 
-#### 5.4 Trigger Exits Bot
+### 5.4 Trigger Exits Bot
 
 Lido requires an automated mechanism to **trigger validator exits** when delays occur, ensuring that withdrawal requests are not unnecessarily stalled and users experience smooth exits.
 
@@ -411,7 +406,7 @@ The bot will:
 - Depend on Staking Modules to expose clear rules or public methods for determining which validators are delayed.
 - Serve as a **fallback mechanism** when Node Operators fail to execute voluntary exits on time, by submitting TWRs through the EL.
 
-#### 5.5 Validator Late Prover Bot
+### 5.5 Validator Late Prover Bot
 
 Lido also requires an automated tool to **detect and report late validators** who have failed to exit within the required timeframe after an exit request.
 
@@ -422,11 +417,9 @@ The bot will:
 - Operate permissionlessly, ensuring anyone can contribute to protocol safety.
 - Rely on Staking Modules to expose public interfaces or logic to validate the delay and apply penalties.
 
----
+### 6. **Security considerations**
 
-### 7. **Security considerations**
-
-#### 7.1 Attack Vector: Vulnerability from Uncontrolled Creation of TWRs
+#### 6.1 Attack Vector: Vulnerability from Uncontrolled Creation of TWRs
 
 If proper access controls or exit report validations are missing or incorrectly enforced in the **Triggerable Withdrawals flow**, a malicious actor may be able to **bypass intended safeguards** and force **unauthorized or premature exits** of active validators. This may occur under several conditions:
 
@@ -446,7 +439,7 @@ If proper access controls or exit report validations are missing or incorrectly 
 - Implement monitoring and alerting; allow the contract to be paused via the GreatSeal contract.
 - Add constraints to TWR creation for trusted smart contracts (e.g., validate key ownership, deposit origin.
 
-#### 7.2 Spam attack on TW limits. Trying to censorship usefull TWR
+#### 6.2 Spam attack on TW limits. Trying to censorship usefull TWR
 
 The **Triggerable Withdrawals framework** enforces a TW **limit** to protect the protocol from excessive or abusive validator exits. However this mechanism can be exploited by a malicious actor to perform a **DoS** attack by **saturating the tw quota with spam validator TWRs**, spending limit quota and thereby blocking legitimate exits during that frame.
 
@@ -458,7 +451,7 @@ Mitigation:
 Analytics research:
 - Global Limit on Maximum TW - https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view
 
-## 8. Proposed params
+## 7. Proposed params
 
 Below is a list of configuration values and roles that will be assigned as part of the upcoming upgrade. If certain parameters are not listed, they will either remain unchanged or are defined by network-level constraints.
 
@@ -513,9 +506,9 @@ Below is a list of configuration values and roles that will be assigned as part 
 
 ### Curated and sDVT Staking Module
 
-| Name                    | Value  | Description                                                                                                                        |
-|-------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------|
-| `exitDeadlineInSeconds` | 432000 | Number of seconds within which Node Operators must complete validator exit. This is set using the getStuckPenaltyDelay() function. |
+| Name                    | Value  | Description                                                                                                                                                  |
+|-------------------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `exitDeadlineInSeconds` | 432000 | Number of seconds within which Node Operators must complete a validator exit. Inherited from STUCK_PENALTY_DELAY (retrievable via `getStuckPenaltyDelay()`). |
 
 ## 8. **Appendix**
 
@@ -552,7 +545,33 @@ To simplify the exit request process for Node Operators (NOs) from the **Curated
 - Verify that the validator keys genuinely belong to the specified staking module and Node Operator.
 - Verify that the keys were deposited through the Lido protocol.
 
-**Technical specification:** https://hackmd.io/f2ilNvRnQ1uONfVZ93wnhw?view#EVM-Script-Specification
+**Technical specification:** https://hackmd.io/FD1xzyibTXGhRnIek38Vhw?view
+
+### Appendix C - Utilizing submitExitRequestsHash by Governance
+The `submitExitRequestsHash` will also be used by governance to instantly exit a validator without relying on the Validator Exit Bus Oracle, which imposes its own limitations in terms of report frequency and size.
+
+Tooling will be required to compute the data, which will help prepare the structure for hashing.
+
+The structure should be as follows:
+- dataFormat – `1` - only supported for now
+- data – a concatenated array of entries, where each entry is structured like this:
+```
+/// MSB <------------------------------------------------------- LSB
+/// |  3 bytes   |  5 bytes   |     8 bytes      |    48 bytes     |
+/// |  moduleId  |  nodeOpId  |  validatorIndex  | validatorPubkey |
+```
+
+The hash to submit can be computed as follow:
+```
+hash = keccak256(abi.encode(request.data, dataFormat))
+```
+
+After the hash is submitted, the data should be unpacked using the `submitExitRequestsData` function in the VEB contract.
+There are some constraints and recommendations:
+- The hash expires when the contract version changes. That is, data cannot be delivered after the contract is upgraded, and a hash resubmission will be required.
+- The data must be sorted by the following keys in ascending order: `moduleId`, `nodeOpId`, `validatorIndex`.
+- A batch cannot contain more than 600 requests. It is recommended to submit batches of 200 requests. This will simplify data revelation and later usage in Triggerable Withdrawals (TW) or reporting late validators.
+- The data can be revealed by anyone. It is also recommended to publish it on IPFS.
 
 ### 9. References
 
@@ -563,4 +582,5 @@ To simplify the exit request process for Node Operators (NOs) from the **Curated
 - [**CSM V2: EIP-7002 support**](https://hackmd.io/@lido/HJrMPHUt0#EIP-7002-support): Description of TW-related requirements from the Curated Staking Module (CSM), including cases involving lost validator keys or long-term performance failures.
 - [**Oracles technical details**](https://docs.lido.fi/guides/oracle-operator-manual/#oracle-phases): Description of how on-chain and off-chain oracles work.
 - [**Validators Exit Bus interface**](https://docs.lido.fi/staking-modules/csm/guides/events#contract-vebo): Current VEBO interface with events details.
+- [**Limit params for VEB and TWG**](https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view): Research from analytics related limit numbers.
 - [**VEBO**](https://docs.lido.fi/guides/oracle-spec/validator-exit-bus): Specification how VEBO works.
