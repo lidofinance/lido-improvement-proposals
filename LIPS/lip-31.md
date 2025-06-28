@@ -1,34 +1,45 @@
 ---
-lip: 31
+lip: 30
 title: Triggerable Withdrawals Framework
 status: WIP
 author: Raman Siamionau, Evgeniy Pirogov
 discussions-to: TBD
 created: 2025-05-21
-updated: 2025-06-11
+updated: 2025-06-28
 ---
 
-## Simple Summary
-This proposal outlines implementing the Triggerable Withdrawal framework within the Lido protocol to enable permissionless, secure, and verifiable validator exits via the Execution Layer - enhancing the protocol’s fault tolerance, reducing trust assumptions, and paving the way for truly permissionless staking in Lido.
+# Simple Summary
 
-## Abstract
-The **Triggerable Withdrawals (TW)** mechanism is a critical extension of Lido’s architecture, enabling the initiation of validator exits without requiring the involvement of a Node Operator. TW is based on [EIP-7002](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-7002.md), which addresses a key issue in delegated staking. Previously, stakers had to rely on the goodwill of Node Operators - either to pre-sign an exit message or to agree to process it in the future. This limitation is now removed: any party with access to a validator’s withdrawal credentials can initiate its exit directly via the Execution Layer. 
+This proposal outlines the implementation of the Triggerable Withdrawals framework within the Lido protocol. The goal is to enable permissionless, secure, and verifiable validator exits initiated from the Execution Layer. This enhancement aims to:
+- Improve the protocol’s fault tolerance
+- Reduce trust assumptions on node operators
+- Strengthen the foundation for permissionless staking within Lido
 
-## Motivation
+Currently, Lido relies on the Validator Exit Bus Oracle (VEBO) and places trust in Node Operators to initiate validator exits on CL. If a node operator fails to comply with the protocol’s policies, [penalties are applied](https://docs.lido.fi/guides/oracle-spec/penalties).
+
+In the new version of the framework, this mechanism remains in place. However, it adds a new capability: the ability to exit validators who have requested to exit without requiring Node Operator action. This reduces reliance on node operators and aligns with Lido’s move toward a more decentralized and trust-minimized protocol design.
+
+# Abstract
+
+The **Triggerable Withdrawals (TW)** mechanism is a critical extension of Lido’s architecture, enabling the initiation of validator exits (and partial withdrawals in future) from the EL side without relying on the involvement of a Node Operator from the CL side. TW is based on [EIP-7002](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-7002.md), which addresses one of the key long-standing issues in delegated staking on Ethereum. Previously, stakers had to rely on the goodwill of Node Operators - either to pre-sign an exit message or to agree to process it in the future. This limitation is now removed: any party with access to a validator’s withdrawal credentials (non-`0x00` types) can initiate its exit directly via the Execution Layer. 
+
+# Motivation
 For the **Lido protocol**, TW support means a substantial reduction in trust assumptions toward Node Operators and Oracles. It unlocks the following capabilities:
 
-- **Permissionless Staking Modules**, such as CSM, where ETH cannot be "held hostage" even if the operator acts maliciously;
-- **Dual Governance**, allowing stETH holders to safely and autonomously withdraw their funds before proposed protocol changes are finalized;
+- **Permissionless Staking Modules**, such as CSM, where ETH cannot be "held hostage" even if the operator misbehaves or significantly underperforms;
 - A mechanism for **emergency validator exits**, in case of key loss;
 - **Direct DAO interaction**, enabling the Lido DAO to request validator exits independently of Oracles.
+- Enables permissionless exits for validators that have been requested to exit, preventing NOs from delaying withdrawal queue fulfillment.
 
-## Specification
-## 1. Definitions and Terminology
+# Specification
+
+## 1. Gloassary
+
 ### **Validators Exit Bus (VEB)**
-An on-chain contract that serves as the central infrastructure for managing validator exit requests. It stores report hashes, emits exit events, and maintains data and tools that enables anyone to prove a validator was requested to exit. Unlike VEBO, it supports exit reports from a wide range of entities.
+An on-chain contract that serves as the central infrastructure for managing validator exit requests. It signals NOs to exit their validators by emitting exit request events, emits exit events, and maintains data and tools that enable anyone to prove a validator was requested to exit. Unlike VEBO, it supports exit reports from a wide range of entities.
 
 ### **Validators Exit Bus Oracle (VEBO)**
-A component of the oracle system responsible for delivering exit request reports to the VEB on behalf of oracles. Its primary role is to initiate the exit of enough validators to efficiently fulfill pending withdrawal requests. It is a part of the VEB contract.
+A component of the existing [oracle system](https://docs.lido.fi/guides/oracle-spec/validator-exit-bus) responsible for delivering exit request reports to the VEB on behalf of oracles. Its primary role is to initiate the exit of enough validators to efficiently fulfill pending withdrawal requests. It is a part of the VEB contract.
 
 ### Validator Exit Request
 Events generated within the VEB that signal to Node Operators the need to initiate exits for the validators specified in the corresponding event.
@@ -97,7 +108,7 @@ The second phase involves revealing the actual report data and emitting exit eve
 
 Because report hashes can be submitted by more than just oracles, this system increases protocol resilience and moves Lido toward a more decentralized architecture.
 
-![Report Validators to Exit](assets/lip-31/1_report_validators_to_exit.png)
+![Report Validators to Exit](assets/lip-30/1_report_validators_to_exit.png)
 
 ### 3.2 Triggerable Withdrawal Requests submittion
 
@@ -110,7 +121,7 @@ There are two separate flows for triggering withdrawals, depending on the actor:
 
 Both flows go through the **TWG**, which checks the caller contract roles, enforces exit limits, refunds any extra value provided, and forwards the request to the Withdrawal Vault. After that, it notifies the Staking Router with information about which validator was requested to exit and the associated fee.
 
-![Triggerable Withdrawal Requests submittion](assets/lip-31/2_create_triggerable_withdrawal_requests.png)
+![Triggerable Withdrawal Requests submittion](assets/lip-30/2_create_triggerable_withdrawal_requests.png)
 
 ---
 
@@ -165,7 +176,7 @@ The system calculates the difference between:
 
 This time delta is passed to the **staking module**, which uses its internal logic to decide whether a penalty should be applied to the Node Operator and what kind of action is warranted.
 
-![Report Late Validators](assets/lip-31/3_report_late_validators.png)
+![Report Late Validators](assets/lip-30/3_report_late_validators.png)
 
 ## 4. Onchain Components
 
@@ -333,7 +344,7 @@ function exitDeadlineThreshold(uint256 _nodeOperatorId) public view returns (uin
 
 In the **Node Operators Registry**, all logic related to **stuck keys** and corresponding penalties will be removed.
 
-When a late validator is reported, the module will not take any direct action other than **emitting a late event**. The same applies when a validator is exited through a triggerable withdrawal — the event will be emitted, but no penalty logic will be executed.
+When a late validator is reported, the module will not take any direct action other than **emitting a late event**. The same applies when a validator is exited through a triggerable withdrawals — the event will be emitted, but no penalty logic will be executed.
 
 ⚠️ This update applies to both the Curated Module and the sDVT Module.
 
@@ -457,12 +468,12 @@ Below is a list of configuration values and roles that will be assigned as part 
 
 #### ValidatorExitBusOracle.sol
 
-| Name                         | Value      | Description                                                           |
-|------------------------------|------------|-----------------------------------------------------------------------|
-| `maxValidatorExitsPerReport` | 600        | Maximum number of validators that can be delivered in a single report |
-| `maxExitRequestsLimit`       | 11200      | Maximum quota can be accumulated                                      |
-| `exitsPerFrame`              | 1          | Amount of quota replenished per frame                                 |
-| `frameDuration`              | 48 seconds | Duration of each frame                                                |
+| Name                         | Value | Description                                                           |
+|------------------------------|-------|-----------------------------------------------------------------------|
+| `maxValidatorExitsPerReport` | 600   | Maximum number of validators that can be delivered in a single report |
+| `maxExitRequestsLimit`       | 11200 | Maximum quota can be accumulated                                      |
+| `exitsPerFrame`              | 1     | Amount of quota replenished per frame                                 |
+| `frameDuration`              | 48    | Duration of each frame in seconds                                     |
 
 | Role                              | Assignee                                                                                                                               |
 |-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
@@ -474,11 +485,11 @@ Below is a list of configuration values and roles that will be assigned as part 
 
 #### TriggerableWithdrawalsGateway.sol
 
-| Name                   | Value      | Description                           |
-|------------------------|------------|---------------------------------------|
-| `maxExitRequestsLimit` | 11200      | Maximum quota can be accumulated      |
-| `exitsPerFrame`        | 1          | Amount of quota replenished per frame |
-| `frameDuration`        | 48 seconds | Duration of each frame                |
+| Name                   | Value | Description                           |
+|------------------------|-------|---------------------------------------|
+| `maxExitRequestsLimit` | 11200 | Maximum quota can be accumulated      |
+| `exitsPerFrame`        | 1     | Amount of quota replenished per frame |
+| `frameDuration`        | 48    | Duration of each frame in seconds     |
 
 | Role                               | Assignee                           |
 |------------------------------------|------------------------------------|
