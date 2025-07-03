@@ -17,19 +17,19 @@ This proposal outlines the implementation of the Triggerable Withdrawals framewo
 
 Currently, Lido relies on the Validator Exit Bus Oracle (VEBO) and places trust in Node Operators to initiate validator exits on CL. If a node operator fails to comply with the protocol’s policies, [penalties are applied](https://docs.lido.fi/guides/oracle-spec/penalties).
 
-In the new version of the framework, this mechanism remains in place. However, it adds a new capability: the ability to exit validators who have requested to exit without requiring Node Operator action. This reduces reliance on node operators and aligns with Lido’s move toward a more decentralized and trust-minimized protocol design.
+In the new version of the framework based on the recently adopted EIP-7002, this mechanism remains in place. However, it adds a new capability: withdrawing validators who have requested to exit without requiring Node Operator action. This reduces reliance on node operators and aligns with a more decentralized and trust-minimized Lido protocol design vision.
 
 # Abstract
 
-The **Triggerable Withdrawals (TW)** mechanism is a critical extension of Lido’s architecture, enabling the initiation of validator exits (and partial withdrawals in future) from the EL side without relying on the involvement of a Node Operator from the CL side. TW is based on [EIP-7002](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-7002.md), which addresses one of the key long-standing issues in delegated staking on Ethereum. Previously, stakers had to rely on the goodwill of Node Operators - either to pre-sign an exit message or to agree to process it in the future. This limitation is now removed: any party with access to a validator’s withdrawal credentials (non-`0x00` types) can initiate its exit directly via the Execution Layer. 
+The **Triggerable Withdrawals (TW)** mechanism is a critical extension of the Lido protocol’s architecture, enabling the initiation of validator exits (and partial withdrawals in future) from the EL side without relying on the involvement of a Node Operator from the CL side. TW is based on [EIP-7002](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-7002.md), which addresses one of the long-standing issues in delegated staking on Ethereum. Previously, stakers had to rely on the goodwill of Node Operators—either to pre-sign an exit message or to agree to process it in the future. This limitation is now lifted: any party with access to a validator’s withdrawal credentials (non-`0x00` types) can initiate its exit directly via the Execution Layer. 
 
 # Motivation
 For the **Lido protocol**, TW support means a substantial reduction in trust assumptions toward Node Operators and Oracles. It unlocks the following capabilities:
 
 - **Permissionless Staking Modules**, such as CSM, where ETH cannot be "held hostage" even if the operator misbehaves or significantly underperforms;
-- A mechanism for **emergency validator exits**, in case of key loss;
+- A mechanism for **emergency validator exits**, in case of key loss or a potential compromise event;
 - **Direct DAO interaction**, enabling the Lido DAO to request validator exits independently of Oracles.
-- Enables permissionless exits for validators that have been requested to exit, preventing NOs from delaying withdrawal queue fulfillment.
+- Enables permissionless exits for validators that have been requested to exit, preventing NOs from delaying withdrawal requests fulfillment.
 
 # Specification
 
@@ -102,7 +102,7 @@ Additionally, the architecture includes a **Validator Exit Delay Verifier**, a c
 
 ### 3.1 Report Validators to Exit
 
-This flow describes the **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract, [Easy Tracks](https://docs.lido.fi/guides/easy-track-guide/) or governance submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
+This flow describes the **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract or a governance (possibly represented via [Easy Track](https://docs.lido.fi/guides/easy-track-guide/ factoeries) can submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
 
 The second phase involves revealing the actual report data and emitting exit events for the listed validators. When the data is revealed, the contract saves a timestamp linked to the data hash. This later allows any actor to prove that a specific validator was requested to exit, and when the corresponding event was emitted.
 
@@ -148,7 +148,7 @@ This flow mirrors the previous one, but instead of using validators that were re
 This direct exit flow is available to specific entities such as **CSM**, but due to its powerful nature, modules must adhere to strict internal checks before using it. These include:
 
 - Verifying that the validator key belongs to the module.
-- Ensuring the key was deposited through a **DSM**.
+- Ensuring the key was deposited via Deposit Security Module (**DSM**).
 - Ensuring there are no key duplicates in one transaction to avoid dry out TWG limits.
 - Implementing additional logic to confirm that the entity calling the **TW** is authorized (e.g., owns the key or is creating a TWR for a validator that is permitted to exit).
 
@@ -546,9 +546,9 @@ For each full frame passed, `exitsPerFrame` units are restored. The updated quot
 The request amount is subtracted from the restored quota. This new value becomes the `prevExitRequestsLimit` for future calculations.
 The `prevTimestamp` is advanced by `framesPassed * frameDuration`, anchoring the system for the next round of quota restoration.
 
-### Appendix B - Easy Tracks for VEB
+### Appendix B - Easy Track factories for VEB
 
-To simplify the exit request process for Node Operators (NOs) from the **Curated** and **sDVT Staking Modules**, **Easy Tracks** will be set up to facilitate exit requests.
+To simplify the exit request process for Node Operators (NOs) from the **Curated** and **sDVT Staking Modules**, **Easy Track** factories will be set up to facilitate exit requests.
 
 **Easy Track** will allow authorized actors to submit a report hash to the **Validator Exit Bus (VEB)** along with a desired list of validators, applying the following sanity checks:
 
