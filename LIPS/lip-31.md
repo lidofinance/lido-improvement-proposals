@@ -148,7 +148,7 @@ This flow mirrors the previous one, but instead of using validators that were re
 This direct exit flow is available to specific entities such as **CSM**, but due to its powerful nature, modules must adhere to strict internal checks before using it. These include:
 
 - Verifying that the validator key belongs to the module.
-- Ensuring the key was deposited through a **DSM**.
+- Ensuring the key was deposited via Deposit Security Module (**DSM**).
 - Ensuring there are no key duplicates in one transaction to avoid dry out TWG limits.
 - Implementing additional logic to confirm that the entity calling the **TW** is authorized (e.g., owns the key or is creating a TWR for a validator that is permitted to exit).
 
