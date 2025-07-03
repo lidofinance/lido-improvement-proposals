@@ -27,7 +27,7 @@ The **Triggerable Withdrawals (TW)** mechanism is a critical extension of the Li
 For the **Lido protocol**, TW support means a substantial reduction in trust assumptions toward Node Operators and Oracles. It unlocks the following capabilities:
 
 - **Permissionless Staking Modules**, such as CSM, where ETH cannot be "held hostage" even if the operator misbehaves or significantly underperforms;
-- A mechanism for **emergency validator exits**, in case of key loss;
+- A mechanism for **emergency validator exits**, in case of key loss or a potential compromise event;
 - **Direct DAO interaction**, enabling the Lido DAO to request validator exits independently of Oracles.
 - Enables permissionless exits for validators that have been requested to exit, preventing NOs from delaying withdrawal requests fulfillment.
 
