@@ -86,7 +86,7 @@ Off-chain Components:
 
 ## 3. Architecture and Scenarios
 
-At a high level, the architecture is centered around the **VEB**, which serves as the main coordination point for validator exit requests. Exit reports can be submitted to the VEB by trusted entities such as oracles or governance, which then emit validator exit events. Once exit request events are emitted, Node Operators are expected to voluntarily initiate the validator exit.
+At a high level, the architecture is centered around the **VEB**, which serves as the main coordination point for validator exit requests. Exit reports can be submitted to the VEB by trusted entities, which then emit validator exit events. Once exit request events are emitted, Node Operators are expected to voluntarily initiate the validator exit.
 
 The **VEBO** is an extension of the **VEB**, designed to support oracle-driven reporting. While VEB serves as the central hub for coordinating exit events, VEBO adds an oracle-specific layer that enables oracles to submit and confirm exit reports.
 
@@ -106,7 +106,7 @@ This flow describes the **two-phase delivery model** for reporting validators to
 
 The second phase involves revealing the actual report data and emitting exit events for the listed validators. When the data is revealed, the contract saves a timestamp linked to the data hash. This later allows any actor to prove that a specific validator was requested to exit, and when the corresponding event was emitted.
 
-Because report hashes can be submitted by more than just oracles, this system increases protocol resilience and moves Lido toward a more decentralized architecture.
+Because report hashes can be submitted by more than just oracles, this system increases the protocol’s resilience.
 
 ![Report Validators to Exit](assets/lip-30/1_report_validators_to_exit.png)
 
