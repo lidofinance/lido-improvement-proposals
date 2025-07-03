@@ -548,7 +548,7 @@ The `prevTimestamp` is advanced by `framesPassed * frameDuration`, anchoring the
 
 ### Appendix B - Easy Tracks for VEB
 
-To simplify the exit request process for Node Operators (NOs) from the **Curated** and **sDVT Staking Modules**, **Easy Tracks** will be set up to facilitate exit requests.
+To simplify the exit request process for Node Operators (NOs) from the **Curated** and **sDVT Staking Modules**, **Easy Track** factories will be set up to facilitate exit requests.
 
 **Easy Track** will allow authorized actors to submit a report hash to the **Validator Exit Bus (VEB)** along with a desired list of validators, applying the following sanity checks:
 
