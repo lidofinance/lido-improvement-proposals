@@ -29,7 +29,7 @@ For the **Lido protocol**, TW support means a substantial reduction in trust ass
 - **Permissionless Staking Modules**, such as CSM, where ETH cannot be "held hostage" even if the operator misbehaves or significantly underperforms;
 - A mechanism for **emergency validator exits**, in case of key loss;
 - **Direct DAO interaction**, enabling the Lido DAO to request validator exits independently of Oracles.
-- Enables permissionless exits for validators that have been requested to exit, preventing NOs from delaying withdrawal queue fulfillment.
+- Enables permissionless exits for validators that have been requested to exit, preventing NOs from delaying withdrawal requests fulfillment.
 
 # Specification
 
