@@ -17,7 +17,7 @@ This proposal outlines the implementation of the Triggerable Withdrawals framewo
 
 Currently, Lido relies on the Validator Exit Bus Oracle (VEBO) and places trust in Node Operators to initiate validator exits on CL. If a node operator fails to comply with the protocol’s policies, [penalties are applied](https://docs.lido.fi/guides/oracle-spec/penalties).
 
-In the new version of the framework, this mechanism remains in place. However, it adds a new capability: the ability to exit validators who have requested to exit without requiring Node Operator action. This reduces reliance on node operators and aligns with Lido’s move toward a more decentralized and trust-minimized protocol design.
+In the new version of the framework based on the recently adopted EIP-7002, this mechanism remains in place. However, it adds a new capability: withdrawing validators who have requested to exit without requiring Node Operator action. This reduces reliance on node operators and aligns with a more decentralized and trust-minimized Lido protocol design vision.
 
 # Abstract
 
