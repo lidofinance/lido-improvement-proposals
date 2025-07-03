@@ -106,8 +106,6 @@ This flow describes the **two-phase delivery model** for reporting validators to
 
 The second phase involves revealing the actual report data and emitting exit events for the listed validators. When the data is revealed, the contract saves a timestamp linked to the data hash. This later allows any actor to prove that a specific validator was requested to exit, and when the corresponding event was emitted.
 
-Because report hashes can be submitted by more than just oracles, this system increases the protocol’s resilience.
-
 ![Report Validators to Exit](assets/lip-30/1_report_validators_to_exit.png)
 
 ### 3.2 Triggerable Withdrawal Requests submittion
