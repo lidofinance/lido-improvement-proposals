@@ -546,7 +546,7 @@ For each full frame passed, `exitsPerFrame` units are restored. The updated quot
 The request amount is subtracted from the restored quota. This new value becomes the `prevExitRequestsLimit` for future calculations.
 The `prevTimestamp` is advanced by `framesPassed * frameDuration`, anchoring the system for the next round of quota restoration.
 
-### Appendix B - Easy Tracks for VEB
+### Appendix B - Easy Track factories for VEB
 
 To simplify the exit request process for Node Operators (NOs) from the **Curated** and **sDVT Staking Modules**, **Easy Track** factories will be set up to facilitate exit requests.
 
