@@ -102,7 +102,7 @@ Additionally, the architecture includes a **Validator Exit Delay Verifier**, a c
 
 ### 3.1 Report Validators to Exit
 
-This flow describes the **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract, [Easy Tracks](https://docs.lido.fi/guides/easy-track-guide/) or governance submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
+This flow describes the **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract or a governance (possibly represented via [Easy Track](https://docs.lido.fi/guides/easy-track-guide/ factoeries) can submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
 
 The second phase involves revealing the actual report data and emitting exit events for the listed validators. When the data is revealed, the contract saves a timestamp linked to the data hash. This later allows any actor to prove that a specific validator was requested to exit, and when the corresponding event was emitted.
 
