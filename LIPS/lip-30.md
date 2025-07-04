@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau, Evgeniy Pirogov
 discussions-to: TBD
 created: 2025-05-21
-updated: 2025-06-28
+updated: 2025-07-04
 ---
 
 # Simple Summary
@@ -102,7 +102,7 @@ Additionally, the architecture includes a **Validator Exit Delay Verifier**, a c
 
 ### 3.1 Report Validators to Exit
 
-This flow describes the **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract or a governance (possibly represented via [Easy Track](https://docs.lido.fi/guides/easy-track-guide/ factoeries) can submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
+This flow describes the **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract or a governance (possibly represented via [Easy Track](https://docs.lido.fi/guides/easy-track-guide/) factories can submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
 
 The second phase involves revealing the actual report data and emitting exit events for the listed validators. When the data is revealed, the contract saves a timestamp linked to the data hash. This later allows any actor to prove that a specific validator was requested to exit, and when the corresponding event was emitted.
 
@@ -250,7 +250,7 @@ The **Triggerable Withdrawals Gateway** is a core contract responsible for recei
 
 This contract uses the **Limits Library** to enforce rate limiting. Each **TWR** consumes **one unit of quota**. All TWRs, regardless of their source, are subject to a **single global limit**, ensuring that the total number of processed requests remains within the protocol-defined capacity.
 
-Analytics numbers: https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?both
+[Analytics numbers](https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view) 
 
 Technical implementation: [**Appendix A – Limit Implementation**](#Appendix-A-–-Limit-Implementation) 
 
@@ -458,7 +458,7 @@ Mitigation:
 - The cost of spamming will be prohibitively high for the attacker, provided the quota limits are not set too low.
 
 Analytics research:
-- Global Limit on Maximum TW - https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view
+- [Global Limit on Maximum TW](https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view)
 
 ## 7. Proposed params
 
@@ -554,7 +554,7 @@ To simplify the exit request process for Node Operators (NOs) from the **Curated
 - Verify that the validator keys genuinely belong to the specified staking module and Node Operator.
 - Verify that the keys were deposited through the Lido protocol.
 
-**Technical specification:** https://hackmd.io/FD1xzyibTXGhRnIek38Vhw?view
+**[Easy Tracks Audit Scope](https://hackmd.io/FD1xzyibTXGhRnIek38Vhw?view)** 
 
 ### Appendix C - Utilizing submitExitRequestsHash by Governance
 The `submitExitRequestsHash` will also be used by governance to instantly exit a validator without relying on the Validator Exit Bus Oracle, which imposes its own limitations in terms of report frequency and size.
@@ -584,12 +584,15 @@ There are some constraints and recommendations:
 
 ### 9. References
 
-- [**Pull request**](https://github.com/lidofinance/core/pull/1018/)
-- [**Audit scope**](https://hackmd.io/@lido/HJKEEyHbee)
+- [**Triggerable Withdrawals Technical Specification**](https://hackmd.io/Bebrx9iHTQuz71IqYmbICg)
 - [**EIP-7002: Execution-layer Triggerable Exits**](https://eips.ethereum.org/EIPS/eip-7002): The primary standard introducing a precompile contract for initiating validator exits via the Execution Layer, without requiring the validator's key.
 - [**EIP-7685: EL Request Interface**](https://eips.ethereum.org/EIPS/eip-7685): A general interface specification for contracts that submit and process requests to the Execution Layer (e.g., exits, consolidations, etc.).
 - [**CSM V2: EIP-7002 support**](https://hackmd.io/@lido/HJrMPHUt0#EIP-7002-support): Description of TW-related requirements from the Curated Staking Module (CSM), including cases involving lost validator keys or long-term performance failures.
 - [**Oracles technical details**](https://docs.lido.fi/guides/oracle-operator-manual/#oracle-phases): Description of how on-chain and off-chain oracles work.
 - [**Validators Exit Bus interface**](https://docs.lido.fi/staking-modules/csm/guides/events#contract-vebo): Current VEBO interface with events details.
 - [**Limit params for VEB and TWG**](https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view): Research from analytics related limit numbers.
-- [**VEBO**](https://docs.lido.fi/guides/oracle-spec/validator-exit-bus): Specification how VEBO works.
+- [**Validator Exit Bus**](https://docs.lido.fi/guides/oracle-spec/validator-exit-bus): Specification how VEBO works.
+- [**Triggerable Withdrawals Code**](https://github.com/lidofinance/core/pull/1018/)
+- [**Triggerable Withdrawals Audit Scope**](https://hackmd.io/@lido/HJKEEyHbee)
+- [**Easy Tracks Audit Scope**](https://hackmd.io/FD1xzyibTXGhRnIek38Vhw?view)
+- [**Oracle V6 Audit Scope**](https://hackmd.io/8ETPnoalTR6vIzX3IpX8mg)
