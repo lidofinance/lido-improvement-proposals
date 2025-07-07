@@ -594,5 +594,5 @@ There are some constraints and recommendations:
 - [**Validator Exit Bus**](https://docs.lido.fi/guides/oracle-spec/validator-exit-bus): Specification how VEBO works.
 - [**Triggerable Withdrawals Code**](https://github.com/lidofinance/core/pull/1018/)
 - [**Triggerable Withdrawals Audit Scope**](https://hackmd.io/@lido/HJKEEyHbee)
-- [** Tracks Audit Scope**](https://hackmd.io/FD1xzyibTXGhRnIek38Vhw?view)
+- [**Easy Tracks Audit Scope**](https://hackmd.io/FD1xzyibTXGhRnIek38Vhw?view)
 - [**Oracle V6 Audit Scope**](https://hackmd.io/8ETPnoalTR6vIzX3IpX8mg)
