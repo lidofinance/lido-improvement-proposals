@@ -33,7 +33,7 @@ For the **Lido protocol**, TW support means a substantial reduction in trust ass
 
 # Specification
 
-## 1. Gloassary
+## 1. Glossary
 
 ### **Validators Exit Bus (VEB)**
 An on-chain contract that serves as the central infrastructure for managing validator exit requests. It signals NOs to exit their validators by emitting exit request events, emits exit events, and maintains data and tools that enable anyone to prove a validator was requested to exit. Unlike VEBO, it supports exit reports from a wide range of entities.
