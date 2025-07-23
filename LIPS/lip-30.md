@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau, Evgeniy Pirogov
 discussions-to: TBD
 created: 2025-05-21
-updated: 2025-07-04
+updated: 2025-07-23
 ---
 
 # Simple Summary
@@ -518,6 +518,23 @@ Below is a list of configuration values and roles that will be assigned as part 
 | Name                    | Value  | Description                                                                                                                                                  |
 |-------------------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `exitDeadlineInSeconds` | 432000 | Number of seconds within which Node Operators must complete a validator exit. Inherited from STUCK_PENALTY_DELAY (retrievable via `getStuckPenaltyDelay()`). |
+
+### Oracle Daemon Configs Variables
+
+#### Add
+
+| Name                            | Value | Description                                                                                                                  |
+|---------------------------------|-------|------------------------------------------------------------------------------------------------------------------------------|
+| `EXIT_LOOKBACK_WINDOW_IN_SLOTS` | 50400 | Specifies the number of slots the Oracle should scan backward from the reference slot when retrieving validator exit events. |
+
+#### Remove
+
+| Name                                             | Why removed?                                                       |
+|--------------------------------------------------|--------------------------------------------------------------------|
+| `NODE_OPERATOR_NETWORK_PENETRATION_THRESHOLD_BP` | Removed predicate in VEBO that calculated NO network participation |
+| `VALIDATOR_DELAYED_TIMEOUT_IN_SLOTS`             | Removed predicate in VEBO that checked for delayed validators      |
+| `VALIDATOR_DELINQUENT_TIMEOUT_IN_SLOTS`          | Removed functionality in AO that reported stuck keys               |
+
 
 ## 8. **Appendix**
 
