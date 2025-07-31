@@ -1,6 +1,6 @@
 ---
 lip: 32
-title: GateSeal V2.0 — Streamlining one-time emergency buttons
+title: GateSeal V2 — Streamlining one-time emergency buttons
 status: WIP
 author: Alexey Komarov
 discussions-to: <https://research.lido.com/t/gateseal-v2-0-proposal-thread>
@@ -12,20 +12,22 @@ implementation:
 
 ## Simple Summary
 
-GateSeal V2.0 introduces a more flexible, long-lived version of Lido’s emergency circuit breaker. It aims to preserve one-time emergency protection while drastically reducing governance and operational overhead by enabling on-chain expiry prolongation and modernizing the codebase.
+GateSeal V2 introduces a more flexible, long-lived version of Lido’s emergency circuit breaker. It aims to preserve one-time emergency protection while drastically reducing governance and operational overhead by enabling on-chain expiry prolongation and modernizing the codebase.
 
 ## Abstract
-We propose to deploy a new version of the GateSeal contract that adds:
+
+We propose to upgrade the GateSeal blueprint and factory to include:
 - configurable initial expiry;
 - on-chain expiry prolongations;
 - committee-owned prolongations (limited count);
 - pre-deployed, module-specific contracts;
 - strict signing schedule.
+
 The new implementation will be written in Vyper 0.4.2, improving security, auditability and expressiveness while maintaining backward compatibility with existing PausableUntil-based contracts.
 
 ## Motivation
 
-GateSeal V1 has never been triggered but has been repeatedly re-deployed due to its hardcoded 1-year expiry. This creates governance overhead and operational burden for the Lido DAO. Its inability to prolong lifespan without full redeployment exposes the DAO to unnecessary coordination cycles and short renewal windows. A more sustainable, long-lived model is needed to preserve the utility of the emergency switch without recurring maintenance.
+[GateSeal V1 served as a temporary mechanism](https://github.com/lidofinance/gate-seals/blob/564955d1ec30ee832179ebcef131392a5fe8ab69/README.md?plain=1#L22) that intentionally introduced operational overhead to prompt the DAO to develop a long-term sustainable solution. Now that GateSeal has become a permanent part of Lido’s emergency infrastructure, its architecture must evolve — from a short-term, incentive-based tool to a reliable and maintainable mechanism.
 
 ## Specification
 
@@ -35,20 +37,20 @@ GateSeal V1 has never been triggered but has been repeatedly re-deployed due to 
 - **Prolongation Period** — the extra time added to the contract with each prolongation.
 - **Initial Lifetime** — the time from deployment until the first expiration time.
 - **Prolongation Count** — the maximum number of allowed prolongations.
-- **DAO Ops Reserve** — a 60-day buffer for DAO Ops to deploy a new GateSeal before the current one expires.
+- **DAO Ops Reserve** — a 60-day buffer that ensures the protocol remains protected if the committee fails to prolong in time, giving DAO Ops enough time to coordinate a planned replacement. The buffer covers both the time required to form a new multisig committee (2–4 weeks) and to conduct a full-fledged Dual Governance vote (2–4 weeks).
 
 ### Rationale
 
-The main tradeoff considered was between maintaining operational safety and reducing coordination overhead. Adding a prolongation mechanism shifts execution of the validity renewal from the DAO to the emergency committee, enforcing drills through real multisig action. The calculated maximum number of prolongations and enforcing liveness checks maintains a balance between flexibility and rigorness. Vyper 0.4.2 brings substantial improvements in security, gas efficiency, and maintainability by fixing known compiler issues (e.g. [GHSA-w9g2-3w7p-72g9 advisory](https://github.com/advisories/GHSA-w9g2-3w7p-72g9)), adding full support for the EVM Cancun hard fork, and refining gas-cost optimizations. For the full changelog, refer to the [official release notes](https://docs.vyperlang.org/en/stable/release-notes.html#v0-4-2-lernaean-hydra). The model stays true to the one-time-use principle to ensure GateSeal remains a high-trust, high-scrutiny tool.
+The main tradeoff considered was between maintaining operational safety and reducing coordination overhead. Adding a prolongation mechanism shifts the execution of validity renewals from the DAO to the emergency committee, enforcing drills through real multisig action. The calculated maximum number of prolongations and the enforcement of liveness checks maintain a balance between flexibility and rigor. Vyper 0.4.2 brings substantial improvements in security, gas efficiency, and maintainability by fixing known compiler issues (e.g. [GHSA-w9g2-3w7p-72g9 advisory](https://github.com/advisories/GHSA-w9g2-3w7p-72g9)), adding full support for the EVM Cancun hard fork, and refining gas-cost optimizations. For the full changelog, refer to the [official release notes](https://docs.vyperlang.org/en/stable/release-notes.html#v0-4-2-lernaean-hydra). The model stays true to the one-time-use principle to ensure GateSeal remains a high-trust, high-scrutiny tool.
 
 ### Technical Specification
 
-- Contract will be written in Vyper 0.4.2.
+- The contract will be written in Vyper 0.4.2.
 - `prolongLifetime()` callable only by the committee when unused, unexpired, within the prolongation window, and with remaining prolongations.
 - Each call prolongs the lifetime by the **Prolongation Period** and decrements remaining prolongations.
 - `seal()` pauses configured contracts for **SEAL_DURATION_SECONDS** and expires the GateSeal immediately.
 - **Prolongation Period** is set to **1 year**, ensuring that the committee needs to act only once per contract per year.
-- **Prolongation Window** is fixed at **14 days** — as this remains an emergency mechanism, the committee is expected to be available for two planned sessions per year.
+- [**Prolongation Window**](https://www.notion.so/ADR-X-GateSeal-v2-216bf633d0c9809994ebd484c6334e42?source=copy_link#216bf633d0c9802a870ce30b883f2cad) is fixed at **14 days** — as this remains an emergency mechanism, the committee is expected to be available for two planned sessions per year.
 - **Initial Lifetime** is set at deployment and must not exceed `2 × Prolongation Period` (**2 years**), while also respecting a lower bound defined by `DAO Ops Reserve + Prolongation Window` (**74 days**), to guarantee a safe buffer before the first prolongation.
 - **Prolongation Count** is defined at deployment, enabling custom total lifetimes per contract within global constraints.
 - **Maximum Total Lifetime** — calculated as `Initial Lifetime + (Prolongation Period × Prolongation Count)` — must not exceed **5 years**; this is enforced at deployment time.
@@ -89,12 +91,14 @@ The main tradeoff considered was between maintaining operational safety and redu
 ## Security Considerations
 
 - GateSeal V2 must remain single-use.
-- Prolongation is only possible for unused and unexpired contracts, and must be performed within the prolongation window.
-- Signature-based prolongation actions double as committee drills. Only unused and unexpired contracts may be prolonged, and only within the prolongation window.
+- The set of sealables is predetermined per protocol module at deployment, so the committee does not need to decide which contracts to pause during an incident.
+- Prolongation is only possible for unused and unexpired contracts, and it must be performed within the prolongation window.
+- Prolongation actions serve as implicit liveness checks for the committee.
+
 
 ## Failure Modes
 
-- If the committee fails to prolong within the window or uses all prolongations, the GateSeal expires, requiring redeployment. However, the DAO Ops Reserve provides a safety buffer during which the DAO can deploy a replacement GateSeal to ensure continued protection.
+- If the committee fails to prolong within the window or uses all prolongations, the GateSeal expires, requiring replacement. However, the DAO Ops Reserve provides a safety buffer during which the DAO can deploy a new GateSeal instance to ensure continued protection.
 
 
 ## Copyright
