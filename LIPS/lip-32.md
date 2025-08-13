@@ -35,9 +35,10 @@ The new implementation will be written in Vyper 0.4.2, improving security, audit
 
 - **Prolongation Window** - the active window during which the committee can prolong the contract.
 - **Prolongation Period** — the extra time added to the contract with each prolongation.
-- **Initial Lifetime** — the time from deployment until the first expiration time.
-- **Prolongation Count** — the maximum number of allowed prolongations.
-- **DAO Ops Reserve** — a 60-day buffer that ensures the protocol remains protected if the committee fails to prolong in time, giving DAO Ops enough time to coordinate a planned replacement. The buffer covers both the time required to form a new multisig committee (2–4 weeks) and to conduct a full-fledged Dual Governance vote (2–4 weeks).
+- **Expiry Timestamp** — the on-chain timestamp after which the GateSeal expires unless prolonged. This is the primary lifetime reference in GateSeal v2.
+- **Initial Lifetime** — effectively represented by the period from deployment until the first **Expiry Timestamp**. 
+- **Prolongation Limit** — the maximum number of allowed prolongations.
+- **DAO Ops Reserve** — the time buffer for DAO Ops to deploy a new GateSeal before the current one expires.
 
 ### Rationale
 
@@ -49,43 +50,37 @@ The main tradeoff considered was between maintaining operational safety and redu
 - `prolongLifetime()` callable only by the committee when unused, unexpired, within the prolongation window, and with remaining prolongations.
 - Each call prolongs the lifetime by the **Prolongation Period** and decrements remaining prolongations.
 - `seal()` pauses configured contracts for **SEAL_DURATION_SECONDS** and expires the GateSeal immediately.
-- **Prolongation Period** is set to **1 year**, ensuring that the committee needs to act only once per contract per year.
-- [**Prolongation Window**](https://www.notion.so/ADR-X-GateSeal-v2-216bf633d0c9809994ebd484c6334e42?source=copy_link#216bf633d0c9802a870ce30b883f2cad) is fixed at **14 days** — as this remains an emergency mechanism, the committee is expected to be available for two planned sessions per year.
-- **Initial Lifetime** is set at deployment and must not exceed `2 × Prolongation Period` (**2 years**), while also respecting a lower bound defined by `DAO Ops Reserve + Prolongation Window` (**74 days**), to guarantee a safe buffer before the first prolongation.
+- **Prolongation Period** (in seconds), **Prolongation Window** (in seconds), **DAO Ops Reserve** (in seconds), together with **Expiry Timestamp** and **Prolongation Limit** are all set at the time of each GateSeal deployment. 
+- **Initial Lifetime** must not exceed `2 × Prolongation Period`, while also respecting a lower bound defined by `DAO Ops Reserve + Prolongation Window`, to guarantee a safe buffer before the first prolongation.
 - **Prolongation Count** is defined at deployment, enabling custom total lifetimes per contract within global constraints.
 - **Maximum Total Lifetime** — calculated as `Initial Lifetime + (Prolongation Period × Prolongation Count)` — must not exceed **5 years**; this is enforced at deployment time.
-- The ability to **set custom seal duration limits at deployment** is removed — prior limits (e.g., 4–14 days) are now obsolete. Deployment-time configuration is immutable and subject to deploy-time verification, which provides sufficient safeguards.
-- The ability to **choose which contracts are sealed at activation** is removed — each GateSeal now has a predefined scope.
+- The previously existing 4–14 day limit of **Seal Duration** is removed.
+- The ability to **choose which contracts are sealed at activation** is removed.
 - Full compatibility with existing PausableUntil contracts (e.g., WithdrawalQueue, ValidatorExitBusOracle).
 
 ### Test Cases
 
-- Deployment reverts if any parameter exceeds its allowed limits:
-  - **seal_duration** is zero
-  - **initial_lifetime** is too short or too long
-  - number of **sealables** is zero, too many, or contains duplicates
-  - calculated total lifetime exceeds the allowed 5-year cap
+- **Deployment reverts if:**
+  - `seal_duration_seconds` is zero
+  - the `sealables` list is empty, contains more than 8 entries, includes duplicates, or contains the zero address
+  - `expiry_timestamp` is below the minimum offset, exceeds the maximum allowed offset, or is set in the past
+  - `prolongation_period_seconds` is shorter than `prolongation_window_seconds + dao_ops_reserve_seconds`
+  - the calculated total lifetime exceeds the 5-year cap
 
-- Triggering `seal()`:
-  - pauses all configured sealables
-  - emits a `Sealed` event with correct parameters
-  - causes the GateSeal to become expired
+- **Triggering `seal()`:**
+  - may only be called by the committee; all unauthorized calls revert
+  - pauses all configured sealables for `SEAL_DURATION_SECONDS`
+  - emits a `Sealed` event for each sealable with correct parameters
+  - immediately marks the GateSeal as expired
 
-- `prolongLifetime()`:
-  - succeeds only when called within the configured prolongation window
-  - extends the GateSeal's lifetime by **Prolongation Period**
-  - decrements the number of prolongations remaining
+- **Calling `prolongLifetime()`:**
+  - may only be called by the committee; all unauthorized calls revert
+  - only succeeds if called within the configured prolongation window; attempts before or after the window revert
+  - reverts if the GateSeal is already expired or if no prolongations remain
+  - extends the lifetime by `Prolongation Period` and decrements the prolongations remaining
   - emits a `Prolonged` event with updated values
+  - a second call within the same window reverts, enforcing one action per window
 
-- `prolongLifetime()` reverts if:
-  - called before the prolongation window opens
-  - called after the window closes
-  - the GateSeal is already sealed (and thus expired)
-  - the GateSeal has no prolongations left
-  - called by a non-committee account
-
-- `seal()` and `prolongLifetime()` can only be called by the committee; all unauthorized calls revert
-- A second call to `prolongLifetime()` within the same window reverts, enforcing one action per window
 
 
 ## Security Considerations
