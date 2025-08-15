@@ -226,6 +226,8 @@ Node Operators can upload deposit data after creation. Before uploading, the req
 
 If deposit data has not been deposited yet, the Node Operator can request its deletion from `CSModule.sol`. `CSModule.sol` validates that deposit data has not yet been deposited. If deletion is possible, `CSAccounting.sol` confiscates the `keyRemovalCharge` from the Node Operator's bond.
 
+As a part of the [optimistic vetting approach](https://hackmd.io/@lido/rJrTnEc2a#Optimistic-Vetting), the `removeKeys()` method sets the `totalVettedKeys` pointer to `totalAddedKeys`, effectively vetting back all of the previously unvetted keys. More on unvetting [below](#Invalid-keys). 
+
 #### Top-up bond without deposit data upload
 
 > Changed in v2
@@ -255,6 +257,8 @@ Once uploaded, deposit data is placed in the queue with respect to the Priority 
 ![invalid-keys](./assets/lip-29/invalid-keys.png)
 
 Due to the [optimistic vetting approach](https://hackmd.io/gGRgZ0yeTnm-9SSFuHrXwg#Deposit-data-validation-and-invalidation-aka-vetting-and-unvetting), invalid keys might be present in the queue. [DSM](https://docs.lido.fi/contracts/deposit-security-module) is responsible for detecting and reporting invalid keys through `StakingRouter`. If invalid keys are detected, a call to `decreaseOperatorVettedKeys` is expected from `StakingRouter` to `CSModule.sol`.
+
+Node Operators should [delete](#Delete-deposit-data) the invalid keys to resolve the situation. If the invalid keys are still present after deletion, the process repeats.
 
 #### Rewards distribution
 
