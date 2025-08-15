@@ -339,6 +339,16 @@ With its updated functionality, `VEBO` can now trigger exits for the validators 
 
 > The validator is considered "stuck" if the proof is delivered stating that it was not exited for more than `allowedExitDelay` seconds since the moment it was requested/available for exit. `allowedExitDelay` is a parameter that can be set per-Node-Operator-type.
 
+### Claim beneficial Node Operator type
+
+:::info
+New in v2
+:::
+
+![image](https://hackmd.io/_uploads/Sy_Azt2ugg.png)
+
+Existing Node Operators can claim a beneficial Node Operator type if their Node Operator's manager or reward address (depending on `extendedManagerPermissions`) is eligible. The claim process is similar to creating a Node Operator via `VettedGate`. If the address has already created a Node Operator using `VettedGate,` this address is no longer eligible to create more Node Operators via `VettedGate` or claim the Node Operator type described above.
+
 #### Referral program
 
 > New in v2
