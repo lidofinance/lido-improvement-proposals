@@ -521,7 +521,11 @@ This contract does not have roles.
 
 ### Security considerations
 #### Bond exposure to negative stETH rebase
-The bond stored in stETH inevitably inherits all stETH features, including the possibility of a negative rebase. The effective bond amount (counted in ETH) will decrease in case of a negative rebase. This can lead to the case when a relatively large Node Operator might end up with unbonded keys. Also, it might result in an effective bond being lower than the bond required. Hence, Node Operators will lose part of their rewards.
+The bond stored in stETH inevitably inherits all stETH features, including the possibility of a negative rebase. 
+
+The effective bond amount (counted in ETH) will decrease in case of a negative rebase. This can lead to the case when a relatively large Node Operator might end up with unbonded keys. Sometimes, a negative stETH rebase might result in the unbonded validators being deposited. 
+
+Negative stETH rebase might result in an effective bond being lower than the bond required. Hence, Node Operators will lose part of their rewards. 
 
 #### Malicious Oracles can steal all unclaimed CSM rewards
 A single updatable Merkle tree approach to the rewards distribution allows malicious Oracles to collude and submit a version of the Merkle tree, indicating that all rewards should be allocated to a single Node Operator (previously created by malicious actors). The worst-case scenario is when all unclaimed rewards stored on the CSM contract will be available for claim by a single Node Operator. 
