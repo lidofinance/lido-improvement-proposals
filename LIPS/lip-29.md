@@ -525,7 +525,7 @@ This contract does not have roles.
 #### Bond exposure to negative stETH rebase
 The bond stored in stETH inevitably inherits all stETH features, including the possibility of a negative rebase. 
 
-The effective bond amount (counted in ETH) will decrease in case of a negative rebase. This can lead to the case when a relatively large Node Operator might end up with unbonded keys. Sometimes, a negative stETH rebase might result in the unbonded validators being deposited. 
+The effective bond amount (counted in ETH) will decrease in case of a negative rebase. This can lead to the case when a relatively large Node Operator might end up with unbonded keys. Sometimes, a negative stETH rebase might result in the unbonded validators being returned by CSM to the StakingRouter. However, a negative rebase will trigger [bunker mode](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#bunker-mode), and the deposits will be paused. This leaves enough time to detect affected Node Operators and manually update depositable validators.
 
 Negative stETH rebase might result in an effective bond being lower than the bond required. Hence, Node Operators will lose part of their rewards. 
 
