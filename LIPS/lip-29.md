@@ -214,6 +214,8 @@ Node Operator creation uses either `PermisssionlessGate.sol` or `VettedGate.sol`
 - approved to be transferred by `CSAccounting.sol` (stETH, wstETH);
 - included in permit data approving transfers by `CSAccounting.sol` (stETH, wstETH);
 
+`VettedGate.sol` allows each vetted address a one-time operation of Node Operator creation or Node Operator type claim for the existing Node Operator. If one of the operations is performed, the other can not be used.
+
 #### Upload deposit data
 
 ![upload-dd](./assets/lip-29/upload-dd.png)
@@ -345,7 +347,7 @@ With its updated functionality, `VEBO` can now trigger exits for the validators 
 New in v2
 :::
 
-![image](https://hackmd.io/_uploads/Sy_Azt2ugg.png)
+![claim-no-type](./assets/lip-29/claim-no-type.png)
 
 Existing Node Operators can claim a beneficial Node Operator type if their Node Operator's manager or reward address (depending on `extendedManagerPermissions`) is eligible. The claim process is similar to creating a Node Operator via `VettedGate`. If the address has already created a Node Operator using `VettedGate,` this address is no longer eligible to create more Node Operators via `VettedGate` or claim the Node Operator type described above.
 
