@@ -214,6 +214,8 @@ Node Operator creation uses either `PermisssionlessGate.sol` or `VettedGate.sol`
 - approved to be transferred by `CSAccounting.sol` (stETH, wstETH);
 - included in permit data approving transfers by `CSAccounting.sol` (stETH, wstETH);
 
+`VettedGate.sol` allows each vetted address a one-time operation of Node Operator creation or Node Operator type claim for the existing Node Operator. If one of the operations is performed, the other can not be used.
+
 #### Upload deposit data
 
 ![upload-dd](./assets/lip-29/upload-dd.png)
@@ -225,6 +227,8 @@ Node Operators can upload deposit data after creation. Before uploading, the req
 ![delete-dd](./assets/lip-29/delete-dd.png)
 
 If deposit data has not been deposited yet, the Node Operator can request its deletion from `CSModule.sol`. `CSModule.sol` validates that deposit data has not yet been deposited. If deletion is possible, `CSAccounting.sol` confiscates the `keyRemovalCharge` from the Node Operator's bond.
+
+As a part of the [optimistic vetting approach](https://hackmd.io/@lido/rJrTnEc2a#Optimistic-Vetting), the `removeKeys()` method sets the `totalVettedKeys` pointer to `totalAddedKeys`, effectively vetting back all of the previously unvetted but not deleted keys. More on unvetting [below](#Invalid-keys). 
 
 #### Top-up bond without deposit data upload
 
@@ -255,6 +259,8 @@ Once uploaded, deposit data is placed in the queue with respect to the Priority 
 ![invalid-keys](./assets/lip-29/invalid-keys.png)
 
 Due to the [optimistic vetting approach](https://hackmd.io/gGRgZ0yeTnm-9SSFuHrXwg#Deposit-data-validation-and-invalidation-aka-vetting-and-unvetting), invalid keys might be present in the queue. [DSM](https://docs.lido.fi/contracts/deposit-security-module) is responsible for detecting and reporting invalid keys through `StakingRouter`. If invalid keys are detected, a call to `decreaseOperatorVettedKeys` is expected from `StakingRouter` to `CSModule.sol`.
+
+Node Operators should [delete](#Delete-deposit-data) the invalid keys to resolve the situation. If the invalid keys are still present after deletion, the process repeats.
 
 #### Rewards distribution
 
@@ -334,6 +340,16 @@ If the validator is reported as stuck, the recorded stuck penalty is applied, an
 With its updated functionality, `VEBO` can now trigger exits for the validators requested for exit in the `VEBO` report. However, the time when requested validators can be ejected is not limited. Hence, `CSModule.sol` should be notified by `StakingRouter` about the validator exits and the time between the request and ejection. If the time exceeds the threshold, the Node Operator should be penalized for not exiting their validators in time. If Triggerable Exit (TE) was used for the validator, depending on the exit type and if the validator was delayed to exit, the TE fee should be confiscated from the Node Operator's bond. Both stuck penalty and TE fee are recorded in `CSExitPenalties.sol` and applied upon validator withdrawal described above.
 
 > The validator is considered "stuck" if the proof is delivered stating that it was not exited for more than `allowedExitDelay` seconds since the moment it was requested/available for exit. `allowedExitDelay` is a parameter that can be set per-Node-Operator-type.
+
+### Claim beneficial Node Operator type
+
+:::info
+New in v2
+:::
+
+![claim-no-type](./assets/lip-29/claim-no-type.png)
+
+Existing Node Operators can claim a beneficial Node Operator type if their Node Operator's manager or reward address (depending on `extendedManagerPermissions`) is eligible. The claim process is similar to creating a Node Operator via `VettedGate`. If the address has already created a Node Operator using `VettedGate,` this address is no longer eligible to create more Node Operators via `VettedGate` or claim the Node Operator type described above.
 
 #### Referral program
 
@@ -507,7 +523,11 @@ This contract does not have roles.
 
 ### Security considerations
 #### Bond exposure to negative stETH rebase
-The bond stored in stETH inevitably inherits all stETH features, including the possibility of a negative rebase. The effective bond amount (counted in ETH) will decrease in case of a negative rebase. This can lead to the case when a relatively large Node Operator might end up with unbonded keys. Also, it might result in an effective bond being lower than the bond required. Hence, Node Operators will lose part of their rewards.
+The bond stored in stETH inevitably inherits all stETH features, including the possibility of a negative rebase. 
+
+The effective bond amount (counted in ETH) will decrease in case of a negative rebase. This can lead to the case when a relatively large Node Operator might end up with unbonded keys. Sometimes, a negative stETH rebase might result in the unbonded validators being returned by CSM to the StakingRouter. However, a negative rebase will trigger [bunker mode](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#bunker-mode), and the deposits will be paused. This leaves enough time to detect affected Node Operators and manually update depositable validators.
+
+Negative stETH rebase might result in an effective bond being lower than the bond required. Hence, Node Operators will lose part of their rewards. 
 
 #### Malicious Oracles can steal all unclaimed CSM rewards
 A single updatable Merkle tree approach to the rewards distribution allows malicious Oracles to collude and submit a version of the Merkle tree, indicating that all rewards should be allocated to a single Node Operator (previously created by malicious actors). The worst-case scenario is when all unclaimed rewards stored on the CSM contract will be available for claim by a single Node Operator. 
