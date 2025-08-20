@@ -16,11 +16,10 @@ GateSeal V2 introduces a more flexible, long-lived version of Lido’s emergency
 
 ## Abstract
 
-We propose to upgrade the GateSeal blueprint and factory to include:
+We propose to upgrade the GateSeal blueprint to include:
 - configurable initial expiry;
 - on-chain expiry prolongations;
 - committee-owned prolongations (limited count);
-- pre-deployed, module-specific contracts;
 - strict signing schedule.
 
 The new implementation will be written in Vyper 0.4.2, improving security, auditability and expressiveness while maintaining backward compatibility with existing PausableUntil-based contracts.
@@ -38,7 +37,7 @@ The new implementation will be written in Vyper 0.4.2, improving security, audit
 - **Expiry Timestamp** — the on-chain timestamp after which the GateSeal expires unless prolonged. This is the primary lifetime reference in GateSeal v2.
 - **Initial Lifetime** — effectively represented by the period from deployment until the first **Expiry Timestamp**. 
 - **Prolongation Limit** — the maximum number of allowed prolongations.
-- **DAO Ops Reserve** — the time buffer for DAO Ops to deploy a new GateSeal before the current one expires.
+- **Pre-Expiration Offset** — the time buffer for DAO Ops to deploy a new GateSeal before the current one expires.
 
 ### Rationale
 
@@ -47,33 +46,45 @@ The main tradeoff considered was between maintaining operational safety and redu
 ### Technical Specification
 
 - The contract will be written in Vyper 0.4.2.
-- `prolongLifetime()` callable only by the committee when unused, unexpired, within the prolongation window, and with remaining prolongations.
+- `prolong_lifetime()` callable only by the committee when unused, unexpired, within the prolongation window, and with remaining prolongations.
 - Each call prolongs the lifetime by the **Prolongation Period** and decrements remaining prolongations.
-- `seal()` pauses configured contracts for **SEAL_DURATION_SECONDS** and expires the GateSeal immediately.
-- **Prolongation Period** (in seconds), **Prolongation Window** (in seconds), **DAO Ops Reserve** (in seconds), together with **Expiry Timestamp** and **Prolongation Limit** are all set at the time of each GateSeal deployment. 
-- **Initial Lifetime** must not exceed `2 × Prolongation Period`, while also respecting a lower bound defined by `DAO Ops Reserve + Prolongation Window`, to guarantee a safe buffer before the first prolongation.
-- **Prolongation Count** is defined at deployment, enabling custom total lifetimes per contract within global constraints.
-- **Maximum Total Lifetime** — calculated as `Initial Lifetime + (Prolongation Period × Prolongation Count)` — must not exceed **5 years**; this is enforced at deployment time.
-- The previously existing 4–14 day limit of **Seal Duration** is removed.
-- The ability to **choose which contracts are sealed at activation** is removed.
+- `seal_some()` and `seal_all` pause configured contracts for **SEAL_DURATION_SECONDS** and expires the GateSeal immediately.
+
+- `Prolongation Period` (in seconds), `Prolongation Window` (in seconds), `Pre-Expiration Offset` (in seconds), together with `Expiry Timestamp` and`Prolongation Limit` are all set at the time of each GateSeal deployment; 
+- The former 4–14‑day `Seal Duration` limit is removed.
+
+    *All of this, on the one hand, provides us with greater flexibility in configuring parameters, but on the other hand, carries the risk of deploying with incorrect values. Therefore, Tech and Analytics contributors are responsible for determining the correct parameters to be deployed, while internal and external auditors verify that the on-chain deployment matches the agreed values.*
+
+- The commttee's ability to select which contracts must be sealed is removed.    
+    *The committee no longer picks contracts to pause; instead, it chooses among GateSeals, each with a predefined, fixed set of sealables for faster incident response.*
+   
+- The factory remains parameter-agnostic and only supplies the GateSeal blueprint.
+- The **maximum total lifetime**, calculated as `Initial Lifetime + (Prolongation Period × Prolongation Limit)` must not exceed **5 years**. This is enforced during deployment.
+- `Initial Lifetime` and `Prolongation Period` must be ≥ `Pre-Expiration Offset + Prolongation Window`.
+- `Initial Lifetime`  must be ≤ `2 × Prolongation Period` also. 
 - Full compatibility with existing PausableUntil contracts (e.g., WithdrawalQueue, ValidatorExitBusOracle).
 
 ### Test Cases
 
 - **Deployment reverts if:**
   - `seal_duration_seconds` is zero
-  - the `sealables` list is empty, contains more than 8 entries, includes duplicates, or contains the zero address
-  - `expiry_timestamp` is below the minimum offset, exceeds the maximum allowed offset, or is set in the past
-  - `prolongation_period_seconds` is shorter than `prolongation_window_seconds + dao_ops_reserve_seconds`
-  - the calculated total lifetime exceeds the 5-year cap
+  - `sealing_committee` is the zero address
+  - the `sealables` list is empty, contains more than 10 entries, includes duplicates, or contains the zero address
+  - the `sealables` list contains an EOA (non-contract) address
+  - `expiry_timestamp` is set in the past
+  - `initial_lifetime` is shorter than `prolongation_window_seconds + pre_expiration_offset_seconds`
+  - `initial_lifetime` exceeds `2 × prolongation_period_seconds`
+  - `prolongation_period_seconds` is shorter than `prolongation_window_seconds + pre_expiration_offset_seconds`
+  - the calculated total lifetime (`initial_lifetime + prolongation_period_seconds × prolongation_limit`) exceeds the 5-year cap
 
-- **Triggering `seal()`:**
+- **Triggering `seal_all()` or `seal_some()`:**
   - may only be called by the committee; all unauthorized calls revert
   - pauses all configured sealables for `SEAL_DURATION_SECONDS`
   - emits a `Sealed` event for each sealable with correct parameters
   - immediately marks the GateSeal as expired
+  - if any sealable call fails, the transaction reverts with a bitmap reason string encoding failed indices, and the GateSeal remains not expired
 
-- **Calling `prolongLifetime()`:**
+- **Calling `prolong_lifetime()`:**
   - may only be called by the committee; all unauthorized calls revert
   - only succeeds if called within the configured prolongation window; attempts before or after the window revert
   - reverts if the GateSeal is already expired or if no prolongations remain
@@ -81,19 +92,30 @@ The main tradeoff considered was between maintaining operational safety and redu
   - emits a `Prolonged` event with updated values
   - a second call within the same window reverts, enforcing one action per window
 
+- **Expired state & window semantics:**
+  - after natural expiry, `seal_all()`, `seal_some()` and `prolong_lifetime()` revert with `"GateSeal: expired"`
+  - after `seal_some()` or `seal_all()` (forced expiry), `is_expired()` returns true and prolongation window bounds become zero (`get_prolongation_window_start() == 0`, `get_prolongation_window_end() == 0`)
+
+- **Immutables & getters:**
+  - `get_prolongation_period_seconds()` equals the configured `PROLONGATION_PERIOD_SECONDS`
+  - `get_prolongation_window_seconds()` equals `PROLONGATION_WINDOW_SECONDS`
+  - `get_pre_expiration_offset_seconds()` equals `PRE_EXPIRATION_OFFSET_SECONDS`
+  - `get_prolongations_remaining()` equals the configured `prolongation_limit` at deployment, decremented after each prolongation
+  - `get_seal_duration_seconds()` equals the configured `SEAL_DURATION_SECONDS`
+  - `get_expiry_timestamp()` returns the current expiry timestamp
+  - `get_sealing_committee()` equals the configured committee address
+  - `get_sealables()` returns the configured sealables array
 
 
 ## Security Considerations
 
 - GateSeal V2 must remain single-use.
-- The set of sealables is predetermined per protocol module at deployment, so the committee does not need to decide which contracts to pause during an incident.
 - Prolongation is only possible for unused and unexpired contracts, and it must be performed within the prolongation window.
-- Prolongation actions serve as implicit liveness checks for the committee.
 
 
 ## Failure Modes
 
-- If the committee fails to prolong within the window or uses all prolongations, the GateSeal expires, requiring replacement. However, the DAO Ops Reserve provides a safety buffer during which the DAO can deploy a new GateSeal instance to ensure continued protection.
+- If the committee fails to prolong within the window or uses all prolongations, the GateSeal expires, requiring replacement. However, the Pre-Expiration Offset provides a safety buffer during which the DAO can deploy a new GateSeal instance to ensure continued protection.
 
 
 ## Copyright
