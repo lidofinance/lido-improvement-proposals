@@ -96,10 +96,10 @@ High‑level architecture and responsibilities:
 - `seal_some(address[])`
   - pauses a subset of sealables;
   - still expires the GateSeal immediately.
-- Parameters (`prolongation_extension_seconds`, `prolongation_window_seconds`, `pre_expiration_offset_seconds`, `expiry_timestamp`, `prolongation_limit`, `seal_duration_seconds`, `sealables`, `sealing_committee`) are immutable and set at deployment.
+- Parameters (`prolongation_extension_seconds`, `prolongation_window_seconds`, `expiration_buffer_seconds`, `expiry_timestamp`, `prolongation_limit`, `seal_duration_seconds`, `sealables`, `sealing_committee`) are immutable and set at deployment.
 - The factory remains parameter-agnostic and only supplies the blueprint.
 - **Total lifetime** (`Initial Lifetime + Prolongation Extension × Prolongation Limit`) must not exceed **5 years**.
-- `Initial Lifetime` and `Prolongation Extension` ≥ `Pre-Expiration Offset + Prolongation Window`.
+- `Initial Lifetime` and `Prolongation Extension` ≥ `Expiration Buffer + Prolongation Window`.
 - `Initial Lifetime` ≤ `2 × Prolongation Extension`.
 - **Maximum 10 sealables** per GateSeal to maintain manageable scope while allowing comprehensive protocol coverage.
 - Full compatibility with existing `PausableUntil` contracts.
@@ -114,9 +114,9 @@ Implementation test cases cover (non‑exhaustive):
   - `sealing_committee` is the zero address;
   - `sealables` is empty, exceeds 10 entries, contains duplicates, EOAs, or the zero address;
   - `expiry_timestamp` is in the past;
-  - `initial_lifetime` < `prolongation_window + pre_expiration_offset`;
+  - `initial_lifetime` < `prolongation_window + expiration_buffer_seconds`;
   - `initial_lifetime` > `2 × prolongation_extension`;
-  - `prolongation_extension` < `prolongation_window + pre_expiration_offset`;
+  - `prolongation_extension` < `prolongation_window + expiration_buffer_seconds`;
   - calculated total lifetime exceeds 5 years.
 - `seal_all()` / `seal_some()`
   - committee‑only; pause targeted contracts and emit `Sealed` events;
@@ -133,7 +133,7 @@ Implementation test cases cover (non‑exhaustive):
 
 ## Failure Modes
 
-- Missing the prolongation window or exhausting prolongations causes expiry; the **Pre-Expiration Offset** provides buffer time for DAO Ops to deploy a replacement.
+- Missing the prolongation window or exhausting prolongations causes expiry; the **Expiration Buffer** provides buffer time for DAO Ops to deploy a replacement.
 - If `seal_all()` cannot complete, the committee should use `seal_some()` to seal the subset that can be sealed.
 
 
