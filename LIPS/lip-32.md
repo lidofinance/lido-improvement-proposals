@@ -12,7 +12,7 @@ implementation:
 
 ## Simple Summary
 
-GateSeal v2 upgrades Lido’s emergency circuit breaker from a temporary solution into a long‑lived safety mechanism. It improves ease of use and maintenance, reduces governance overhead, and keeps the single‑use safety guarantees.
+GateSeal v2 upgrades Lido's emergency circuit breaker from a temporary solution into a long‑lived safety mechanism. It improves ease of use and maintenance, reduces governance overhead, and keeps the single‑use safety guarantees.
 
 ## Abstract
 
@@ -20,7 +20,7 @@ We propose to deploy a new GateSeal blueprint in Vyper 0.4.2. The upgrade replac
 
 ## Motivation
 
-GateSeal v1 was intentionally designed as an inconvenient temporary solution to motivate DAO Ops to find a permanent solution. Since GateSeal has become the permanent solution, it must be streamlined and designed for long‑term reliability and maintainability. As a result, the original design now leads to avoidable governance overhead, outdated hard‑coded limits, error‑prone incident response, and repeated committee coordination burden
+GateSeal v1 was intentionally designed as an inconvenient temporary solution to motivate DAO Ops to find a permanent solution. Since GateSeal has become the permanent solution, it must be streamlined and designed for long‑term reliability and maintainability. As a result, the original design now leads to avoidable governance overhead, outdated hard‑coded limits, error‑prone incident response, and repeated committee coordination burden.
 
 1. **Governance overhead.** Replacing an expiring GateSeal requires a full governance cycle, even if the committee remains operational.
    *Committee-owned prolongations* prove liveness and remove routine replacement votes.
@@ -28,9 +28,9 @@ GateSeal v1 was intentionally designed as an inconvenient temporary solution to 
 2. **Outdated hard-coded limits.** The factory enforces a 4–14 day seal duration that conflicts with [Dual Governance](https://blog.lido.fi/dual-governance-explained/) timelines and any future changes.
    *Removing arbitrary limits* avoids costly redesign cycles when governance timings evolve.
 
-   Historically, hard‑coded “guardrails” in the contract helped prevent deployments with invalid parameters, but such bounds become obsolete as context evolves (e.g., Dual Governance) and start hindering legitimate scenarios. GateSeal v2 replaces embedded limits with process controls: Tech & Analytics prepare and justify parameter values; DAO Ops deploy strictly with the agreed values; internal and external auditors verify that on‑chain parameters match the agreed specification. The same approach applies both to lifting the 4–14 day seal duration limit and to new parameters (`prolongation_window`, `prolongation_extension`, `pre_expiration_offset`).
+   Historically, hard‑coded "guardrails" in the contract helped prevent deployments with invalid parameters, but such bounds become obsolete as context evolves (e.g., Dual Governance) and start hindering legitimate scenarios. GateSeal v2 replaces embedded limits with process controls: Tech & Analytics prepare and justify parameter values; DAO Ops deploy strictly with the agreed values; internal and external auditors verify that on‑chain parameters match the agreed specification. The same approach applies both to lifting the 4–14 day seal duration limit and to new parameters (`prolongation_window`, `prolongation_extension`, `pre_expiration_offset`).
 
-3. **Error‑prone incident response.** In GateSeal v1 the committee must manually select contracts during an incident, which:
+3. **Error‑prone incident response.** In GateSeal v1, the committee must manually select contracts during an incident, which:
 - creates a human‑error risk (sealing wrong/unnecessary contracts or missing critical ones); and
 - combined with the single‑use constraint, leaves no opportunity to correct mistakes or pause additional contracts.
 
@@ -39,7 +39,7 @@ GateSeal v1 was intentionally designed as an inconvenient temporary solution to 
    - Preset activation: `seal_all()` is the primary path that seals all predefined sealables at once.
    - Tactical fallback: if `seal_all()` cannot complete, the committee should use `seal_some()` to seal the subset that can be sealed within the same attack‑vector scope.
 
-4. **Operational scaling burden.** In the future, a single committee may be responsible for multiple GateSeals; without a standardized fixed signing window, the committee’s coordination burden (e.g., number of gatherings) is likely to grow in proportion to their number.
+4. **Operational scaling burden.** In the future, a single committee may be responsible for multiple GateSeals; without a standardized fixed signing window, the committee's coordination burden (e.g., number of gatherings) is likely to grow in proportion to their number.
    *A standardized fixed signing window* lets the committee prolong multiple GateSeals in a single session.
 
 ## Specification
@@ -81,14 +81,12 @@ High‑level architecture and responsibilities:
 - **Parameterization**
   - Only arbitrary hard‑coded limits are removed; core invariants remain enforced to preserve system correctness (see Technical Specification).
 
-
-
 ### Technical Specification
 
-- Implementation uses **Vyper 0.4.2** for compiler security fixes, Cancun EVM support and gas improvements.
+- Implementation uses **Vyper 0.4.2** for compiler security fixes, Cancun EVM support, and gas improvements.
 - `prolong_lifetime()`
   - callable only by the sealing committee;
-  - valid when the GateSeal is unused, unexpired, within the prolongation window and has remaining prolongations;
+  - valid when the GateSeal is unused, unexpired, within the prolongation window, and has remaining prolongations;
   - adds the **Prolongation Extension** to the expiry timestamp and decrements remaining prolongations.
 - `seal_all()`
   - pauses all configured contracts for `SEAL_DURATION_SECONDS`;
@@ -123,20 +121,17 @@ Implementation test cases cover (non‑exhaustive):
   - expire the GateSeal immediately; if any sealable call fails, the transaction reverts with a bitmap reason and the GateSeal stays unexpired.
 - `prolong_lifetime()`
   - committee‑only; reverts outside the prolongation window, after expiry, or when no prolongations remain; updates expiry timestamp and emits `Prolonged`.
- - After expiry, any call to `seal_all`, `seal_some` or `prolong_lifetime` reverts with `"GateSeal: expired"`.
-
+- After expiry, any call to `seal_all`, `seal_some`, or `prolong_lifetime` reverts with `"GateSeal: expired"`.
 
 ## Security Considerations
 
 - GateSeal remains single‑use: any sealing call or manual expiry prevents further actions.
-- Preset activation (`seal_all`) removes real‑time selection and reduces coordination overhead;
+- Preset activation (`seal_all`) removes real‑time selection and reduces coordination overhead.
 
 ## Failure Modes
 
 - Missing the prolongation window or exhausting prolongations causes expiry; the **Expiration Buffer** provides buffer time for DAO Ops to deploy a replacement.
 - If `seal_all()` cannot complete, the committee should use `seal_some()` to seal the subset that can be sealed.
-
-
 
 ## Copyright
 
