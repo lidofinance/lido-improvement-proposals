@@ -98,7 +98,7 @@ High‑level architecture and responsibilities:
   - still expires the GateSeal immediately.
 - Parameters (`prolongation_extension_seconds`, `prolongation_window_seconds`, `expiration_buffer_seconds`, `expiry_timestamp`, `prolongation_limit`, `seal_duration_seconds`, `sealables`, `sealing_committee`) are immutable and set at deployment.
 - The factory remains parameter-agnostic and only supplies the blueprint.
-- **Total lifetime** (`Initial Lifetime + Prolongation Extension × Prolongation Limit`) must not exceed **5 years**.
+- The **Maximum Lifetime** (`Initial Lifetime + Prolongation Extension × Prolongation Limit`) must not exceed **5 years**.
 - `Initial Lifetime` and `Prolongation Extension` ≥ `Expiration Buffer + Prolongation Window`.
 - `Initial Lifetime` ≤ `2 × Prolongation Extension`.
 - **Maximum 10 sealables** per GateSeal to maintain manageable scope while allowing comprehensive protocol coverage.
