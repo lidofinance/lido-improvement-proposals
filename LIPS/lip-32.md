@@ -28,7 +28,7 @@ GateSeal v1 was intentionally designed as an inconvenient temporary solution to 
 2. **Outdated hard-coded limits.** The factory enforces a 4–14 day seal duration that conflicts with [Dual Governance](https://blog.lido.fi/dual-governance-explained/) timelines and any future changes.
    *Removing arbitrary limits* avoids costly redesign cycles when governance timings evolve.
 
-   Historically, hard‑coded “guardrails” in the contract helped prevent deployments with invalid parameters, but such bounds become obsolete as context evolves (e.g., Dual Governance) and start hindering legitimate scenarios. GateSeal v2 replaces embedded limits with process controls: Tech & Analytics prepare and justify parameter values; DAO Ops deploy strictly with the agreed values; internal and external auditors verify that on‑chain parameters match the agreed specification. The same approach applies both to lifting the 4–14 day seal duration limit and to new parameters (`prolongation_window`, `prolongation_period`, `pre_expiration_offset`).
+   Historically, hard‑coded “guardrails” in the contract helped prevent deployments with invalid parameters, but such bounds become obsolete as context evolves (e.g., Dual Governance) and start hindering legitimate scenarios. GateSeal v2 replaces embedded limits with process controls: Tech & Analytics prepare and justify parameter values; DAO Ops deploy strictly with the agreed values; internal and external auditors verify that on‑chain parameters match the agreed specification. The same approach applies both to lifting the 4–14 day seal duration limit and to new parameters (`prolongation_window`, `prolongation_extension`, `pre_expiration_offset`).
 
 3. **Error‑prone incident response.** In GateSeal v1 the committee must manually select contracts during an incident, which:
 - creates a human‑error risk (sealing wrong/unnecessary contracts or missing critical ones); and
@@ -47,7 +47,7 @@ GateSeal v1 was intentionally designed as an inconvenient temporary solution to 
 ### Glossary
 
 - **Prolongation Window** – active window during which the committee can prolong the contract.
-- **Prolongation Period** – extra time added on each prolongation.
+- **Prolongation Extension** – extra time added on each prolongation.
 - **Expiry Timestamp** – on-chain timestamp after which the GateSeal expires unless prolonged.
 - **Initial Lifetime** – period from deployment until the first expiry timestamp.
 - **Prolongation Limit** – maximum number of allowed prolongations.
@@ -89,18 +89,18 @@ High‑level architecture and responsibilities:
 - `prolong_lifetime()`
   - callable only by the sealing committee;
   - valid when the GateSeal is unused, unexpired, within the prolongation window and has remaining prolongations;
-  - adds the **Prolongation Period** to the expiry timestamp and decrements remaining prolongations.
+  - adds the **Prolongation Extension** to the expiry timestamp and decrements remaining prolongations.
 - `seal_all()`
   - pauses all configured contracts for `SEAL_DURATION_SECONDS`;
   - expires the GateSeal immediately.
 - `seal_some(address[])`
   - pauses a subset of sealables;
   - still expires the GateSeal immediately.
-- Parameters (`prolongation_period_seconds`, `prolongation_window_seconds`, `pre_expiration_offset_seconds`, `expiry_timestamp`, `prolongation_limit`, `seal_duration_seconds`, `sealables`, `sealing_committee`) are immutable and set at deployment.
+- Parameters (`prolongation_extension_seconds`, `prolongation_window_seconds`, `pre_expiration_offset_seconds`, `expiry_timestamp`, `prolongation_limit`, `seal_duration_seconds`, `sealables`, `sealing_committee`) are immutable and set at deployment.
 - The factory remains parameter-agnostic and only supplies the blueprint.
-- **Total lifetime** (`Initial Lifetime + Prolongation Period × Prolongation Limit`) must not exceed **5 years**.
-- `Initial Lifetime` and `Prolongation Period` ≥ `Pre-Expiration Offset + Prolongation Window`.
-- `Initial Lifetime` ≤ `2 × Prolongation Period`.
+- **Total lifetime** (`Initial Lifetime + Prolongation Extension × Prolongation Limit`) must not exceed **5 years**.
+- `Initial Lifetime` and `Prolongation Extension` ≥ `Pre-Expiration Offset + Prolongation Window`.
+- `Initial Lifetime` ≤ `2 × Prolongation Extension`.
 - **Maximum 10 sealables** per GateSeal to maintain manageable scope while allowing comprehensive protocol coverage.
 - Full compatibility with existing `PausableUntil` contracts.
 - **Governance workflow:** Tech & Analytics define parameters, DAO Ops deploy with those parameters, auditors verify the deployment.
@@ -115,8 +115,8 @@ Implementation test cases cover (non‑exhaustive):
   - `sealables` is empty, exceeds 10 entries, contains duplicates, EOAs, or the zero address;
   - `expiry_timestamp` is in the past;
   - `initial_lifetime` < `prolongation_window + pre_expiration_offset`;
-  - `initial_lifetime` > `2 × prolongation_period`;
-  - `prolongation_period` < `prolongation_window + pre_expiration_offset`;
+  - `initial_lifetime` > `2 × prolongation_extension`;
+  - `prolongation_extension` < `prolongation_window + pre_expiration_offset`;
   - calculated total lifetime exceeds 5 years.
 - `seal_all()` / `seal_some()`
   - committee‑only; pause targeted contracts and emit `Sealed` events;
