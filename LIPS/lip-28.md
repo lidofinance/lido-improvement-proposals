@@ -1,7 +1,7 @@
 ---
 lip: 28
 title: Dual Governance
-status: Proposed
+status: Implemented
 author: Sam Kozin, Eugene Pshenichnyy, Victor Suzdalev, Sacha Saint-Leger, Bogdan Kovtun, Hasu, Isidoros Passadis, Vasiliy Shapovalov
 discussions-to: https://research.lido.fi/t/lip-28-dual-governance/10032
 created: 2025-05-22
