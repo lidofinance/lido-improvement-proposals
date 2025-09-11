@@ -1,5 +1,5 @@
 ---
-lip: 30
+lip: 31
 title: Expanding stETH liquidity layer with over-collateralized minting
 status: WIP
 author: Alexey Potapkin, Eugene Mamin, Eugene Pshenichnyi, Max Merkulov
@@ -16,30 +16,36 @@ Introduce an **over‑collateralised accounting system** for **stETH**, enabling
 
 ## Abstract
 
-Lido V3 generalises stETH minting rules. Any entity that can
-provably lock ≥100 % collateral **plus a safety reserve** may mint stETH against the *effective* portion of that collateral. Such an entity is called a **staking vault**. The proposal defines the *in‑protocol* collateral accounting, mint / burn flow, and health‑monitoring hooks; it purposely does **not** impose implementation details on vaults themselves.
+Lido V3 evolves the protocol from a single staking pool into a versatile Ethereum staking infrastructure platform. It introduces **staking vaults** – modular, non-custodial components that enable users to stake with chosen operators under customizable terms while minting stETH. This design preserves stETH as the unified liquidity layer while supporting diverse staking strategies including operator-led liquid staking, DVT clusters, DeFi loops, and institutional vaults.
+
+The protocol generalizes stETH minting through over-collateralization: any entity that can provably lock ≥100% collateral **plus a safety reserve** may mint stETH against the *effective* portion of that collateral. The proposal defines the *in‑protocol* collateral accounting, mint/burn flow, and health‑monitoring hooks while maintaining flexibility for vault implementations.
 
 Key protocol additions:
 
-1. **Collateral Registry (`VaultHub`)** – on‑chain ledger of every vault’s
-   *total value* (TV) and *locked* portion.  
-2. **Accounting Oracle with extended supply** – extends the existing oracle by publishing the
-   Merkle‑root of per‑vault balances; `VaultHub` verifies inclusion proofs
-   asynchronously (“lazy oracle” mechanism).  
+1. **Collateral Registry (`VaultHub`)** – On‑chain ledger tracking every vault's *total value* (TV) and *locked* portion, serving as the central coordination point for the multi-vault ecosystem.  
+2. **Accounting Oracle with extended supply** – Extends the existing oracle by publishing Merkle‑roots of per‑vault balances; `VaultHub` verifies inclusion proofs asynchronously ("lazy oracle" mechanism), enabling scalable vault management.  
 3. **External‑shares mint / burn** – `Lido` contract enforces  
-   `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked`, refusing mints that break it.  
+   `stETH.totalSupply() ≤ Core Pool total supply + Σ staking vault locked`, refusing mints that break it.  
 4. **Reserve‑breach hooks** – if a vault’s buffer drops below certain
    thresholds (`RR`, `FRT`), Lido Core blocks fresh mints and can order an on‑chain rebalance (partial debt repayment through Lido Core).
 
 ## Motivation
 
-The Lido V2 model implicitly assumes that every new ETH deposit is equal‑risk socialized and immediately mintable 1:1, which stems from the fact that Staking Router and Staking Modules distribute stake in a decentralized and diversified way among vastly herogenious validator set. 
+The introduction of Lido V3 addresses a fundamental trade-off between staking setup control and liquidity. Traditional liquid staking pools offer fungible liquidity but limited control over validator selection and staking strategies. Conversely, direct staking provides full control but lacks liquidity. 
 
-As Lido scales to diverse product lines, allowing to plug external ether supply sources, represented as staking vaults, that assumption is no longer holds. Without structural safeguards a single external high‑risk source of ether supply for stETH could:
-* slash enough stake to force a global negative rebase, or  
-* mint stETH minutes before an exit, externalising risk to the broader holder base.
+Lido V3 resolves this trade-off by decoupling validator selection from the liquidity layer through **staking vaults**.
 
-By hard‑coding **over‑collateralisation at the protocol level** and measuring backing **per‑vault**, the design contains such tail risks while unlocking new ether supply lines.  stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not socialised unless extreme-conditions induced failure mode is activated.
+Key motivations for this design include:
+
+1. **Expanding addressable market** – Many stakers desire specific operator choice, DVT configurations, or compliance constraints that a single pooled model cannot accommodate. Vaults enable these use cases while preserving stETH liquidity.
+
+2. **Enhanced validator set diversity** – By supporting diverse staking strategies (operator-led liquid staking, DVT clusters, DeFi loops, institutional vaults), the protocol promotes a more resilient and decentralized validator ecosystem.
+
+3. **Risk isolation without liquidity fragmentation** – The Lido V2 model implicitly assumes every ETH deposit carries equal risk, socialized across all holders. As external ether sources join the ecosystem, this assumption becomes untenable. Without safeguards, a single high-risk vault could slash enough stake to force a global negative rebase or mint stETH minutes before an exit, externalizing risk.
+
+4. **Platform evolution** – Moving from a single staking pool to a platform supporting multiple staking products aligns incentives among operators, builders, and stakers, fostering innovation while maintaining the battle-tested Core Pool for users seeking simple, traditional staking.
+
+By hard-coding **over-collateralization at the protocol level** and measuring backing **per-vault**, the design contains tail risks while unlocking new ether supply lines. stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not socialized unless extreme conditions trigger failure modes.
 
 ## Specification
 
@@ -61,13 +67,13 @@ By hard‑coding **over‑collateralisation at the protocol level** and measurin
 
 Three key properties of the stETH token are to be preserved.
 
-#### Collaterilization
+#### Collateralization
 
 Every minted stETH has corresponding ether-nominated value, either inside the Lido Core pool or external ether locked (i.e., acting as the external stETH minting collateral) by the protocol. 
 
-New accounting model suggests overcollatalized minting approach for the external part of the token supply to manage slashing risks against the diverse staking setups without enforced policies and requirements behind this part of collateral except only those covered in the current proposal.
+The new accounting model implements over-collateralized minting for external token supply sources, managing slashing risks across diverse staking strategies while maintaining flexibility. This approach enables the platform to support various staking setups without imposing rigid operational requirements beyond the core collateralization framework.
 
-#### Redemability
+#### Redeemability
 
 Every minted stETH must be redeemable either Lido Core pool, or the external minting collateral. 
 
@@ -192,7 +198,7 @@ Rebalance is used to:
 
 #### Oracle reports
 
-Accounting oracle reports happen in the same cadence as before, but now include handling of vault-related bad debt.
+Accounting oracle reports happen in the same cadence as before, but now include handling of vault-related bad debt (in cases when bad debt is assigned to be socialized by the protocol, happens only explicitly and MUST be assigned to the Lido DAO Agent).
 
 Token rebase is implemented such that `externalEther` gets updated according to the newly delivered Lido Core pool changes after rewards and fees are distributed.
 
@@ -253,7 +259,7 @@ This process happens **after** CL state updates but **before** token rebase emis
 
 ##### Rebase smoothening and sanity checks
 
-To prevent oracle frontrunning and ensure system stability, the protocol applies rebase smoothening:
+To prevent oracle sandwiching and ensure system stability, the protocol applies rebase smoothening:
 
 1. **Base for smoothening**: Internal ether and internal shares (excluding external values)
 2. **Sanity checks** include:
@@ -291,12 +297,14 @@ Returns
 2. `sharesAmount` must not be zero.
 3. Staking must not be paused.
 4. External balance limit must not be exceeded.
+5. Staking rate limit must not be exhausted.
 
 *Effects*
 
 1. `externalShares += sharesAmount`  
 2. Mint `sharesAmount` stETH shares to `receiver`.
 3. Total pooled ether increases by `sharesAmount * shareRate` (implicitly).
+4. Consumes staking rate limit of stETH corresponding to `sharesAmount`.
 
 *Events*  
 `ExternalSharesMinted(receiver, sharesAmount)`.
@@ -314,6 +322,7 @@ Returns
 1. Burn `sharesAmount` stETH shares from caller.
 2. `externalShares -= sharesAmount`.
 3. Total pooled ether decreases by `sharesAmount * shareRate` (implicitly).
+4. Returns staking rate limit of stETH corresponding to `sharesAmount` (clamped at max value)
 
 *Events*  
 `ExternalSharesBurnt(sharesAmount)`.
@@ -326,12 +335,14 @@ Returns
 3. Staking must not be paused.
 4. `msg.value` must match `sharesAmount * shareRate`.
 5. `externalShares >= sharesAmount`.
+6. Staking rate limit must not be exhausted.
 
 *Effects*
 
 1. `externalShares -= sharesAmount` (external balance decreased).
 2. `bufferedEther += msg.value` (buffer increased).
 3. Total shares remain the same (shares moved from external to internal).
+4. Consumes staking rate limit of stETH corresponding to `sharesAmount`.
 
 *Events*  
 `ExternalEtherRebalanced(msg.value, sharesAmount)`.
@@ -349,7 +360,7 @@ Returns
 1. `externalShares -= sharesAmount`.
 2. Total shares remain the same.
 3. Internal shares effectively increase by `sharesAmount`.
-4. Share rate decreases (losses socialized across all holders).
+4. Share rate decreases (losses socialized across all stETH holders).
 
 *Events*  
 `ExternalBadDebtInternalized(sharesAmount)`, `ExternalSharesBurnt(sharesAmount)`.
@@ -358,11 +369,11 @@ Returns
 
 ### Abstracting external ether
 
-The design does not require the protocol to 'understand' the nature of external ether. It only requires trusted external accounting, ensuring that the external ether source is credible. The external ether could represent aggregator-controlled validator balances or, potentially, other complex Ethereum and broader ecosystem mechanisms.
+The design does not require the protocol to 'understand' the nature of external ether. It only requires trusted external accounting through `VaultHub`, ensuring that the external ether source is credible. The external ether could represent aggregator-controlled validator balances or, potentially, other complex Ethereum and broader ecosystem mechanisms.
 
 ### Why track external shares instead of external ether directly
 
-stETH is defined by its share mechanics, and all protocol logic revolves around shares and their rate. By expressing external contributions and withdrawals in terms of stETH shares, the protocol remains consistent. Ether is only an input or output measure, while shares define the in-protocol liquidity and distribution rules.
+stETH is defined by its share mechanics, and all protocol logic revolves around shares and their rate. By expressing external contributions and redemptions in terms of stETH shares, the protocol remains consistent. Ether is only an input or output measure, while shares define the in-protocol liquidity and distribution rules.
 
 ### Why token rebase only through Lido Core
 
@@ -395,19 +406,18 @@ Detailed analysis is presented withing the [risk assessment framework](https://r
 ### Isolation
 
 * `StakingVault` contract is **upgradeably pinned**;
-  `VaultHub` enforces deterministic code‑hash per vault type.
+  `VaultHub` enforces deterministic allowlisted proxy factory deployments per vault type.
 * A logic flaw in a vault can only evaporate that vault’s TV; the
   `VaultHub` guard prevents it from ever minting beyond its last reported
-  `TV – RR·TV`.
+  `TV – RR × TV`.
 
 ### stETH redemptions risk
 
-The Lido Core pool must maintain reasonable amount of `internalShares` and `internalEther` to preserve
-redeemability of the stETH token (backed both by internal and external ether supply).
+The Lido Core pool must maintain reasonable amount of `internalShares` and `internalEther` to preserve redeemability of the stETH token (backed both by internal and external ether supply).
 
 To mitigate these risks, minting security limits should be enforced together with properly aligned incentives between internal and external supply sides.
 
-Under severe Lido Core pool depleting conditions, the protocol may require redemption requests to be handled using staking vaults, attributing the `redemptions` counter nominated in ether accordingly. That would require from vault either voluntary burning `stETH` from its balance, decreasing simultaneously `liability` and `redemptions`, or rebalancing the `redemptions` amount, satisfying the assigned obligation.
+Under severe Lido Core pool depleting conditions, the protocol may require redemption requests to be handled using staking vaults, attributing the `redemptions` counter nominated in stETH shares accordingly. That would require from vault either voluntary burning `stETH` shares from its balance, decreasing simultaneously `liability` and `redemptions`, or rebalancing the  `redemptions` shares amount, satisfying the assigned obligation.
 
 ### Implementation risk
 
@@ -417,31 +427,39 @@ Rigid code reviews, external audits, well-defined access controls, emergency mec
 
 ### Staking limits and pause
 
-Pausing staking is unaffected by external shares handling.
+External shares has a global-to-TVL limit enforcing now new mints can exceed it.
 
-However, if the protocol is under stress or paused, external share minting/burning might also be temporary unoperational.
+External shares minting consumes staking rate limit and respects minting pauses.
+External shares burning returns back staking rate limit (still clamped to its max value).
+
+Pauses are implemented on multiple layers of the system:
+- Individual or multiple vaults can be non-eligible for minting using granular limits
+- VaultHub has a pause mechanism disabling minting and withdrawing operations for vaults
+- Rate limit mechanism can prevent stETH total supply increase by minting
+- Overall minting can be paused
+- All stETH token transfers can be paused
 
 ### One new minter/burner for stETH
 
 This LIP introduces a new source of minting and burning, increasing the importance of access control, deployment configuration, and monitoring.
 
-To limit the control surface, all minting and burning of external shares is authorized only via the single `VaultHub` contract. There is a global minting limit preventing external shares to exceed the sane limits upon initial proposal adoption.
+To limit the control surface, all minting and burning of external shares is authorized only via the single `VaultHub` contract. There is a global minting limit preventing external shares to exceed the sane limits upon initial proposal adoption (as said above).
 
 ## Failure modes
 
 ### External ether drained
 
-If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply (i.e., the `liability > TV` invariant broken for a vault or a group of vaults).
+If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply (i.e., the `stETH.getTotalPooledEtherRoundUp(liability) > TV` invariant broken for a vault or a group of vaults).
 
 Losses can be covered by:
 - replenishing the staking vaults accrued bad debt with additional funds;
 - socializing the bad debt among vaults containing slashed validors of the same node operator;
 - executing a self-coverage application (see [LIP-18](./lip-18.md));
-- internalizing the losses to protocol, decreasing stETH token rebase (as it would have been with the Lido Core pool staking penalties) within the next oracle report
+- internalizing the losses to protocol, decreasing stETH token rebase (as it would have been with the Lido Core pool staking penalties) within the next oracle report (see bad debt internalization mechanism described above)
 
 ### Emergency pause
 
-The collateral registry contract (`VaultHub`) and auxiliary parts implement an emergency pause mechanism, allowing to minimize the potential impact of the discovered vulnerability or unspecified critical protocol state. 
+The collateral registry contract (`VaultHub`) and auxiliary parts implement an emergency pause mechanism, allowing to minimize the potential impact of the discovered vulnerability or unspecified critical protocol state, which is suggested to be used with a GateSeal instance.
 
 Paused state prevents:
 - a new staking vault from being registered in the collateral registry;
@@ -455,7 +473,11 @@ Paused state prevents:
 
 ## Rationale
 
-The primary objective of this LIP is to establish a scalable and risk-isolated system for expanding stETH liquidity while maintaining the token's core properties. The design choices reflect careful consideration of protocol security, user experience, and ecosystem integration:
+The evolution to Lido V3 represents a severe transformation from a single-pool liquid staking protocol to a comprehensive Ethereum staking infrastructure platform. This design addresses the fundamental trade-off between staking control and liquidity that has limited liquid staking adoption among sophisticated users and institutions. 
+
+The architecture decouples validator selection from liquidity provision, enabling diverse staking strategies while preserving stETH as the unified liquidity layer. This approach expands Lido's addressable market to include users requiring specific operator choice, DVT configurations, compliance constraints, or custom staking strategies – use cases that a monolithic pool cannot accommodate.
+
+The design choices reflect careful consideration of protocol evolution, market expansion, and ecosystem integration:
 
 ### Single fungibility layer
 
@@ -470,7 +492,7 @@ Maintaining stETH as a single fungible token despite multiple backing sources pr
 
 The over-collateralization requirement at the vault level creates robust risk isolation:
 
-- **No risk socialization**: Each vault maintains its own reserve buffer (RR), ensuring that slashing or operational failures affect only that vault's participants, not the broader stETH holder base.
+- **No risk socialization**: Each vault maintains its own reserve buffer (RR), ensuring that slashing or operational failures affect only that vault's participants, not the broader stETH holder base unless failure mode is activated.
 - **Incentive alignment**: Vault operators bear the cost of their own risk through locked reserves, incentivizing prudent validator management and operational excellence.
 - **Transparent risk pricing**: Different vault types can have different reserve requirements based on their risk profile, allowing market-based risk pricing while maintaining token fungibility.
 - **Graceful degradation**: The FRT threshold enables orderly unwinding of unhealthy positions before they impact the global system, with forced rebalancing serving as a backstop.
@@ -481,7 +503,7 @@ The modular design enables protocol evolution without disrupting existing operat
 
 - **Vault type flexibility**: New staking strategies, validator configurations, or even non-staking collateral types can be added by deploying new vault implementations and registering them with VaultHub.
 - **Oracle extensibility**: The Merkle root approach in the AccountingOracle allows adding new data fields for future vault types without changing the core oracle infrastructure.
-- **Minimal coordination**: Adding a new vault type requires only deploying the vault contract and configuring it in the registry—no changes to Lido Core, stETH token, or existing integrations.
+- **Minimal coordination**: Adding a new vault type requires only deploying the vault contract and configuring it in the registry — likely no changes to Lido Core, stETH token, or existing integrations.
 - **Future-proof**: The design accommodates potential future developments like distributed validators, new consensus mechanisms, or cross-chain staking without architectural changes.
 
 ### Minimal Lido Core surface area
@@ -491,7 +513,6 @@ The design carefully limits changes to the battle-tested Lido Core:
 - **Contained complexity**: New complexity is isolated in VaultHub and vault implementations, while Lido Core adds only essential external share accounting functions.
 - **Preserved invariants**: Core protocol invariants around deposits, withdrawals, and rebasing remain unchanged; external shares are handled as a parallel accounting system.
 - **Agnostic to vault logic**: Lido Core doesn't need to understand vault-specific logic, strategies, or operational details—it only enforces the global backing invariant.
-- **Audit efficiency**: The limited surface area of changes to critical contracts reduces audit complexity and security risk compared to a full protocol redesign.
 
 ## Backward compatibility
 
@@ -504,14 +525,14 @@ The traditional ETH staking flow through Lido Core remains completely unchanged:
 - **Direct deposits**: Users can continue depositing ETH directly to the Lido contract, receiving stETH 1:1 as before. The deposit flow through `submit()` and referral functions operates identically.
 - **Deposit router**: The existing deposit distribution logic and staking module interfaces remain intact. Current staking modules continue operating without modification.
 - **Buffer management**: The buffered ether mechanics, withdrawal request handling, and deposit allocation algorithms function as they do today.
-- **Validator lifecycle**: The process of spinning up validators, managing exits, and handling rewards through the existing Node Operator Registry remains unchanged.
+- **Validator lifecycle**: The process of spinning up validators, managing exits, and handling rewards through the existing Node Operator Registry remains unchanged for Lido Core.
 
 ### wstETH wrapper compatibility
 
 The wrapped stETH (wstETH) contract and its deployments across L1 and L2s maintain full compatibility:
 
 - **Unchanged interface**: The wstETH wrapping/unwrapping mechanics remain identical, as they depend only on stETH's share-based accounting, which is preserved.
-- **Cross-chain bridges**: Existing bridge implementations for wstETH on Arbitrum, Optimism, Polygon, and other L2s continue functioning without modification.
+- **Cross-chain bridges**: Existing bridge implementations for wstETH on Arbitrum, Base, Optimism, Polygon, and other L2s continue functioning without modification.
 - **Share rate consistency**: The fundamental share rate calculation preserves the wstETH:stETH exchange rate continuity, ensuring no disruption to existing positions.
 - **Integration stability**: DeFi protocols using wstETH as collateral or for liquidity provision experience no changes in behavior or required integration updates.
 
@@ -521,25 +542,15 @@ The withdrawal request and claim system maintains full backward compatibility:
 
 - **NFT mechanics**: Withdrawal request NFTs continue to represent claims on the underlying ETH with the same finalization process and timing.
 - **Queue processing**: The withdrawal queue processes requests identically, with funds sourced from the buffer, validator exits, and now potentially vault rebalancing.
-- **API consistency**: The withdrawal request API endpoints and data structures remain unchanged, ensuring existing integrations continue working.
-- **Bunker mode**: The existing bunker mode protections and turbo mode operations function as designed, with external shares factored into the calculations transparently.
+- **Bunker mode**: The existing bunker mode protections and turbo mode operations function as designed, with external shares not affecting calculations.
 
 ### Oracle infrastructure compatibility
 
 Oracle consumers and data feeds maintain compatibility while gaining optional access to new data:
 
-- **Existing consumers**: Contracts and services consuming oracle data see no breaking changes to existing fields or report structures.
 - **Beacon chain oracles**: The beacon chain state reporting continues with the same cadence and validation requirements.
 - **Extended data**: New vault-related data is added as optional fields that don't affect existing consumers but enable new functionality for vault management.
 - **Report processing**: The oracle report submission and processing flow remains identical for existing oracle operators.
-
-### Observable changes
-
-While maintaining backward compatibility, some behavioral changes are observable:
-
-- **Supply growth dynamics**: `totalSupply` may grow more slowly than beacon chain TVL due to vault reserve requirements, but this doesn't affect token functionality.
-- **New events**: Additional events (`ExternalSharesMinted`, `ExternalSharesBurnt`, `ExternalEtherRebalanced`) are emitted for vault operations but don't interfere with existing event monitoring.
-- **Extended view functions**: New view functions are added to query external shares and vault states, while all existing functions maintain their behavior.
 
 ### Integration requirements
 
@@ -551,6 +562,8 @@ While maintaining backward compatibility, some behavioral changes are observable
 - Oracle consumers can ignore new fields until ready to utilize vault data
 
 This backward compatibility ensures a smooth transition that doesn't disrupt the extensive ecosystem built around stETH, while enabling new capabilities for those ready to leverage them.
+
+Also, previously known external proof of reserve-type feeds and tools treating Lido = Lido Core only should be updated to accomodate new external supply sources for the whole stETH token supply.
 
 ## Reference implementation
 
