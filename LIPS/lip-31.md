@@ -73,6 +73,8 @@ Every minted stETH has corresponding ether-nominated value, either inside the Li
 
 The new accounting model implements over-collateralized minting for external token supply sources, managing slashing risks across diverse staking strategies while maintaining flexibility. This approach enables the platform to support various staking setups without imposing rigid operational requirements beyond the core collateralization framework.
 
+![collateral scheme](assets/lip-31/1_collateral.png)
+
 #### Redeemability
 
 Every minted stETH must be redeemable either Lido Core pool, or the external minting collateral. 
