@@ -3,7 +3,7 @@ lip: 32
 title: Sanity Checks for stVaults
 status: WIP
 author: Alexandr Drygin, Greg Shestakov, Victor Petrenko
-discussions-to: https://research.lido.fi/t/community-staking-module/5917
+discussions-to: tbd
 created: 2025-09-01
 updated: 2025-09-12
 ---
