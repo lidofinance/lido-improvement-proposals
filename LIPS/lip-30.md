@@ -1,568 +1,598 @@
 ---
 lip: 30
-title: Expanding stETH liquidity layer with over-collateralized minting
-status: WIP
-author: Alexey Potapkin, Eugene Mamin, Eugene Pshenichnyi, Max Merkulov
-discussions-to: TBA
-created: 2024-12-06
-updated: 2025-09-11
+title: Triggerable Withdrawals Framework
+status: Proposed
+author: Raman Siamionau, Evgeniy Pirogov
+discussions-to: https://research.lido.fi/t/triggerable-withdrawals-framework-in-the-lido-protocol/10299
+created: 2025-05-21
+updated: 2025-07-04
 ---
 
-# Expanding stETH liquidity layer with over-collateralized minting
+# Simple Summary
 
-## Simple Summary
+This proposal outlines the implementation of the Triggerable Withdrawals framework within the Lido protocol. The goal is to enable permissionless, secure, and verifiable validator exits initiated from the Execution Layer. This enhancement aims to:
+- Improve the protocol’s fault tolerance
+- Reduce trust assumptions on node operators
+- Strengthen the foundation for permissionless staking within Lido
 
-Introduce an **over‑collateralised accounting system** for **stETH**, enabling the token to be backed by ether supplied **outside the Lido Core pool** while preserving full fungibility and 1:1 redeemability.
+Currently, Lido relies on the Validator Exit Bus Oracle (VEBO) and places trust in Node Operators to initiate validator exits on CL. If a node operator fails to comply with the protocol’s policies, [penalties are applied](https://docs.lido.fi/guides/oracle-spec/penalties).
 
-## Abstract
+In the new version of the framework based on the recently adopted EIP-7002, this mechanism remains in place. However, it adds a new capability: withdrawing validators who have requested to exit without requiring Node Operator action. This reduces reliance on node operators and aligns with a more decentralized and trust-minimized Lido protocol design vision.
 
-Lido V3 generalises stETH minting rules. Any entity that can
-provably lock ≥100 % collateral **plus a safety reserve** may mint stETH against the *effective* portion of that collateral. Such an entity is called a **staking vault**. The proposal defines the *in‑protocol* collateral accounting, mint / burn flow, and health‑monitoring hooks; it purposely does **not** impose implementation details on vaults themselves.
+# Abstract
 
-Key protocol additions:
+The **Triggerable Withdrawals (TW)** mechanism is a critical extension of the Lido protocol’s architecture, enabling the initiation of validator exits (and partial withdrawals in future) from the EL side without relying on the involvement of a Node Operator from the CL side. TW is based on [EIP-7002](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-7002.md), which addresses one of the long-standing issues in delegated staking on Ethereum. Previously, stakers had to rely on the goodwill of Node Operators—either to pre-sign an exit message or to agree to process it in the future. This limitation is now lifted: any party with access to a validator’s withdrawal credentials (non-`0x00` types) can initiate its exit directly via the Execution Layer. 
 
-1. **Collateral Registry (`VaultHub`)** – on‑chain ledger of every vault’s
-   *total value* (TV) and *locked* portion.  
-2. **Accounting Oracle with extended supply** – extends the existing oracle by publishing the
-   Merkle‑root of per‑vault balances; `VaultHub` verifies inclusion proofs
-   asynchronously (“lazy oracle” mechanism).  
-3. **External‑shares mint / burn** – `Lido` contract enforces  
-   `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked`, refusing mints that break it.  
-4. **Reserve‑breach hooks** – if a vault’s buffer drops below certain
-   thresholds (`RR`, `FRT`), Lido Core blocks fresh mints and can order an on‑chain rebalance (partial debt repayment through Lido Core).
+# Motivation
+For the **Lido protocol**, TW support means a substantial reduction in trust assumptions toward Node Operators and Oracles. It unlocks the following capabilities:
 
-## Motivation
+- **Permissionless Staking Modules**, such as CSM, where ETH cannot be "held hostage" even if the operator misbehaves or significantly underperforms;
+- A mechanism for **emergency validator exits**, in case of key loss or a potential compromise event;
+- **Direct DAO interaction**, enabling the Lido DAO to request validator exits independently of Oracles.
+- Enables permissionless exits for validators that have been requested to exit, preventing NOs from delaying withdrawal requests fulfillment.
 
-The Lido V2 model implicitly assumes that every new ETH deposit is equal‑risk socialized and immediately mintable 1:1, which stems from the fact that Staking Router and Staking Modules distribute stake in a decentralized and diversified way among vastly herogenious validator set. 
+# Specification
 
-As Lido scales to diverse product lines, allowing to plug external ether supply sources, represented as staking vaults, that assumption is no longer holds. Without structural safeguards a single external high‑risk source of ether supply for stETH could:
-* slash enough stake to force a global negative rebase, or  
-* mint stETH minutes before an exit, externalising risk to the broader holder base.
+## 1. Glossary
 
-By hard‑coding **over‑collateralisation at the protocol level** and measuring backing **per‑vault**, the design contains such tail risks while unlocking new ether supply lines.  stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not socialised unless extreme-conditions induced failure mode is activated.
+### **Validators Exit Bus (VEB)**
+An on-chain contract that serves as the central infrastructure for managing validator exit requests. It signals NOs to exit their validators by emitting exit request events, and maintains data and tools that enable anyone to prove a validator was requested to exit. Unlike VEBO, it supports exit reports from a wide range of entities.
 
-## Specification
+### **Validators Exit Bus Oracle (VEBO)**
+A component of the existing [oracle system](https://docs.lido.fi/guides/oracle-spec/validator-exit-bus) responsible for delivering exit request reports to the VEB on behalf of oracles. Its primary role is to initiate the exit of enough validators to efficiently fulfill pending withdrawal requests. It is a part of the VEB contract.
 
-### Glossary
+### Validator Exit Request
+Events generated within the VEB that signal to Node Operators the need to initiate exits for the validators specified in the corresponding event.
 
-| Concept | Definition | 
-|---------|------------|
-| **Staking Vault** | Any contract or module that locks ETH and requests stETH mints through VaultHub. |
-| **Total Value (TV)** | Sum of all ETH the staking vault controls on Execution + Consensus Layers simultaneously, incl. pending deposits. | 
-| **Reserve Ratio (RR)** | Minimum share of TV that **should not** be represented by stETH. |
-| **Force Rebalance Threshold (FRT)** | Minimum share of TV that incurs force rabalance if becomes represented by stETH, invariant: `FRT < RR` |
-| **Locked** | `locked = TV × (1 – RR)` (floored) |
-| **Liability** | stETH shares minted against the staking vault position (value rebases with stETH) |
-| **Global backing invariant** | `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked` |
-| **Reserve Breach** | If `TV – stETH.getTotalPooledEtherBySharesRoundUp(liability) < RR × TV`, staking vault enters *unhealthy* state. |
-| **Bad debt** | If `stETH.getTotalPooledEtherBySharesRoundUp(liability) > TV`, staking vault enters *bad debt* state |
+### **Triggerable Withdrawal**
+A validator exit process initiated via the **EL** without requiring a signature from the validator key, using withdrawal credentials and the precompile contract described in [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002).
 
-#### Design principles to uphold
+### Triggerable Withdrawal Request (TWR)
+A request to initiate a validator exit through the EL.
 
-Three key properties of the stETH token are to be preserved.
+### Triggerable Withdrawal Gateway (TWG)
+A new smart contract that serves as the single entry point for all TWRs in the protocol. Responsible for enforcing rate limits, verifying roles and permissions before forwarding EL requests to the Withdrawal Vault.
 
-#### Collaterilization
+### Late **Validator**
+A validator that has not begun the exit process within the predefined exit time window following the emission of an exit request event in VEB. Such validators can be reported permissionlessly and forwarded to the staking module for potential penalties.
 
-Every minted stETH has corresponding ether-nominated value, either inside the Lido Core pool or external ether locked (i.e., acting as the external stETH minting collateral) by the protocol. 
+### Validator Exit Delay Verifier
+A smart contract that exposes a public, permissionless interface for reporting late validators and forwarding them to Staking Modules, which may apply penalties based on module-specific rules.
 
-New accounting model suggests overcollatalized minting approach for the external part of the token supply to manage slashing risks against the diverse staking setups without enforced policies and requirements behind this part of collateral except only those covered in the current proposal.
+## 2. Scope
 
-#### Redemability
+### Scope
 
-Every minted stETH must be redeemable either Lido Core pool, or the external minting collateral. 
+The Triggerable Withdrawals framework introduces a set of changes across both on-chain and off-chain components:
+On-chain Components:
 
-This collateral must be potentially accessible by the protocol under certain conditions (e.g., collateral shortage or Lido Core pool depletion), allowing writing-off minted stETH external ether source liability by moving the corresponding external ether to the Lido Core pool (treating 1 stETH = 1 ETH).
+- [Lido Locator](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.9/LidoLocator.sol)
+- [Validators Exit Bus](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.9/oracle/ValidatorsExitBus.sol)
+    - [Validators Exit Bus Oracle](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.9/oracle/ValidatorsExitBusOracle.sol)
+- [Accounting Oracle](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.9/oracle/AccountingOracle.sol)
+- [Withdrawal Vault](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.9/WithdrawalVault.sol)
+    - [WithdrawalVaultEIP7002](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.9/WithdrawalVaultEIP7002.sol)
+- [Staking Router](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.9/StakingRouter.sol)
+- [Node Operator Registry](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.4.24/nos/NodeOperatorsRegistry.sol)
+- [New] [Validator Exit Delay Verifier](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.25/ValidatorExitDelayVerifier.sol)
+- [New] [Triggerable Withdrawals Gateway](https://github.com/lidofinance/core/blob/feat/triggerable-exits/contracts/0.8.9/TriggerableWithdrawalsGateway.sol)
 
-#### Fungibility
+Off-chain Components:
 
-The existing stETH token contract remains to be ERC-20 deployed under the same address on Ethereum mainnet.
+- [Lido Oracle](https://github.com/lidofinance/lido-oracle/pull/685)
+- [Validator Ejector](https://github.com/lidofinance/validator-ejector)
+- [New] Trigger Exits Bot
+- [New] Validator Late Prover Bot
 
-Minting or burning new stETH does not trigger stETH token rebase, rebases keep happenning inside the establed `AccountingOracle` report lifecycle as a part of the main phase of the report data delivery. Rewards and penalties, accrued for stETH rebase, remain to be defined by the Lido Core pool validator set (i.e., stETH minted against the external minting collateral doesn't change the embedded stETH staking APR) unless failure mode is activated. 
+## 3. Architecture and Scenarios
 
-### Key accounting changes
+At a high level, the architecture is centered around the **VEB**, which serves as the main coordination point for validator exit requests. Exit reports can be submitted to the VEB by trusted entities, which then emit validator exit events. Once exit request events are emitted, Node Operators are expected to voluntarily initiate the validator exit.
 
-> For simplicity, 'external ether' means 'staking vault minting collateral', and 'external shares' are stETH shares minted against staking vaults.
+The **VEBO** is an extension of the **VEB**, designed to support oracle-driven reporting. While VEB serves as the central hub for coordinating exit events, VEBO adds an oracle-specific layer that enables oracles to submit and confirm exit reports.
 
-#### Total pooled ether update
+To manage all **Triggerable Withdrawal Requests (TWRs)** submitted by authorized entities, a dedicated smart contract called the **Triggerable Withdrawals Gateway (TWG)** is introduced. This contract acts as the single entry point for TWRs from trusted sources and forwards valid requests to the **Withdrawal Vault**. It is responsible for:
 
-The total pooled ether (`totalPooledEther`) including the staking vault ether becomes:
+- Validating the roles and permissions of the caller;
+- Enforcing rate limits for safety and protocol stability;
+- Coordinating with the `Withdrawal Vault` to trigger validator exits via the Execution Layer (EL);
 
-```math
-\text{totalPooledEther} = \text{bufferedEther} + \text{CLbalance} + \text{transientEther} + \text{externalEther}.
+Once an exit event has been emitted via the VEB, **any participant** can submit a TWR through a permissionless interface provided by the VEB contract. VEB ensures that the validator was indeed requested to exit before passing the request to the TWG for execution.
+
+Additionally, the architecture includes a **Validator Exit Delay Verifier**, a contract that allows anyone to report late validators—those that failed to begin exiting within the expected time window after an exit event was emitted. These reports are submitted on-chain and forwarded to the appropriate staking modules, which may apply penalties based on module-specific logic.
+
+### 3.1 Report Validators to Exit
+
+This flow describes a **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract or a governance mechanism (possibly represented via [Easy Track](https://docs.lido.fi/guides/easy-track-guide/) motions) can submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
+
+The second phase involves revealing the actual report data and emitting exit events for the listed validators. When the data is revealed, the contract saves a timestamp linked to the data hash. This later allows any actor to prove that a specific validator was requested to exit, and when the corresponding event was emitted.
+
+![Report Validators to Exit](assets/lip-30/1_report_validators_to_exit.png)
+
+### 3.2 Triggerable Withdrawal Requests submittion
+
+This scenario describes the creation of **Triggerable Withdrawals** flows through the **TW Gateway (TWG)**.
+
+There are two separate flows for triggering withdrawals, depending on the actor:
+
+- Creating a TWR through the **VEB**;
+- Creating a TWR through the **CSM**.
+
+Both flows go through the **TWG**, which checks the caller contract roles, enforces exit limits, refunds any extra value provided, and forwards the request to the Withdrawal Vault. After that, it notifies the Staking Router with information about which validator was requested to exit and the associated fee.
+
+![Triggerable Withdrawal Requests submittion](assets/lip-30/2_create_triggerable_withdrawal_requests.png)
+
+---
+
+#### Submitting TWR through the VEB
+
+Any actor can trigger a validator exit that was previously requested through the **VEB**, as soon as the report has been revealed. The participant uses the previously submitted report data and specifies the validator indices (in an array) to be exited. The **VEB** then performs the following checks:
+
+- The provided exit data hash exists and matches the hash stored in the VEB.
+- The corresponding data has already been revealed.
+
+Once validated, the request is forwarded to the **TWG** — the central contract handling all triggerable exit requests. The **TWG**:
+
+- Enforces frame-level rate limits.
+- Forwards the request to the **Withdrawal Vault**, which interacts with the **EIP-7002 precompile** to trigger the actual exit.
+- Notifies the associated staking module.
+- Refunds any extra value provided.
+
+---
+
+#### Submitting TWR through CSM
+
+This flow mirrors the previous one, but instead of using validators that were requested to exit, **trusted entities** can directly initiate an exit **without any prior exit request event in the VEB**.
+
+This direct exit flow is available to specific entities such as **CSM**, but due to its powerful nature, modules must adhere to strict internal checks before using it. These include:
+
+- Verifying that the validator key belongs to the module.
+- Ensuring the key was deposited via Deposit Security Module (**DSM**).
+- Ensuring there are no key duplicates in one transaction to avoid dry out TWG limits.
+- Implementing additional logic to confirm that the entity calling the **TW** is authorized (e.g., owns the key or is creating a TWR for a validator that is permitted to exit).
+
+With proper validation and verifiable on-chain code, this mechanism allows modules to trigger validator exits **without increasing trust assumptions** toward Node Operators or third parties.
+
+---
+
+### 3.3 Report Late Validators
+
+A **Late Validator** is a validator that was requested to exit via the VEB, but failed to begin exiting on the CL within a defined window (e.g., N slots or epochs). To allow staking modules to penalize such behavior, late validators must be explicitly reported on-chain.
+
+Previously, this was handled via the **AO** by reporting the count of stuck validators. However, this approach was inflexible, fully off-chain dependent, and prone to race conditions — a validator might have exited just before the AO reported it as stuck.
+
+With the new flow, **any actor** can report a validator as "late" as soon as it misses its expected exit window — even by a single slot. This makes the penalty mechanism more precise and unavoidable.
+
+To do this, a participant must:
+
+- Submit a **proof of the validator’s current state** on the CL;
+- Reference the VEB report in which the validator was requested to exit.
+
+The system calculates the difference between:
+
+- The timestamp of the exit request emission (from VEB) or validator’s `activation epoch + COMMITTEE_PERIOD`.
+- The timestamp of the CL state showing the validator is still active.
+
+This time delta is passed to the **staking module**, which uses its internal logic to decide whether a penalty should be applied to the Node Operator and what kind of action is warranted.
+
+![Report Late Validators](assets/lip-30/3_report_late_validators.png)
+
+## 4. On-chain Components
+
+This section provides a detailed breakdown of each smart contract involved in the Triggerable Withdrawals framework, including their purpose, responsibilities, functions, and external interfaces.
+
+### 4.1 Validator Exit Bus
+
+The Validator Exit Bus is the core contract for coordinating validator exit requests within the Lido protocol.
+
+#### Responsibilities
+
+- Emitting `ValidatorExitRequest` events based on unpacked exit requests.
+- Enforcing rate limits on the number of exits per block.
+- Tracking exit report history and providing tools to prove that a validator was requested to exit.
+
+---
+
+#### ⚠️ Removal of Last Requested Validator Indexes from On-Chain Storage
+
+Since reports will be delivered not only by Oracles, the contract can no longer guarantee that all validators under a single Node Operator will be requested to exit in order based on their validator indexes on the CL. As a result, functionality relying on this assumption becomes obsolete.
+
+With the introduction of TW, it is expected that once validators are marked as delayed, they will be exited through the TW framework. Therefore, all off-chain applications that previously relied on ordered exits can simply monitor the validator’s state on the CL and read the latest events to determine which validators have been requested to exit or have already exited.
+
+```diff
+contract ValidatorsExitBusOracle {
+-  function getLastRequestedValidatorIndices(uint256 moduleId, uint256[] calldata nodeOpIds) view;
+}
 ```
 
-If we denote ether supply under the Lido Core pool as `internalEther`:
+---
 
-```math
-\text{internalEther} = \text{bufferedEther} + \text{CLbalance} + \text{transientEther}
+#### Pausable Contract
+
+The **Validator Exit Bus** contract is pausable using the [GateSeal](https://github.com/lidofinance/gate-seals?tab=readme-ov-file#what-is-a-gateseal) to prevent unexpected behavior that could harm the protocol.
+
+When the contract is paused, it prevents hash submissions, data reveals, and exits triggering.
+
+---
+
+#### Limits enforcement
+
+This contract uses the **Limits Library** to enforce rate limiting. Each **Validator Exit Request** consumes one unit of quota. All Validator Exit Requests, except those from Oracle reports, are subject to a single global limit. Oracle reports are limited with Oracle Sanity Checker contract.
+
+Technical implementation: [**Appendix A – Limit Implementation**](#appendix-a--limit-implementation)
+
+In addition to limits, a restriction on the number of max processed validators per tx will be applied. This ensures that the report cannot consume excessive gas during processing.
+
+---
+
+#### Hash Invalidation
+
+Data hashes are invalidated if the VEB contract version changes, preventing outdated data from being revealed in some point of time in far future.
+
+---
+
+#### Validator Exit Bus Oracle
+
+VEBO is an extension of VEB designed specifically to support oracle-based report submission.
+
+**Core differences in exit data revealing comparing to VEB:**
+- Report hash is saved into VEB during data submission (on second phase of VEBO report).
+- Only Oracle Members can submit report (or someone with `SUBMIT_DATA_ROLE`).
+
+---
+
+### 4.2 Triggerable Withdrawals Gateway
+
+The **Triggerable Withdrawals Gateway** is a core contract responsible for receiving and processing all **Triggerable Withdrawal Requests (TWRs)**. It enforces rate limits on TWR creation, calculates the required fee per request, issues refund (if any) to the designated recipient, and forwards validated requests to the **Withdrawal Vault**. After processing, it notifies the **Staking Router** about the request for further action.
+
+---
+
+#### Limits enforcement
+
+This contract uses the **Limits Library** to enforce rate limiting. Each **TWR** consumes **one unit of quota**. All TWRs, regardless of their source, are subject to a **single global limit**, ensuring that the total number of processed requests remains within the protocol-defined capacity.
+
+[Analytics numbers](https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view) 
+
+Technical implementation: [**Appendix A – Limit Implementation**](#Appendix-A-–-Limit-Implementation) 
+
+---
+
+### 4.3 Withdrawal Vault
+
+The **Withdrawal Vault** is a core contract capable of performing **Execution Layer (EL) requests**. We implement support for [EIP-7002: Execution Layer Triggerable Withdrawals](https://eips.ethereum.org/EIPS/eip-7002).
+
+### 4.4 Validator **Exit Delay** Verifier
+
+The **Validator Exit Delay Verifier** is a contract responsible for detecting **late validators**—validators that were requested to exit via the VEB but have **not yet initiated exit on the CL**. It calculates the time during which Node Operators have failed to exit their validators and provides this information to **Staking Modules** via the **Staking Router**.
+
+This is done by submitting **proofs** that:
+- The validator **has no exit epoch set** on CL at a known slot;
+- The validator **was requested to exit** via a previously submitted VEB report.
+
+
+#### Calculating `secondsSinceEligibleExitRequest` sent to the Staking Module for each validator
+
+It is important to note that `secondsSinceEligibleExitRequest` is **not always equal** to the raw difference between the timestamp when the validator was requested to exit and the timestamp when the validator is still observed as active. In edge cases, a Node Operator **may not be able to initiate an exit immediately**—for example, if the validator was only recently activated.
+
+Therefore, this value represents the time **between the moment the Node Operator was first eligible to initiate the exit** (i.e., after activation and exit eligibility conditions were met) **and the moment the validator is still observed as active**.
+
+### 4.5 Staking Router
+
+The main update introduces support in the **Staking Router** for a new interface that staking modules must implement. This interface includes two new methods:
+
+- One for reporting **late validators**;
+- One for reporting all **triggerable withdrawal requests** that have been executed for validators managed by the module.
+
+#### 4.6 IStakingModule
+
+IStakingModule is updated with new methods required to fully support TW. New interface and methods description can be found below:
+
+```solidity
+/// @notice Handles tracking and penalization logic for a validator that remains active beyond its eligible exit window.
+/// @dev This function is called by the StakingRouter to report the current exit-related status of a validator
+///      belonging to a specific node operator. It accepts a validator's public key, associated
+///      with the duration (in seconds) it was eligible to exit but has not exited.
+///      This data could be used to trigger penalties for the node operator if the validator has exceeded the allowed exit window.
+/// @dev Reverts if the function call would have no effect on the node operator (i.e., no new penalization will be applied).
+///
+/// @param _nodeOperatorId The ID of the node operator whose validator's status is being delivered.
+/// @param _proofSlotTimestamp The timestamp (slot time) when the validator was last known to be in an active ongoing state.
+/// @param _publicKey The public key of the validator being reported.
+/// @param _eligibleToExitInSec The duration (in seconds) indicating how long the validator has been eligible to exit but has not exited.
+function reportValidatorExitDelay(
+    uint256 _nodeOperatorId,
+    uint256 _proofSlotTimestamp,
+    bytes calldata _publicKey,
+    uint256 _eligibleToExitInSec
+) external;
+    
+/// @notice Determines whether a validator's exit status should be updated and will have an effect on the Node Operator.
+/// @param _nodeOperatorId The ID of the node operator.
+/// @param _proofSlotTimestamp The timestamp (slot time) when the validator was last known to be in an active ongoing state.
+/// @param _publicKey The public key of the validator.
+/// @param _eligibleToExitInSec The number of seconds the validator was eligible to exit but did not.
+/// @return bool Returns true if the contract should receive the updated status of the validator.
+function isValidatorExitDelayPenaltyApplicable(
+    uint256 _nodeOperatorId,
+    uint256 _proofSlotTimestamp,
+    bytes calldata _publicKey,
+    uint256 _eligibleToExitInSec
+) external view returns (bool);
+    
+/// @notice Handles the triggerable exit event for a validator belonging to a specific node operator.
+/// @dev This function is called by the StakingRouter when a validator is exited using the triggerable
+///      exit request on the Execution Layer (EL).
+/// @param _nodeOperatorId The ID of the node operator.
+/// @param _publicKey The public key of the validator being reported.
+/// @param _withdrawalRequestPaidFee Fee amount paid to send a withdrawal request on the Execution Layer (EL).
+/// @param _exitType The type of exit being performed.
+///        This parameter may be interpreted differently across various staking modules, depending on their specific implementation.
+function onValidatorExitTriggered(
+    uint256 _nodeOperatorId,
+    bytes calldata _publicKey,
+    uint256 _withdrawalRequestPaidFee,
+    uint256 _exitType
+) external;
+    
+/// @notice Returns the number of seconds after which a validator is considered late.
+/// @return uint256 The exit deadline threshold in seconds for all node operators.
+function exitDeadlineThreshold(uint256 _nodeOperatorId) public view returns (uint256);
 ```
 
-```math
-\text{internalShares} = \text{totalShares} - \text{externalShares}
+### 4.7 Node Operator Registry and sDVT
+
+In the **Node Operators Registry**, all logic related to **stuck keys** and corresponding penalties will be removed.
+
+When a late validator is reported, the module will not take any direct action other than **emitting a late event**. The same applies when a validator is exited through a triggerable withdrawals — the event will be emitted, but no penalty logic will be executed.
+
+⚠️ This update applies to both the Curated Module and the sDVT Module.
+
+### 4.8 Lido Locator
+
+The following new contract addresses are planned to be added to the **Lido Locator**:
+
+- `TriggerableWithdrawalsGateway`
+- `ValidatorExitDelayVerifier`
+
+### 4.9 Accounting Oracle
+    
+The Accounting Oracle is no longer responsible for delivering stuck keys to the staking modules. Therefore, the data format related to stuck keys has been deprecated. Extra data tx from Oracles will be reverted in case if there are stuck keys info.
+
+## 5. Off-chain Components
+
+### 5.1 Validator Exit Bus Oracle
+
+The following changes will be applied to the **off-chain VEBO exit order**:
+
+- **Remove the "stuck and delayed key" predicate** – since Node Operators will no longer be able to intentionally delay exits (because of TW), this check is obsolete.
+- **Remove the 1% Penetration in Ethereum Stake predicate** – originally designed to prevent newly onboarded Node Operators from immediately exiting validators after receiving stake. However, this logic is currently non-functional and adds unnecessary configuration complexity. 
+
+Updated Sorting List:
+```
+| Sorting | Module                                      | Node Operator                                         | Validator              |
+| ------- | ------------------------------------------- | ----------------------------------------------------- | ---------------------- |
+| V       |                                             | Highest number of targeted validators to boosted exit |                        |
+| V       |                                             | Highest number of targeted validators to smooth exit  |                        |
+| V       | Highest deviation from the exit share limit |                                                       |                        |
+| V       |                                             | Highest number of validators                          |                        |
+| V       |                                             |                                                       | Lowest validator index |
 ```
 
-The key change is that stETH share rate is now calculated based on internal ether and internal shares:
+---
 
-```math
-\text{shareRate} = \frac{\text{internalEther}}{\text{internalShares}}
+**Duplicating Validator Exit Requests**
+
+After the introduction of **VEB** and the ability for other actors to deliver and unpack reports, the assumption that validators will be exited strictly in ascending order of their indexes from the CL within each Node Operator will no longer be valid. This means that smart contracts will no longer store validator indexes for each Node Operator, and **VEBO** will have to independently determine which validators have already been requested for exit.
+
+**VEBO** will rely on emitted events `ValidatorExitRequest` to decide which validators can be exited. The general logic is as follows:
+
+- Fetch all active validators from the CL.
+- Exclude all validators who have been requested for exit during the last time window starting from the reference slot.
+    The size of this window is controlled by the parameter `EXIT_EVENTS_LOOKBACK_WINDOW_IN_SLOTS`, which is located in the `OracleDaemonConfigs` contract.
+
+Given the above, there’s a possible situation where **VEBO** may re-request exits for validators that were already requested for exit earlier if those requests were made a long time ago and the validators have not yet exited.
+
+This is considered a normal scenario - it’s expected that all validators will eventually be exited, either by the Node Operator or using the **TWR** framework. Additionally, if validators who were exited before the introduction of the **TW** framework end up stuck, the Oracle will re-request their exit, and they will subsequently be able to exit through the **TW** mechanism.
+
+### 5.2 Accounting Oracle
+
+All functionality related to reporting stuck keys will be removed from Accounting Oracle because it was completely replaced by a new permissionless method for reporting **late** validators. 
+
+### 5.3 Validator Ejector
+
+Some changes will also be required in the Validator Ejector. Currently, we have an allowlist of oracle addresses that protects Node Operators from man-in-the-middle attacks between the ejector and EL node. In the new version of the protocol, reports can be delivered through governance votes and Easy Track motions, which will require updates to support this new functionality.
+
+This will be addressed by introducing new parameters that can whitelist the creator of an Easy Track motion or specific transactions that revealed an exit report. Additionally, if a Node Operator hosts their own Execution Layer node or fully trusts their provider, there will be an option to disable this protection entirely to reduce the operational overhead of managing allowlists.
+
+### 5.4 Trigger Exits Bot
+
+Lido requires an automated mechanism to **trigger validator exits** when delays occur, ensuring that withdrawal requests are not unnecessarily stalled and users experience smooth exits.
+
+The bot will:
+- Scan for validators marked as requested-to-exit in the Validator Exit Bus (VEB).
+- Monitor whether they have completed their exit in a timely manner.
+- Estimate and use optimal gas prices for efficient execution.
+- Operate permissionlessly—**anyone can run the bot** to help execute exits.
+- Depend on Staking Modules to expose clear rules or public methods for determining which validators are delayed.
+- Serve as a **fallback mechanism** when Node Operators fail to execute voluntary exits on time, by submitting TWRs through the EL.
+
+### 5.5 Validator Late Prover Bot
+
+Lido also requires an automated tool to **detect and report late validators** who have failed to exit within the required timeframe after an exit request.
+
+The bot will:
+- Continuously track validator exit status on the CL.
+- Compare current status to the timestamp of the `ExitRequested` event from VEB.
+- Generate and submit **proofs of delinquency** if a validator has overstayed its exit window.
+- Operate permissionlessly, ensuring anyone can contribute to protocol safety.
+- Rely on Staking Modules to expose public interfaces or logic to validate the delay and apply penalties.
+
+## 6. **Security considerations**
+
+### 6.1 Attack Vector: Vulnerability from Uncontrolled Creation of TWRs
+
+If proper access controls or exit report validations are missing or incorrectly enforced in the **Triggerable Withdrawals flow**, a malicious actor may be able to **bypass intended safeguards** and force **unauthorized or premature exits** of active validators. This may occur under several conditions:
+
+- A **compromised or misconfigured smart contract** allows EL exits without verifying validator ownership or deposit origin.
+- The **Triggerable Withdrawals Gateway** fails to enforce role-based restrictions, allowing anyone to invoke `triggerExitsDirectly`.
+
+**Impact:**
+
+- Mass exit of healthy validators, negatively affecting protocol APR and TVL.
+- **Loss of rewards** for Node Operators due to unexpected validator exits.
+- **Reputational damage** and erosion of user trust.
+
+**Mitigations:**
+
+- Enforce strict access control in the Triggerable Withdrawals Gateway via role-based checks.
+- Limit TWRs creating.
+- Implement monitoring and alerting; allow the contract to be paused via the GreatSeal contract.
+- Add constraints to TWR creation for trusted smart contracts (e.g., validate key ownership, deposit origin.
+
+### 6.2 Spam attack on TW limits. Trying to censorship usefull TWR
+
+The **Triggerable Withdrawals framework** enforces a TW **limit** to protect the protocol from excessive or abusive validator exits. However this mechanism can be exploited by a malicious actor to perform a **DoS** attack by **saturating the tw quota with spam validator TWRs**, spending limit quota and thereby blocking legitimate exits during that frame.
+
+Impact:
+- Validators cannot be exited via the Execution Layer when needed.
+Mitigation:
+- The cost of spamming will be prohibitively high for the attacker, provided the quota limits are not set too low.
+
+Analytics research:
+- [Global Limit on Maximum TW](https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view)
+
+## 7. Proposed params
+
+Below is a list of configuration values and roles that will be assigned as part of the upcoming upgrade. If certain parameters are not listed, they will either remain unchanged or are defined by network-level constraints.
+
+#### ValidatorExitBusOracle.sol
+
+| Name                         | Value | Description                                                           |
+|------------------------------|-------|-----------------------------------------------------------------------|
+| `maxValidatorExitsPerReport` | 600   | Maximum number of validators that can be delivered in a single report |
+| `maxExitRequestsLimit`       | 11200 | Maximum quota can be accumulated                                      |
+| `exitsPerFrame`              | 1     | Amount of quota replenished per frame                                 |
+| `frameDuration`              | 48    | Duration of each frame in seconds                                     |
+
+| Role                              | Assignee                                                                                                                               |
+|-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `DEFAULT_ADMIN_ROLE`              | Aragon Agent                                                                                                                           |
+| `SUBMIT_REPORT_HASH_ROLE`         | [Easy Track Motion](https://docs.lido.fi/guides/easy-track-guide/) will be used by Node Operators and sDVTComeette to eject validators |
+| `EXIT_REQUEST_LIMIT_MANAGER_ROLE` | Not assigned by default                                                                                                                |
+| `PAUSE_ROLE`                      | GateSeal contract                                                                                                                      |
+| `RESUME_ROLE`                     | ResealManager contract                                                                                                                 |
+
+#### TriggerableWithdrawalsGateway.sol
+
+| Name                   | Value | Description                           |
+|------------------------|-------|---------------------------------------|
+| `maxExitRequestsLimit` | 11200 | Maximum quota can be accumulated      |
+| `exitsPerFrame`        | 1     | Amount of quota replenished per frame |
+| `frameDuration`        | 48    | Duration of each frame in seconds     |
+
+| Role                               | Assignee                           |
+|------------------------------------|------------------------------------|
+| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                       |
+| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` contract |
+| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default            |
+| `PAUSE_ROLE`                       | GateSeal contract                  |
+| `RESUME_ROLE`                      | ResealManager contract             |
+
+#### StakingRouter.sol
+
+| Role                                   | Assignee                                 |
+|----------------------------------------|------------------------------------------|
+| `DEFAULT_ADMIN_ROLE`                   | Aragon Agent                             |
+| `REPORT_VALIDATOR_EXITING_STATUS_ROLE` | `ValidatorExitDelayVerifier` contract    |
+| `REPORT_VALIDATOR_EXIT_TRIGGERED_ROLE` | `TriggerableWithdrawalsGateway` contract |
+
+#### NoderOperatorRegistry.sol
+
+| Role                        | Assignee                 |
+|-----------------------------|--------------------------|
+| `DEFAULT_ADMIN_ROLE`        | Aragon Agent             |
+| `MANAGE_NODE_OPERATOR_ROLE` | Easy Track Motion        |
+| `STAKING_ROUTER_ROLE`       | `StakingRouter` contract |
+
+### Curated and sDVT Staking Module
+
+| Name                    | Value  | Description                                                                                                                                                  |
+|-------------------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `exitDeadlineInSeconds` | 432000 | Number of seconds within which Node Operators must complete a validator exit. Inherited from STUCK_PENALTY_DELAY (retrievable via `getStuckPenaltyDelay()`). |
+
+## 8. **Appendix**
+
+### **Appendix A – Limit Implementation**
+
+To protect the Lido protocol from excessive validator exits and prevent abuse, a **rate-limiting mechanism** is introduced for VEB and TWG. This mechanism enforces a dynamic quota system that gradually grows over time and is consumed as exits are triggered.
+
+**Limit Mechanics**
+
+The system is governed by three core parameters:
+
+1. `maxExitRequestsLimit`
+    The maximum capacity of the quota. The available quota cannot exceed this value. With time, the quota is gradually replenished — up to this maximum.
+2. `exitsPerFrame`
+    Defines how much new quota becomes available with each new frame. This enables gradual and predictable replenishment of the quota over time.
+3. `frameDuration` 
+       The duration of each frame, in seconds, after which `exitsPerFrame` exits can be restored.
+
+**Track Remaining Quota**
+
+The system keeps `prevExitRequestsLimit` — the remaining quota after the last usage.
+When a new request arrives, the system checks how much time has passed since `prevTimestamp`. It calculates how many full `frameDuration` intervals (frames) have elapsed.
+For each full frame passed, `exitsPerFrame` units are restored. The updated quota is calculated as:`restoredQuota = prevExitRequestsLimit + framesPassed * exitsPerFrame`, but it is capped at `maxExitRequestsLimit`.
+The request amount is subtracted from the restored quota. This new value becomes the `prevExitRequestsLimit` for future calculations.
+The `prevTimestamp` is advanced by `framesPassed * frameDuration`, anchoring the system for the next round of quota restoration.
+
+### Appendix B - Easy Track factories for VEB
+
+To simplify the exit request process for Node Operators (NOs) from the **Curated** and **sDVT Staking Modules**, **Easy Track** factories will be set up to facilitate exit requests.
+
+**Easy Track** will allow authorized actors to submit a report hash to the **Validator Exit Bus (VEB)** along with a desired list of validators, applying the following sanity checks:
+
+- Verify that the validators in the list are under the actor’s control.
+- Verify that the validator keys genuinely belong to the specified staking module and Node Operator.
+- Verify that the keys were deposited through the Lido protocol.
+
+**[Easy Tracks Audit Scope](https://hackmd.io/FD1xzyibTXGhRnIek38Vhw?view)** 
+
+### Appendix C - Utilizing submitExitRequestsHash by Governance
+The `submitExitRequestsHash` will also be used by governance to instantly exit a validator without relying on the Validator Exit Bus Oracle, which imposes its own limitations in terms of report frequency and size.
+
+Tooling will be required to compute the data, which will help prepare the structure for hashing.
+
+The structure should be as follows:
+- dataFormat – `1` - only supported for now
+- data – a concatenated array of entries, where each entry is structured like this:
+```
+/// MSB <------------------------------------------------------- LSB
+/// |  3 bytes   |  5 bytes   |     8 bytes      |    48 bytes     |
+/// |  moduleId  |  nodeOpId  |  validatorIndex  | validatorPubkey |
 ```
 
-This ensures that external vault performance doesn't affect the core stETH share rate under normal operation. The external ether is then calculated as:
-
-```math
-\text{externalEther} = \text{externalShares} \times \text{shareRate} = \frac{\text{externalShares} \times \text{internalEther}}{\text{internalShares}}
+The hash to submit can be computed as follow:
+```
+hash = keccak256(abi.encode(request.data, dataFormat))
 ```
 
-After applying the oracle report with fees:
-
-```math
-\text{totalPooledEther}_{\text{post}} = \text{internalEther}_{\text{post}} + \text{externalShares}_{\text{post}} \times \frac{\text{internalEther}_{\text{post}}}{\text{internalShares}_{\text{post}}}
-```
-
-> NB: Any changes in `shareRate` affect `externalEther` as a part of the regular stETH token rebase induced by `AccountingOracle`.
-Therefore, the staking vault must maintain the reserve sufficient to update the total collateralized ether amount as a part of the token rebase.
-
-#### Mint external shares
-
-The amount of external stETH shares minted MUST be fully backed via a staking vault (including `RR`).
-
-> NB: The mint operation MUST NOT incur the stETH token rebase.
-
-Upon external shares minting, the `Lido` contract increases the stored `externalShares`. The key insight is that the share rate used for external minting is based on internal values:
-
-- $\Delta S_{\text{ext}}$ as the number of external shares to be minted
-- $\text{shareRate} = \frac{\text{internalEther}}{\text{internalShares}}$ as the current internal share rate
-
-The relationship between incremental external shares and the ether they represent:
-
-```math
-\Delta ETH_{\text{ext}} = \Delta S_{\text{ext}} \times \text{shareRate} = \Delta S_{\text{ext}} \times \frac{\text{internalEther}}{\text{internalShares}}
-```
-
-After minting:
-- External shares increase: `externalShares_new = externalShares_old + ΔS_ext`
-- Total shares increase: `totalShares_new = totalShares_old + ΔS_ext`
-- External ether implicitly increases by: `ΔS_ext × shareRate`
-- The global backing invariant must still hold: `totalSupply ≤ internalEther + Σ Staking Vault locked`
-
-#### Burn external shares
-
-A staking vault can burn stETH shares from its balance to unlock the corresponding external ether collateral. This decreases the stored `externalShares`:
-
-- $\Delta S_{\text{ext, burn}}$ as the number of external shares to burn
-- The ether value represented by these shares: $\Delta ETH_{\text{ext, burn}} = \Delta S_{\text{ext, burn}} \times \frac{\text{internalEther}}{\text{internalShares}}$
-
-After burning:
-- External shares decrease: `externalShares_new = externalShares_old - ΔS_ext,burn`
-- Total shares decrease: `totalShares_new = totalShares_old - ΔS_ext,burn`
-- External ether implicitly decreases by: `ΔS_ext,burn × shareRate`
-- The vault's available collateral increases accordingly
-
-#### Rebalance
-
-Rebalance allows converting external shares to internal by transferring ether from vaults to the Lido Core pool. This operation maintains key invariants while adjusting the internal/external balance:
-
-**Rebalance invariants:**
-1. Total shares remain constant: `totalShares_old = totalShares_new`
-2. Total pooled ether remains constant: `totalPooledEther_old = totalPooledEther_new`
-3. Share rate remains unchanged (no rebase triggered)
-
-**Process for rebalancing** $\Delta S_{\text{ext}}$ external shares:
-
-The vault must transfer ether equal to: $\Delta ETH = \Delta S_{\text{ext}} \times \frac{\text{internalEther}}{\text{internalShares}}$
-
-After rebalance:
-```math
-externalShares_{new} = externalShares_{old} - \Delta S_{\text{ext}}
-```
-```math
-internalShares_{new} = internalShares_{old} + \Delta S_{\text{ext}}
-```
-```math
-internalEther_{new} = internalEther_{old} + \Delta ETH
-```
-```math
-bufferedEther_{new} = bufferedEther_{old} + \Delta ETH
-```
-
-Rebalance is used to:
-- Restore vault health when reserves fall below thresholds
-- Handle forced rebalancing when FRT is breached
-- Manage collateral during slashing events
-
-#### Oracle reports
-
-Accounting oracle reports happen in the same cadence as before, but now include handling of vault-related bad debt.
-
-Token rebase is implemented such that `externalEther` gets updated according to the newly delivered Lido Core pool changes after rewards and fees are distributed.
-
-##### Rewards, penalties, and fees
-
-Rewards and penalties accrued by the Lido Core pool validator set define the stETH token rebase. The key change is that share rate calculations now use internal ether and shares:
-
-Transient balance as observed during the report gathering:
-```math
-transientCLBalance_{report} = 32ETH \times (CLValidators_{report} - CLValidators_{pre})
-```
-Principal CL balance as observed during the report: 
-```math
-principalCLbalance_{report} = CLbalance_{pre} + transientCLBalance_{report}
-```
-Rewards accrued as observed during the report:
-```math
-CLrewards_{report} = [CLbalance_{report} + withdrawalVault.balance_{report}] - principalCLbalance_{report}
-```
-Internal ether before fees:
-```math
-internalEther_{\text{beforeFees}} = 
-    internalEther_{pre} + CLrewards_{report} + elRewardsVault.balance_{report} - wqWithdrawals_{report}
-```
-Internal shares before fees:
-```math
-internalShares_{\text{beforeFees}} = 
-    internalShares_{pre} - sharesToBurn_{report}
-```
-
-Protocol fees are now calculated based on internal values:
-```math
-sharesToMintAsFees = \frac{feeEther \times internalShares_{\text{beforeFees}}}{internalEther_{\text{beforeFees}} - feeEther}
-```
-
-After fees and bad debt internalization:
-```math
-internalShares_{\text{post}} = internalShares_{\text{beforeFees}} + sharesToMintAsFees + badDebtToInternalize
-```
-```math
-externalShares_{\text{post}} = externalShares_{pre} - badDebtToInternalize
-```
-
-Lido Core continues to be the sole source of *token* rebases; however, the
-oracle now carries the extra field `vaultsRoot`, containing the Merkle root of each vault's `TV`, `fees`, `liability`, `slashing reserve`.
-
-The on‑chain `AccountingOracle` stores the last accepted root. `VaultHub.processVaultReport(proof, values)` can be called permissionlessly
-throughout the oracle period to update individual vaults lazily.
-
-##### Bad debt internalization
-
-If there is bad debt to be internalized from vaults, the protocol:
-1. Decreases external shares by the bad debt amount
-2. Increases internal shares by the same amount
-3. This effectively socializes the loss across all stETH holders through share rate dilution
-
-This process happens **after** CL state updates but **before** token rebase emission, maintaining the "one global APR" invariant.
-
-##### Rebase smoothening and sanity checks
-
-To prevent oracle frontrunning and ensure system stability, the protocol applies rebase smoothening:
-
-1. **Base for smoothening**: Internal ether and internal shares (excluding external values)
-2. **Sanity checks** include:
-   - Report timestamp must be in the past
-   - CL validators must be between previous count and deposited validators
-   - Internal shares post-rebase cannot be zero
-   - Simulated share rate validation for withdrawal finalization
-
-The final post-rebase values are calculated as:
-```math
-postTotalShares = postInternalShares + postExternalShares
-```
-```math
-postTotalPooledEther = postInternalEther + \frac{postExternalShares \times postInternalEther}{postInternalShares}
-```
-
-This ensures that:
-- External vaults don't affect the core pool's rebase calculations
-- Share rate remains stable and predictable
-- Bad debt socialization happens transparently
-
-## Specification (minimal)
-
-#### Function: `Lido.totalPooledEther() → uint256`
-
-Returns  
-`internalEther + externalEther`, where:
-- `internalEther = bufferedEther + CLBalance + transientEther`
-- `externalEther = externalShares * internalEther / internalShares`
-
-#### Function: `Lido.mintExternalShares(address receiver, uint256 sharesAmount)`
-*Requirements*
-
-1. **caller** must be `VaultHub`.
-2. `sharesAmount` must not be zero.
-3. Staking must not be paused.
-4. External balance limit must not be exceeded.
-
-*Effects*
-
-1. `externalShares += sharesAmount`  
-2. Mint `sharesAmount` stETH shares to `receiver`.
-3. Total pooled ether increases by `sharesAmount * shareRate` (implicitly).
-
-*Events*  
-`ExternalSharesMinted(receiver, sharesAmount)`.
-
-#### Function: `Lido.burnExternalShares(uint256 sharesAmount)`
-*Requirements*
-
-1. **caller** must be `VaultHub`.
-2. `sharesAmount` must not be zero.
-3. Staking must not be paused.
-4. `externalShares >= sharesAmount` (sufficient external shares).
-
-*Effects*
-
-1. Burn `sharesAmount` stETH shares from caller.
-2. `externalShares -= sharesAmount`.
-3. Total pooled ether decreases by `sharesAmount * shareRate` (implicitly).
-
-*Events*  
-`ExternalSharesBurnt(sharesAmount)`.
-
-#### Function: `Lido.rebalanceExternalEtherToInternal(uint256 sharesAmount)`
-*Requirements*
-
-1. **caller** must be `VaultHub`.
-2. `msg.value` must not be zero.
-3. Staking must not be paused.
-4. `msg.value` must match `sharesAmount * shareRate`.
-5. `externalShares >= sharesAmount`.
-
-*Effects*
-
-1. `externalShares -= sharesAmount` (external balance decreased).
-2. `bufferedEther += msg.value` (buffer increased).
-3. Total shares remain the same (shares moved from external to internal).
-
-*Events*  
-`ExternalEtherRebalanced(msg.value, sharesAmount)`.
-
-#### Function: `Lido.internalizeExternalBadDebt(uint256 sharesAmount)`
-*Requirements*
-
-1. **caller** must be `Accounting`.
-2. `sharesAmount` must not be zero.
-3. Staking must not be paused.
-4. `externalShares >= sharesAmount`.
-
-*Effects*
-
-1. `externalShares -= sharesAmount`.
-2. Total shares remain the same.
-3. Internal shares effectively increase by `sharesAmount`.
-4. Share rate decreases (losses socialized across all holders).
-
-*Events*  
-`ExternalBadDebtInternalized(sharesAmount)`, `ExternalSharesBurnt(sharesAmount)`.
-
-## Rationale
-
-### Abstracting external ether
-
-The design does not require the protocol to 'understand' the nature of external ether. It only requires trusted external accounting, ensuring that the external ether source is credible. The external ether could represent aggregator-controlled validator balances or, potentially, other complex Ethereum and broader ecosystem mechanisms.
-
-### Why track external shares instead of external ether directly
-
-stETH is defined by its share mechanics, and all protocol logic revolves around shares and their rate. By expressing external contributions and withdrawals in terms of stETH shares, the protocol remains consistent. Ether is only an input or output measure, while shares define the in-protocol liquidity and distribution rules.
-
-### Why token rebase only through Lido Core
-
-Lido Core acts as a validation performance benchmark oracle in a sense that stETH reward rate isn't changing by allowing external ether to be used for minting, meaning that the Core pool represents the opinionated validator set voted in by the Lido DAO striving for balance between decentralization, efficiency, and resilience.
-
-## Security considerations
-
-### No unbacked mint
-
-Invariant is enforced upon every new stETH mint.
-
-For the already minted, external shares should stay reasonably overcollaterized to accommodate locked increase due to the historically-positive stETH token rebase.
-Overcollaterization is controlled with the appropriately chosen `RR` and `FRT` values to allow fine-grainted control:
-- block new minting requests when the `RR` threshold breached
-- allow force rebalance to be made by the protocol when the `FRT` threshold breached
-
-### Collateral updates (RR & FRT guidance)
-
-* **RR** (e.g., 10 %) must at minimum cover the *validator correlated slashing* scenario contemplated by the risk assessment framework analysis.
-* **FRT** should be chosen such that the staking vault with the fully inactive validators can move from breaching `RR` to `FRT` on a scale of a few months.
-
-Detailed analysis is presented withing the [risk assessment framework](https://research.lido.fi/t/risk-assessment-framework-for-stvaults/9978).
-
-### Oracle tamper resistance
-
-* Unchanged **quorum‑of‑N** multi‑sig scheme (same addresses as V2) signs the
-  updated `AccountingOracle` payload.
-* On‑chain *sanity checks* as a part of the lazy oracle flow (applies at the moment of the report unroll).
-
-### Isolation
-
-* `StakingVault` contract is **upgradeably pinned**;
-  `VaultHub` enforces deterministic code‑hash per vault type.
-* A logic flaw in a vault can only evaporate that vault’s TV; the
-  `VaultHub` guard prevents it from ever minting beyond its last reported
-  `TV – RR·TV`.
-
-### stETH redemptions risk
-
-The Lido Core pool must maintain reasonable amount of `internalShares` and `internalEther` to preserve
-redeemability of the stETH token (backed both by internal and external ether supply).
-
-To mitigate these risks, minting security limits should be enforced together with properly aligned incentives between internal and external supply sides.
-
-Under severe Lido Core pool depleting conditions, the protocol may require redemption requests to be handled using staking vaults, attributing the `redemptions` counter nominated in ether accordingly. That would require from vault either voluntary burning `stETH` from its balance, decreasing simultaneously `liability` and `redemptions`, or rebalancing the `redemptions` amount, satisfying the assigned obligation.
-
-### Implementation risk
-
-A faulty implementation could allow malicious actors to mint or burn stETH at will, breaking the token’s economic model.
-
-Rigid code reviews, external audits, well-defined access controls, emergency mechanisms, and thorough sophisticated test coverage is essential.
-
-### Staking limits and pause
-
-Pausing staking is unaffected by external shares handling.
-
-However, if the protocol is under stress or paused, external share minting/burning might also be temporary unoperational.
-
-### One new minter/burner for stETH
-
-This LIP introduces a new source of minting and burning, increasing the importance of access control, deployment configuration, and monitoring.
-
-To limit the control surface, all minting and burning of external shares is authorized only via the single `VaultHub` contract. There is a global minting limit preventing external shares to exceed the sane limits upon initial proposal adoption.
-
-## Failure modes
-
-### External ether drained
-
-If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply (i.e., the `liability > TV` invariant broken for a vault or a group of vaults).
-
-Losses can be covered by:
-- replenishing the staking vaults accrued bad debt with additional funds;
-- socializing the bad debt among vaults containing slashed validors of the same node operator;
-- executing a self-coverage application (see [LIP-18](./lip-18.md));
-- internalizing the losses to protocol, decreasing stETH token rebase (as it would have been with the Lido Core pool staking penalties) within the next oracle report
-
-### Emergency pause
-
-The collateral registry contract (`VaultHub`) and auxiliary parts implement an emergency pause mechanism, allowing to minimize the potential impact of the discovered vulnerability or unspecified critical protocol state. 
-
-Paused state prevents:
-- a new staking vault from being registered in the collateral registry;
-- already registered vaults can't be disconnected;
-- stETH can't be minted or burned against staking vaults;
-- ether can't be funded or withdrawn from the registered vaults;
-- rebalance operations are paused;
-- staking vaults can't receive oracle reports;
-- ether can't be deposited to beacon chain from staking vaults
-- assigned obligations of staking vaults (redemptions and fees) can't be settled
-
-## Rationale
-
-The primary objective of this LIP is to establish a scalable and risk-isolated system for expanding stETH liquidity while maintaining the token's core properties. The design choices reflect careful consideration of protocol security, user experience, and ecosystem integration:
-
-### Single fungibility layer
-
-Maintaining stETH as a single fungible token despite multiple backing sources provides critical benefits:
-
-- **DeFi composability**: A unified token preserves existing integrations across lending protocols, DEXes, and other DeFi applications. Fragmenting into multiple tokens would dilute liquidity and complicate integrations.
-- **User experience**: Users continue interacting with one familiar token rather than managing multiple vault-specific tokens with different risk profiles and redemption mechanics.
-- **Network effects**: The accumulated liquidity, brand recognition, and ecosystem tooling around stETH remain intact, avoiding the cold-start problem for new liquidity tokens.
-- **Price discovery**: A single token maintains efficient price discovery and arbitrage mechanisms, preventing price divergence between different backing sources.
-
-### Source-level risk accounting
-
-The over-collateralization requirement at the vault level creates robust risk isolation:
-
-- **No risk socialization**: Each vault maintains its own reserve buffer (RR), ensuring that slashing or operational failures affect only that vault's participants, not the broader stETH holder base.
-- **Incentive alignment**: Vault operators bear the cost of their own risk through locked reserves, incentivizing prudent validator management and operational excellence.
-- **Transparent risk pricing**: Different vault types can have different reserve requirements based on their risk profile, allowing market-based risk pricing while maintaining token fungibility.
-- **Graceful degradation**: The FRT threshold enables orderly unwinding of unhealthy positions before they impact the global system, with forced rebalancing serving as a backstop.
-
-### Upgradeable & extensible architecture
-
-The modular design enables protocol evolution without disrupting existing operations:
-
-- **Vault type flexibility**: New staking strategies, validator configurations, or even non-staking collateral types can be added by deploying new vault implementations and registering them with VaultHub.
-- **Oracle extensibility**: The Merkle root approach in the AccountingOracle allows adding new data fields for future vault types without changing the core oracle infrastructure.
-- **Minimal coordination**: Adding a new vault type requires only deploying the vault contract and configuring it in the registry—no changes to Lido Core, stETH token, or existing integrations.
-- **Future-proof**: The design accommodates potential future developments like distributed validators, new consensus mechanisms, or cross-chain staking without architectural changes.
-
-### Minimal Lido Core surface area
-
-The design carefully limits changes to the battle-tested Lido Core:
-
-- **Contained complexity**: New complexity is isolated in VaultHub and vault implementations, while Lido Core adds only essential external share accounting functions.
-- **Preserved invariants**: Core protocol invariants around deposits, withdrawals, and rebasing remain unchanged; external shares are handled as a parallel accounting system.
-- **Agnostic to vault logic**: Lido Core doesn't need to understand vault-specific logic, strategies, or operational details—it only enforces the global backing invariant.
-- **Audit efficiency**: The limited surface area of changes to critical contracts reduces audit complexity and security risk compared to a full protocol redesign.
-
-## Backward compatibility
-
-The implementation of this LIP prioritizes maintaining full backward compatibility with existing Lido infrastructure and integrations. The transition to support external ether sources is designed to be seamless for current users and integrators:
-
-### Existing deposit flow preservation
-
-The traditional ETH staking flow through Lido Core remains completely unchanged:
-
-- **Direct deposits**: Users can continue depositing ETH directly to the Lido contract, receiving stETH 1:1 as before. The deposit flow through `submit()` and referral functions operates identically.
-- **Deposit router**: The existing deposit distribution logic and staking module interfaces remain intact. Current staking modules continue operating without modification.
-- **Buffer management**: The buffered ether mechanics, withdrawal request handling, and deposit allocation algorithms function as they do today.
-- **Validator lifecycle**: The process of spinning up validators, managing exits, and handling rewards through the existing Node Operator Registry remains unchanged.
-
-### wstETH wrapper compatibility
-
-The wrapped stETH (wstETH) contract and its deployments across L1 and L2s maintain full compatibility:
-
-- **Unchanged interface**: The wstETH wrapping/unwrapping mechanics remain identical, as they depend only on stETH's share-based accounting, which is preserved.
-- **Cross-chain bridges**: Existing bridge implementations for wstETH on Arbitrum, Optimism, Polygon, and other L2s continue functioning without modification.
-- **Share rate consistency**: The fundamental share rate calculation preserves the wstETH:stETH exchange rate continuity, ensuring no disruption to existing positions.
-- **Integration stability**: DeFi protocols using wstETH as collateral or for liquidity provision experience no changes in behavior or required integration updates.
-
-### Withdrawal system compatibility
-
-The withdrawal request and claim system maintains full backward compatibility:
-
-- **NFT mechanics**: Withdrawal request NFTs continue to represent claims on the underlying ETH with the same finalization process and timing.
-- **Queue processing**: The withdrawal queue processes requests identically, with funds sourced from the buffer, validator exits, and now potentially vault rebalancing.
-- **API consistency**: The withdrawal request API endpoints and data structures remain unchanged, ensuring existing integrations continue working.
-- **Bunker mode**: The existing bunker mode protections and turbo mode operations function as designed, with external shares factored into the calculations transparently.
-
-### Oracle infrastructure compatibility
-
-Oracle consumers and data feeds maintain compatibility while gaining optional access to new data:
-
-- **Existing consumers**: Contracts and services consuming oracle data see no breaking changes to existing fields or report structures.
-- **Beacon chain oracles**: The beacon chain state reporting continues with the same cadence and validation requirements.
-- **Extended data**: New vault-related data is added as optional fields that don't affect existing consumers but enable new functionality for vault management.
-- **Report processing**: The oracle report submission and processing flow remains identical for existing oracle operators.
-
-### Observable changes
-
-While maintaining backward compatibility, some behavioral changes are observable:
-
-- **Supply growth dynamics**: `totalSupply` may grow more slowly than beacon chain TVL due to vault reserve requirements, but this doesn't affect token functionality.
-- **New events**: Additional events (`ExternalSharesMinted`, `ExternalSharesBurnt`, `ExternalEtherRebalanced`) are emitted for vault operations but don't interfere with existing event monitoring.
-- **Extended view functions**: New view functions are added to query external shares and vault states, while all existing functions maintain their behavior.
-
-### Integration requirements
-
-**No action required** from existing stETH/wstETH integrators:
-
-- Smart contracts interacting with stETH/wstETH continue functioning without updates
-- Exchange integrations, wallets, and custody solutions require no changes
-- Existing monitoring, analytics, and reporting tools remain compatible
-- Oracle consumers can ignore new fields until ready to utilize vault data
-
-This backward compatibility ensures a smooth transition that doesn't disrupt the extensive ecosystem built around stETH, while enabling new capabilities for those ready to leverage them.
-
-## Reference implementation
-
-The reference testnet implementation is available on GitHub: [feat: stVaults](https://github.com/lidofinance/core/pull/874).
-
-## Links and references
-
-- [Lido V3 Whitepaper: RFC draft](https://research.lido.fi/t/lido-v3-whitepaper-rfc/10124)
-- [Lido "Bring Your Own Validator" Alternative Design](https://mixbytes.io/blog/lido-bring-your-own-validator-alternative-design)
-- [Lido rebase documentation](https://docs.lido.fi/contracts/lido#rebase)
-- [stETH share mechanics](https://docs.lido.fi/guides/lido-tokens-integration-guide#steth-internals-share-mechanics)
-- [stVaults testnet deployments](https://docs.lido.fi/deployed-contracts/hoodi-lidov3/)
-- [stVaults technical design](https://hackmd.io/@lido/stVaults-design)
-- [stVaults risk assessment framework](https://research.lido.fi/t/risk-assessment-framework-for-stvaults/9978)
-- [stVaults fee structure](https://research.lido.fi/t/stvaults-fees-approach/9979)
+After the hash is submitted, the data should be unpacked using the `submitExitRequestsData` function in the VEB contract.
+There are some constraints and recommendations:
+- The hash expires when the contract version changes. That is, data cannot be delivered after the contract is upgraded, and a hash resubmission will be required.
+- The data must be sorted by the following keys in ascending order: `moduleId`, `nodeOpId`, `validatorIndex`.
+- A batch cannot contain more than 600 requests. It is recommended to submit batches of 200 requests. This will simplify data revelation and later usage in Triggerable Withdrawals (TW) or reporting late validators.
+- The data can be revealed by anyone. It is also recommended to publish it on IPFS.
+
+### 9. References
+
+- [**Triggerable Withdrawals Technical Specification**](https://hackmd.io/Bebrx9iHTQuz71IqYmbICg)
+- [**EIP-7002: Execution-layer Triggerable Exits**](https://eips.ethereum.org/EIPS/eip-7002): The primary standard introducing a precompile contract for initiating validator exits via the Execution Layer, without requiring the validator's key.
+- [**EIP-7685: EL Request Interface**](https://eips.ethereum.org/EIPS/eip-7685): A general interface specification for contracts that submit and process requests to the Execution Layer (e.g., exits, consolidations, etc.).
+- [**CSM V2: EIP-7002 support**](https://hackmd.io/@lido/HJrMPHUt0#EIP-7002-support): Description of TW-related requirements from the Curated Staking Module (CSM), including cases involving lost validator keys or long-term performance failures.
+- [**Oracles technical details**](https://docs.lido.fi/guides/oracle-operator-manual/#oracle-phases): Description of how on-chain and off-chain oracles work.
+- [**Validators Exit Bus interface**](https://docs.lido.fi/staking-modules/csm/guides/events#contract-vebo): Current VEBO interface with events details.
+- [**Limit params for VEB and TWG**](https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view): Research from analytics related limit numbers.
+- [**Validator Exit Bus**](https://docs.lido.fi/guides/oracle-spec/validator-exit-bus): Specification how VEBO works.
+- [**Triggerable Withdrawals Code**](https://github.com/lidofinance/core/pull/1018/)
+- [**Triggerable Withdrawals Audit Scope**](https://hackmd.io/@lido/HJKEEyHbee)
+- [**Easy Tracks Audit Scope**](https://hackmd.io/FD1xzyibTXGhRnIek38Vhw?view)
+- [**Oracle V6 Audit Scope**](https://hackmd.io/8ETPnoalTR6vIzX3IpX8mg)
