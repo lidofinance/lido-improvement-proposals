@@ -565,6 +565,18 @@ As a result, the Node Operator's bond will be penalized for 32 ETH - `additional
 ##### Resolution
 Given no losses for the protocol, a significant cost of attack (1 or 8 ETH), and lack of feasible ways to mitigate it in the smart contract's code, it is proposed to acknowledge the possibility of the attack and be ready to propose a corresponding vote to the DAO if it will ever happen
 
+#### Possible keys upload front-run
+
+Ethereum TX calldata is publicly available for anyone while the TX is in the public mempool. This makes it possible for the attacker to use the validator's deposit data meant to be uploaded for one Node Operator in their own TX, effectively front-running the original transaction. In this case, the author of the original transaction will be in a situation where the deposit data uploaded will be considered a duplicate due to the front-run TX being executed earlier. Duplicated deposit data is unvetted according to the rules of the Lido protocol and should be deleted to resume stake allocation to the Node Operator. In normal conditions, CSM charges a fee for deleting each deposit data record. In case of a front-run, the affected Node Operator might have to pay the charge to resume deposits.
+
+It is worth noting that, despite being possible, the described attack is economically unreasonable since:
+- The attacker must put a sufficient amount of bond to perform keys upload.
+- The attacker must delete the uploaded deposit data to prevent deposits from happening.
+- If the attacker does not delete the deposit data and the deposit is made, the bond uploaded alongside the deposit data will eventually be penalized due to the ejection of the inactive keys (assuming the original owner of the keys will not keep them active)
+
+##### Resolution
+To ensure that the front-run attack is not applicable, we recommend that Node Operators use private mempools when uploading validator keys (deposit data) to CSM.
+
 ## Links
 
 - [CSM v2 features](https://hackmd.io/@lido/csm-v2-tech)
