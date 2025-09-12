@@ -16,26 +16,28 @@ This proposal defines sanity checks for stVaults oracle reporting in Lido V3, es
 
 ## Abstract
 
-Lido V3 introduces stVaults, a new staking primitive that allows independent operators to manage validators with their own withdrawal credentials while minting stETH backed by their stake. This LIP proposes a comprehensive set of sanity checks for the stVaults oracle system to prevent malicious behavior and ensure the integrity of vault parameters.
+Lido V3 introduces stVaults as part of a broader staking infrastructure platform, where independent operators manage validators with their own withdrawal credentials while minting stETH backed by their stake. As described in [LIP-31](./lip-31.md), the protocol implements a global accounting system through `VaultHub` - a central collateral registry that tracks each vault's total value and manages external shares minting/burning. This LIP proposes comprehensive sanity checks for the LazyOracle system that reports vault parameters to ensure the integrity of this global accounting framework.
 
-The proposal introduces two funding flow types: direct funding through the `fund()` method, and indirect funding which requires a 3-day quarantine period (with an exception for increases less than 3.5% of vault total value). These mechanisms, combined with parameter validation for `totalValue`, `cumulativeLidoFees`, `liabilityShares`, and `slashingReserve`, create a robust defense against potential oracle manipulation.
+The proposal introduces two funding flow types: direct funding through the `fund()` method (verifiable on-chain), and indirect funding which requires a 3-day quarantine period (with an exception for increases less than 3.5% of vault total value). These mechanisms, combined with parameter validation for `totalValue`, `cumulativeLidoFees`, `liabilityShares`, and `slashingReserve`, create a robust defense against potential oracle manipulation that could compromise the global backing invariant: `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked`.
 
 ## Motivation
 
-With the introduction of stVaults in Lido V3, vault parameters are reported through a [`LazyOracle`](https://hackmd.io/@lido/stVaults-design#313-Essentials-LazyOracle) system where:
+With the introduction of stVaults in Lido V3, the protocol implements a global accounting system where external ether sources can mint stETH through over-collateralization. As outlined in [LIP-31](./lip-31.md), vault parameters are reported through a LazyOracle system where:
 
-- A daily accounting oracle reports Merkle roots of vault states
-- Vault owners bring on-demand reports with Merkle proofs for operations with underlying funds
+- The extended Accounting Oracle publishes Merkle roots of per-vault balances
+- `VaultHub` verifies inclusion proofs asynchronously, enabling scalable vault management
+- Vault owners submit on-demand reports with Merkle proofs for operations requiring updated vault state
 
-This architecture creates potential attack vectors if the oracle committee is compromised or software is malfunctioning. A misbehaving oracle could manipulate vault parameters to:
+This architecture, while enabling efficient scaling, creates potential attack vectors if the oracle committee is compromised or software is malfunctioning. A misbehaving oracle could manipulate vault parameters to:
 
-- Enable minting of unbacked stETH by inflating `totalValue`
-- Allow withdrawal of collateral by understating `liabilityShares`
+- Enable minting of unbacked stETH by inflating `totalValue`, violating the global backing invariant
+- Allow withdrawal of collateral by understating `liabilityShares` (external shares minted)
 - Avoid penalty payments by manipulating fee and reserve parameters
+- Bypass reserve-breach hooks that should trigger when vault buffers drop below RR or FRT thresholds
 
-The most critical risk is that a misbehaving oracle, in collusion with node operators, could potentially steal up to 30% of ETH (considering the global minting for external shares) from the Lido protocol by creating vaults with artificially inflated values.
+The most critical risk is that a misbehaving oracle, in collusion with node operators, could potentially steal up to 30% of ETH from the Lido protocol by creating vaults with artificially inflated values, given the global external shares minting limits.
 
-This proposal addresses these risks by implementing comprehensive sanity checks and a quarantine mechanism for funds that cannot be verified on-chain immediately.
+This proposal addresses these risks by implementing comprehensive sanity checks and a quarantine mechanism for funds that cannot be verified on-chain immediately, ensuring the integrity of the global accounting system.
 
 ## Specification
 
@@ -63,14 +65,15 @@ stVaults do not affect these existing parameters as:
 
 Therefore, existing sanity checks remain unchanged. 
 
-### Lazy Oracle Architecture
+### Lazy Oracle Architecture and Global Accounting Integration
 
-To avoid unbounded loops in on-chain code, the `LazyOracle` system:
-1. Stores complete vault reports off-chain on a decentralized medium (IPFS)
-2. Submits only Merkle roots on-chain
-3. Requires vault owners to provide Merkle proofs for operations
+As described in [LIP-31](./lip-31.md), the global accounting system implements a "lazy oracle" mechanism to enable scalable vault management:
 
-This design enables scalability while maintaining security through cryptographic verification.
+1. **Extended Accounting Oracle**: Publishes Merkle roots containing per-vault state (`totalValue`, `cumulativeLidoFees`, `liabilityShares`, `slashingReserve`) 
+2. **VaultHub Integration**: Acts as the central collateral registry, verifying inclusion proofs asynchronously
+3. **On-demand Reports**: Vault owners submit Merkle proofs when operations require updated state (minting, burning, withdrawals)
+
+This architecture maintains the global backing invariant (`stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked`) while avoiding unbounded on-chain loops. The LazyOracle contract validates these reports against on-chain state to ensure consistency with the global accounting framework.
 
 ### Vault Parameters and Attack Vectors
 
@@ -81,8 +84,8 @@ Each vault report includes four critical parameters that require validation:
 **Definition:** Sum of execution layer (EL) and consensus layer (CL) balances, including pending deposits and withdrawals.
 
 **Attack vectors:**
-- **Overstatement:** Enables minting of unbacked stETH up to the vault's limit
-- **Understatement:** May trigger inappropriate forced rebalance of the stVault 
+- **Overstatement:** Enables minting of unbacked stETH by inflating the vault's locked value, violating the global backing invariant
+- **Understatement:** May trigger inappropriate forced rebalance when the vault falsely appears to breach the Force Rebalance Threshold (FRT) 
 
 #### 2. cumulativeLidoFees
 
@@ -94,11 +97,11 @@ Each vault report includes four critical parameters that require validation:
 
 #### 3. liabilityShares
 
-**Definition:** Amount of stETH shares minted by the vault.
+**Definition:** External shares minted against the staking vault position, representing the vault's stETH liability that rebases with the token.
 
 **Attack vectors:**
-- **Overstatement:** Freezes excess funds
-- **Understatement:** Enables collateral withdrawal earlier than required to mitigate potential slashing risks
+- **Overstatement:** Freezes excess funds by inflating the vault's recorded liability
+- **Understatement:** Enables premature collateral withdrawal, potentially violating the reserve ratio (RR) requirements
 
 #### 4. slashingReserve
 
@@ -177,21 +180,22 @@ uint256 minimalReserve = Math256.max(CONNECT_DEPOSIT, _reportSlashingReserve);
 
 ### totalValue Upper Bound: Critical severity
 
-The most severe attack vector involves inflating `totalValue` to mint unbacked stETH. The challenge is that validator balances cannot be verified on-chain without EIP-4788, making the oracle the sole source of truth.
+The most severe attack vector involves inflating `totalValue` to mint unbacked stETH through external shares. The challenge is that validator balances cannot be verified on-chain without EIP-4788, making the oracle the sole source of truth for vault state.
 
 #### Attack Prerequisites
-1. Corrupted core protocol oracle
-2. Collusion with at least 2 node operators
-3. Available stETH minting capacity
+1. Corrupted Accounting Oracle that publishes malicious Merkle roots
+2. Collusion with vault operators to submit false on-demand reports
+3. Available external shares minting capacity within global limits
 
 #### Attack Sequence
-1. Corrupted oracle submits inflated `totalValue` in Merkle root
-2. Colluding vault owners submit on-demand reports with inflated values
-3. Vaults mint unbacked stETH based on false reports
-4. Attackers withdraw stETH through standard processes of the in-protocol WithdrawalQueue
+1. Corrupted oracle submits inflated `totalValue` in Merkle root via extended Accounting Oracle
+2. Colluding vault owners submit on-demand reports with Merkle proofs to VaultHub
+3. VaultHub calculates inflated `locked` value: `locked = inflatedTV × (1 – RR)`
+4. Vaults call `mintExternalShares()` to mint unbacked stETH based on false locked values
+5. Attackers withdraw stETH through standard WithdrawalQueue processes
 
 #### Impact
-In the worst case, attackers could steal up to 30% of the core protocol's ETH by creating multiple vaults within default OperatorGrid limits.
+In the worst case, attackers could steal up to 30% of the core protocol's ETH by exploiting the global external shares minting limits, violating the fundamental backing invariant: `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked`.
 
 ### Proposed Solution: Direct vs. Indirect Funding
 
@@ -347,6 +351,41 @@ if (_cumulativeLidoFees - previousCumulativeLidoFees > maxLidoFees) {
 }
 ```
 
+## Integration with Global Accounting System
+
+The sanity checks described in this proposal are a critical component of Lido V3's global accounting framework defined in [LIP-31](./lip-31.md). The integration ensures that:
+
+### 1. Maintaining the Global Backing Invariant
+
+All sanity checks ultimately protect the fundamental invariant:
+```
+stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked
+```
+
+By validating `totalValue` increases, the system prevents vaults from inflating their `locked` amount (`locked = TV × (1 – RR)`), which would allow minting unbacked external shares.
+
+### 2. VaultHub Coordination
+
+The LazyOracle reports are processed by VaultHub, which:
+- Maintains the on-chain ledger of vault states
+- Enforces minting limits based on validated `totalValue` and reserve ratios
+- Triggers reserve-breach hooks when vaults fall below RR or FRT thresholds
+- Coordinates rebalancing operations when needed
+
+### 3. External Shares Lifecycle
+
+The sanity checks ensure proper external shares accounting:
+- **Minting**: Validated `totalValue` determines maximum mintable external shares
+- **Burning**: Accurate `liabilityShares` tracking ensures proper debt reduction
+- **Rebalancing**: Quarantine mechanism prevents rapid extraction through inflated values
+
+### 4. Oracle Trust Minimization
+
+The combination of on-chain `inOutDelta` tracking and quarantine mechanisms reduces trust in the oracle:
+- Direct funds are fully verifiable without oracle input
+- Indirect funds face time delays, limiting attack profitability
+- Multiple oracle reports are required for large-scale attacks, increasing detection probability
+
 ## Rationale
 
 ### Design Decisions
@@ -437,5 +476,10 @@ This proposal establishes a comprehensive framework for validating stVault oracl
 1. **Differentiated funding flows**: Direct (verifiable) vs. indirect (quarantined)
 2. **Parameter-specific validations**: Tailored checks for each vault parameter
 3. **Economic disincentives**: Making attacks unprofitable through capital requirements
+4. **Global accounting integration**: Ensuring consistency with the VaultHub-based architecture
 
 The approach balances security with usability, protecting the protocol from catastrophic attacks while maintaining smooth operations for legitimate users. Implementation should proceed with careful attention to user experience and comprehensive testing of edge cases.
+
+## References
+
+- [LIP-31: Expanding stETH liquidity layer with over-collateralized minting](./lip-31.md) - Defines the global accounting framework and VaultHub architecture
