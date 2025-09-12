@@ -178,6 +178,22 @@ Both scenarios prevent withdrawals equally, making the check ineffective.
 uint256 minimalReserve = Math256.max(CONNECT_DEPOSIT, _reportSlashingReserve);
 ```
 
+#### maxLiabilityShares Validation
+
+**Definition:** Maximum liability shares minted during the current oracle period, used to calculate locked value.
+
+**Validation:** `_maxLiabilityShares >= _liabilityShares && _maxLiabilityShares >= record.maxLiabilityShares`
+
+**Implementation:** Already enforced in LazyOracle:
+
+```solidity
+if (_maxLiabilityShares < _liabilityShares || _maxLiabilityShares < record.maxLiabilityShares) {
+    revert InvalidMaxLiabilityShares();
+}
+```
+
+**Rationale:** Ensures monotonic increase of max liability shares to prevent manipulation of locked value calculations.
+
 ### totalValue Upper Bound: Critical severity
 
 The most severe attack vector involves inflating `totalValue` to mint unbacked stETH through external shares. The challenge is that validator balances cannot be verified on-chain without EIP-4788, making the oracle the sole source of truth for vault state.
@@ -243,6 +259,32 @@ Limiting immediate increases to 3.5% significantly reduces attack profitability:
 While this represents accelerated annual returns, the massive capital requirement and associated risks make the attack economically unattractive.
 
 ## Technical Specification
+
+### Configurable Parameters
+
+The LazyOracle contract includes several configurable parameters that can be updated via governance:
+
+```solidity
+struct Storage {
+    uint64 quarantinePeriod;           // Time period for quarantine (max 30 days)
+    uint16 maxRewardRatioBP;           // Max reward ratio in basis points (max 655.35%)
+    uint64 maxLidoFeeRatePerSecond;    // Max Lido fee rate per second (max 10 ETH/s)
+}
+```
+
+**Parameter Constraints:**
+- `quarantinePeriod`: 0 to 30 days
+- `maxRewardRatioBP`: 0 to 65,535 (0% to 655.35%)
+- `maxLidoFeeRatePerSecond`: 0 to 10 ETH per second
+
+These parameters can be updated by accounts with the `UPDATE_SANITY_PARAMS_ROLE` through:
+```solidity
+function updateSanityParams(
+    uint256 _quarantinePeriod,
+    uint256 _maxRewardRatioBP,
+    uint256 _maxLidoFeeRatePerSecond
+) external onlyRole(UPDATE_SANITY_PARAMS_ROLE)
+```
 
 ### inOutDelta On-Chain Cache
 
@@ -435,7 +477,7 @@ Then: 35 ETH immediately available, 65 ETH enters 3-day quarantine
 ```
 Given: Vault receives 100 ETH via fund()
 When: Oracle reports corresponding totalValue increase
-Then: Full amount immediately available (verified on-chain)
+Then: Full amount immediately available (no quarantine due to on-chain verification)
 ```
 
 ### Scenario 4: Fee Validation
