@@ -12,22 +12,21 @@ updated: 2025-09-12
 
 ## Simple Summary
 
-Introduce an **over‑collateralised accounting system** for **stETH**, enabling the token to be backed by ether supplied **outside the Lido Core pool** while preserving full fungibility and 1:1 redeemability.
+This proposal introduces an over-collateralized accounting system for stETH, enabling the token to be backed by ether supplied outside the Lido Core pool while preserving full fungibility and 1:1 redeemability.
 
 ## Abstract
 
 Lido V3 evolves the protocol from a single staking pool into a versatile Ethereum staking infrastructure platform. It introduces **staking vaults** – modular, non-custodial components that enable users to stake with chosen operators under customizable terms while minting stETH. This design preserves stETH as the unified liquidity layer while supporting diverse staking strategies including operator-led liquid staking, DVT clusters, DeFi loops, and institutional vaults.
 
-The protocol generalizes stETH minting through over-collateralization: any entity that can provably lock ≥100% collateral **plus a safety reserve** may mint stETH against the *effective* portion of that collateral. The proposal defines the *in‑protocol* collateral accounting, mint/burn flow, and health‑monitoring hooks while maintaining flexibility for vault implementations.
+The protocol generalizes stETH minting through over-collateralization: any entity that can provably lock ≥100% collateral plus a safety reserve may mint stETH against the effective portion of that collateral. The proposal defines the in-protocol collateral accounting, mint/burn flow, and health-monitoring hooks while maintaining flexibility for vault implementations.
 
 Key protocol additions:
 
-1. **Collateral Registry (`VaultHub`)** – On‑chain ledger tracking every vault's *total value* (TV) and *locked* portion, serving as the central coordination point for the multi-vault ecosystem.  
-2. **Accounting Oracle with extended supply** – Extends the existing oracle by publishing Merkle‑roots of per‑vault balances; `VaultHub` verifies inclusion proofs asynchronously ("lazy oracle" mechanism), enabling scalable vault management.  
-3. **External‑shares mint / burn** – `Lido` contract enforces  
+1. **Collateral Registry (`VaultHub`)** – On-chain ledger tracking every vault's total value (TV) and locked portion, serving as the central coordination point for the multi-vault ecosystem.
+2. **Accounting Oracle with extended supply** – Extends the existing oracle by publishing Merkle-roots of per-vault balances; `VaultHub` verifies inclusion proofs asynchronously ("lazy oracle" mechanism), enabling scalable vault management.
+3. **External-shares mint/burn** – `Lido` contract enforces  
    `stETH.totalSupply() ≤ Core Pool total supply + Σ staking vault locked`, refusing mints that break it.  
-4. **Reserve‑breach hooks** – if a vault’s buffer drops below certain
-   thresholds (`RR`, `FRT`), Lido Core blocks fresh mints and can order an on‑chain rebalance (partial debt repayment through Lido Core).
+4. **Reserve-breach hooks** – If a vault's buffer drops below certain thresholds (`RR`, `FRT`), Lido Core blocks fresh mints and can order an on-chain rebalance (partial debt repayment through Lido Core).
 
 ## Motivation
 
@@ -56,18 +55,18 @@ By hard-coding **over-collateralization at the protocol level** and measuring ba
 | **Staking Vault** | Any contract or module that locks ETH and requests stETH mints through VaultHub. |
 | **Total Value (TV)** | Sum of all ETH the staking vault controls on Execution + Consensus Layers simultaneously, incl. pending deposits. | 
 | **Reserve Ratio (RR)** | Minimum share of TV that **should not** be represented by stETH. |
-| **Force Rebalance Threshold (FRT)** | Minimum share of TV that incurs force rabalance if becomes represented by stETH, invariant: `FRT < RR` |
+| **Force Rebalance Threshold (FRT)** | Minimum share of TV that incurs force rebalance if becomes represented by stETH, invariant: `FRT < RR` |
 | **Locked** | `locked = TV × (1 – RR)` (floored) |
 | **Liability** | stETH shares minted against the staking vault position (value rebases with stETH) |
 | **Global backing invariant** | `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked` |
 | **Reserve Breach** | If `TV – stETH.getPooledEthBySharesRoundUp(liability) < RR × TV`, staking vault enters *unhealthy* state. The round-up ensures conservative liability measurement. |
 | **Bad debt** | If `stETH.getPooledEthBySharesRoundUp(liability) > TV`, staking vault enters *bad debt* state. Using round-up prevents hiding insolvency through rounding errors. |
 
-#### Design principles to uphold
+### Design principles to uphold
 
-Three key properties of the stETH token are to be preserved.
+Three key properties of the stETH token are to be preserved:
 
-#### Collateralization
+#### 1. Collateralization
 
 Every minted stETH has corresponding ether-nominated value, either inside the Lido Core pool or external ether locked (i.e., acting as the external stETH minting collateral) by the protocol. 
 
@@ -75,17 +74,17 @@ The new accounting model implements over-collateralized minting for external tok
 
 ![collateral scheme](assets/lip-31/1_collateral.png)
 
-#### Redeemability
+#### 2. Redeemability
 
-Every minted stETH must be redeemable either Lido Core pool, or the external minting collateral. 
+Every minted stETH must be redeemable either through the Lido Core pool or the external minting collateral. 
 
 This collateral must be potentially accessible by the protocol under certain conditions (e.g., collateral shortage or Lido Core pool depletion), allowing writing-off minted stETH external ether source liability by moving the corresponding external ether to the Lido Core pool (treating 1 stETH = 1 ETH).
 
-#### Fungibility
+#### 3. Fungibility
 
 The existing stETH token contract remains to be ERC-20 deployed under the same address on Ethereum mainnet.
 
-Minting or burning new stETH does not trigger stETH token rebase, rebases keep happenning inside the establed `AccountingOracle` report lifecycle as a part of the main phase of the report data delivery. Rewards and penalties, accrued for stETH rebase, remain to be defined by the Lido Core pool validator set (i.e., stETH minted against the external minting collateral doesn't change the embedded stETH staking APR) unless failure mode is activated. 
+Minting or burning new stETH does not trigger stETH token rebase. Rebases keep happening inside the established `AccountingOracle` report lifecycle as part of the main phase of the report data delivery. Rewards and penalties accrued for stETH rebase remain to be defined by the Lido Core pool validator set (i.e., stETH minted against the external minting collateral doesn't change the embedded stETH staking APR) unless failure mode is activated. 
 
 ### Key accounting changes
 
@@ -410,7 +409,7 @@ Returns
 *Events*  
 `ExternalBadDebtInternalized(sharesAmount)`, `ExternalSharesBurnt(sharesAmount)`.
 
-## Rationale
+## Technical Design Decisions
 
 ### Abstracting external ether
 
