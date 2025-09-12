@@ -5,7 +5,7 @@ status: WIP
 author: Alexey Potapkin, Eugene Mamin, Eugene Pshenichnyi, Max Merkulov
 discussions-to: TBA
 created: 2024-12-06
-updated: 2025-09-11
+updated: 2025-09-12
 ---
 
 # Expanding stETH liquidity layer with over-collateralized minting
@@ -60,8 +60,8 @@ By hard-coding **over-collateralization at the protocol level** and measuring ba
 | **Locked** | `locked = TV × (1 – RR)` (floored) |
 | **Liability** | stETH shares minted against the staking vault position (value rebases with stETH) |
 | **Global backing invariant** | `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked` |
-| **Reserve Breach** | If `TV – stETH.getTotalPooledEtherBySharesRoundUp(liability) < RR × TV`, staking vault enters *unhealthy* state. |
-| **Bad debt** | If `stETH.getTotalPooledEtherBySharesRoundUp(liability) > TV`, staking vault enters *bad debt* state |
+| **Reserve Breach** | If `TV – stETH.getPooledEthBySharesRoundUp(liability) < RR × TV`, staking vault enters *unhealthy* state. The round-up ensures conservative liability measurement. |
+| **Bad debt** | If `stETH.getPooledEthBySharesRoundUp(liability) > TV`, staking vault enters *bad debt* state. Using round-up prevents hiding insolvency through rounding errors. |
 
 #### Design principles to uphold
 
@@ -136,6 +136,8 @@ The amount of external stETH shares minted MUST be fully backed via a staking va
 
 > NB: The mint operation MUST NOT incur the stETH token rebase.
 
+> **Important**: When checking vault capacity for minting, the protocol uses `getPooledEthBySharesRoundUp()` to calculate the ETH value of shares. This ensures that vaults cannot mint more shares than their collateral supports, even by 1 wei.
+
 Upon external shares minting, the `Lido` contract increases the stored `externalShares`. The key insight is that the share rate used for external minting is based on internal values:
 
 - $\Delta S_{\text{ext}}$ as the number of external shares to be minted
@@ -177,7 +179,9 @@ Rebalance allows converting external shares to internal by transferring ether fr
 
 **Process for rebalancing** $\Delta S_{\text{ext}}$ external shares:
 
-The vault must transfer ether equal to: $\Delta ETH = \Delta S_{\text{ext}} \times \frac{\text{internalEther}}{\text{internalShares}}$
+The vault must transfer ether equal to: $\Delta ETH = \text{getPooledEthBySharesRoundUp}(\Delta S_{\text{ext}})$
+
+This round-up calculation is important: the protocol verifies that `msg.value` exactly equals `getPooledEthBySharesRoundUp(_amountOfShares)` to prevent any rounding discrepancies that could lead to unbacked shares.
 
 After rebalance:
 ```math
@@ -282,6 +286,45 @@ This ensures that:
 - External vaults don't affect the core pool's rebase calculations
 - Share rate remains stable and predictable
 - Bad debt socialization happens transparently
+
+### Critical importance of rounding up in collateral calculations
+
+The protocol uses `getPooledEthBySharesRoundUp()` consistently across all collateral health checks and bad debt calculations. This is a critical security measure that ensures conservative valuation of liabilities.
+
+#### Why rounding up matters
+
+When converting shares to ETH value for liability calculations, rounding up ensures:
+
+1. **Conservative bad debt detection** – A vault's liability is always measured at its maximum possible value, preventing edge cases where rounding down could hide insolvency.
+
+2. **Strict collateralization enforcement** – When checking if a vault has sufficient collateral, the liability is calculated as the worst-case (highest) value, ensuring true over-collateralization.
+
+3. **Protection against rounding attacks** – Malicious actors cannot exploit rounding errors to mint unbacked stETH or hide bad debt by manipulating share amounts.
+
+#### Example: Bad debt detection
+
+Consider a vault with:
+- Total Value (TV): 1000.4 ETH
+- Liability: 1000 shares
+- Share rate: 1.0005 ETH/share
+
+Using regular division (rounds down):
+- Liability value = 1000 × 1.0005 = 1000.5 ETH (rounds down to 1000 ETH)
+- Bad debt check: 1000 ETH ≤ 1000.4 ETH ✓ (incorrectly shows healthy)
+
+Using `getPooledEthBySharesRoundUp`:
+- Liability value = ceiling(1000 × 1.0005) = 1001 ETH
+- Bad debt check: 1001 ETH > 1000.4 ETH ✗ (correctly detects bad debt)
+
+This 1 wei difference in calculation can be the difference between detecting insolvency and allowing unbacked minting.
+
+#### Implementation consistency
+
+The protocol enforces this rounding consistently:
+- **Bad debt detection**: `stETH.getTotalPooledEtherBySharesRoundUp(liability) > TV`
+- **Reserve breach**: `TV – stETH.getTotalPooledEtherBySharesRoundUp(liability) < RR × TV`
+- **Rebalancing**: `msg.value` must equal `getPooledEthBySharesRoundUp(_amountOfShares)`
+- **Withdrawable calculations**: Obligations are valued using round-up to prevent over-withdrawal
 
 ## Specification (minimal)
 
@@ -392,12 +435,17 @@ Overcollaterization is controlled with the appropriately chosen `RR` and `FRT` v
 - block new minting requests when the `RR` threshold breached
 - allow force rebalance to be made by the protocol when the `FRT` threshold breached
 
-### Collateral updates (RR & FRT guidance)
+### Collateral updates (RR & FRT guidance)
 
-* **RR** (e.g., 10 %) must at minimum cover the *validator correlated slashing* scenario contemplated by the risk assessment framework analysis.
-* **FRT** should be chosen such that the staking vault with the fully inactive validators can move from breaching `RR` to `FRT` on a scale of a few months.
+* **RR** (e.g., 10 %) must at minimum cover the *validator correlated slashing* scenario contemplated by the risk assessment framework for stVaults analysis.
+* **FRT** should be chosen such that the staking vault with the fully inactive validators can move from breaching `RR` to `FRT` on a scale of a few weeks.
 
-Detailed analysis is presented withing the [risk assessment framework](https://research.lido.fi/t/risk-assessment-framework-for-stvaults/9978).
+### Round-up enforcement in collateral checks
+
+All collateral health checks use `getPooledEthBySharesRoundUp()` to calculate liability values. This conservative approach ensures that:
+- A vault cannot appear healthy when it's actually insolvent due to rounding
+- Reserve breach detection triggers at the exact threshold, not 1 wei later
+- Rebalancing operations transfer the exact amount needed to cover liabilities
 
 ### Oracle tamper resistance
 
@@ -451,7 +499,7 @@ To limit the control surface, all minting and burning of external shares is auth
 
 ### External ether drained
 
-If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply (i.e., the `stETH.getTotalPooledEtherRoundUp(liability) > TV` invariant broken for a vault or a group of vaults).
+If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply (i.e., the `stETH.getPooledEthBySharesRoundUp(liability) > TV` invariant broken for a vault or a group of vaults).
 
 Losses can be covered by:
 - replenishing the staking vaults accrued bad debt with additional funds;
