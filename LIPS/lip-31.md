@@ -2,10 +2,10 @@
 lip: 31
 title: Expanding stETH liquidity layer with over-collateralized minting
 status: WIP
-author: Alexey Potapkin, Eugene Mamin, Eugene Pshenichnyi, Max Merkulov
+author: Alexei Potapkin, Eugene Mamin, Eugene Pshenichnyy, Max Merkulov
 discussions-to: TBA
 created: 2024-12-06
-updated: 2025-09-12
+updated: 2025-09-13
 ---
 
 # Expanding stETH liquidity layer with over-collateralized minting
@@ -22,11 +22,11 @@ The protocol generalizes stETH minting through over-collateralization: any entit
 
 Key protocol additions:
 
-1. **Collateral Registry (`VaultHub`)** – On-chain ledger tracking every vault's total value (TV) and locked portion, serving as the central coordination point for the multi-vault ecosystem.
+1. **Collateral Registry (`VaultHub`)** – On-chain ledger tracking every vault's total value (TV) and locked value (`liability + max(reserve, minimal reserve)`), serving as the central coordination point for the multi-vault ecosystem.
 2. **Accounting Oracle with extended supply** – Extends the existing oracle by publishing Merkle-roots of per-vault balances; `VaultHub` verifies inclusion proofs asynchronously ("lazy oracle" mechanism), enabling scalable vault management.
 3. **External-shares mint/burn** – `Lido` contract enforces  
    `stETH.totalSupply() ≤ Core Pool total supply + Σ staking vault locked`, refusing mints that break it.  
-4. **Reserve-breach hooks** – If a vault's buffer drops below certain thresholds (`RR`, `FRT`), Lido Core blocks fresh mints and can order an on-chain rebalance (partial debt repayment through Lido Core).
+4. **Reserve-breach hooks** – If a vault's effective reserve (total value minus liability) drops below the required reserve ratio (RR) or force rebalance threshold (FRT), the protocol blocks fresh mints and can trigger forced rebalancing to restore vault health.
 
 ## Motivation
 
@@ -56,8 +56,10 @@ By hard-coding **over-collateralization at the protocol level** and measuring ba
 | **Total Value (TV)** | Sum of all ETH the staking vault controls on Execution + Consensus Layers simultaneously, incl. pending deposits. | 
 | **Reserve Ratio (RR)** | Minimum share of TV that **should not** be represented by stETH. |
 | **Force Rebalance Threshold (FRT)** | Minimum share of TV that incurs force rebalance if becomes represented by stETH, invariant: `FRT < RR` |
-| **Locked** | `locked = TV × (1 – RR)` (floored) |
 | **Liability** | stETH shares minted against the staking vault position (value rebases with stETH) |
+| **Reserve** | `reserve = ceilDiv(liability * RR, 1 - RR)`, additional reserve for liability to be locked |
+| **Minimal reserve** | `minimalReserve`, minimal amount of additional reserve to be locked |
+| **Locked** | `liability + max(reserve, minimalReserve)`, staking vault locked value |
 | **Global backing invariant** | `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked` |
 | **Reserve Breach** | If `TV – stETH.getPooledEthBySharesRoundUp(liability) < RR × TV`, staking vault enters *unhealthy* state. The round-up ensures conservative liability measurement. |
 | **Bad debt** | If `stETH.getPooledEthBySharesRoundUp(liability) > TV`, staking vault enters *bad debt* state. Using round-up prevents hiding insolvency through rounding errors. |
@@ -68,7 +70,7 @@ Three key properties of the stETH token are to be preserved:
 
 #### 1. Collateralization
 
-Every minted stETH has corresponding ether-nominated value, either inside the Lido Core pool or external ether locked (i.e., acting as the external stETH minting collateral) by the protocol. 
+Every minted stETH has corresponding ether-nominated value, either inside the Lido Core pool or external ether locked by staking vaults. The locked value consists of the liability (stETH shares value) plus an additional reserve, ensuring over-collateralization. 
 
 The new accounting model implements over-collateralized minting for external token supply sources, managing slashing risks across diverse staking strategies while maintaining flexibility. This approach enables the platform to support various staking setups without imposing rigid operational requirements beyond the core collateralization framework.
 
@@ -127,15 +129,15 @@ After applying the oracle report with fees:
 ```
 
 > NB: Any changes in `shareRate` affect `externalEther` as a part of the regular stETH token rebase induced by `AccountingOracle`.
-Therefore, the staking vault must maintain the reserve sufficient to update the total collateralized ether amount as a part of the token rebase.
+Therefore, the staking vault must maintain sufficient total value to cover both its liability and the required reserve (calculated as `ceilDiv(liability * RR, 1 - RR)` or the minimal reserve, whichever is greater) as a part of the token rebase.
 
 #### Mint external shares
 
-The amount of external stETH shares minted MUST be fully backed via a staking vault (including `RR`).
+The amount of external stETH shares minted MUST be fully backed via a staking vault. The vault must maintain a locked value equal to the liability plus the required reserve (ensuring over-collateralization per the reserve ratio).
 
 > NB: The mint operation MUST NOT incur the stETH token rebase.
 
-> **Important**: When checking vault capacity for minting, the protocol uses `getPooledEthBySharesRoundUp()` to calculate the ETH value of shares. This ensures that vaults cannot mint more shares than their collateral supports, even by 1 wei.
+> **Important**: When checking vault capacity for minting, the protocol uses `getPooledEthBySharesRoundUp()` to calculate the ETH value of shares. The maximum mintable shares is determined by the vault's total value minus the required locked value (`liability + max(reserve, minimal reserve)`), ensuring proper over-collateralization is maintained.
 
 Upon external shares minting, the `Lido` contract increases the stored `externalShares`. The key insight is that the share rate used for external minting is based on internal values:
 
@@ -197,9 +199,9 @@ bufferedEther_{new} = bufferedEther_{old} + \Delta ETH
 ```
 
 Rebalance is used to:
-- Restore vault health when reserves fall below thresholds
-- Handle forced rebalancing when FRT is breached
-- Manage collateral during slashing events
+- Improve vault health when the effective reserve (total value minus liability) falls below the desired level
+- Handle forced rebalancing when the effective reserve breaches the Force Rebalance Threshold (FRT)
+- Manage collateral to maintain the minimum locked value during slashing events
 
 #### Oracle reports
 
@@ -248,7 +250,7 @@ externalShares_{\text{post}} = externalShares_{pre} - badDebtToInternalize
 ```
 
 Lido Core continues to be the sole source of *token* rebases; however, the
-oracle now carries the extra field `vaultsRoot`, containing the Merkle root of each vault's `TV`, `fees`, `liability`, `slashing reserve`.
+oracle now carries the extra field `vaultsRoot`, containing the Merkle root of each vault's `TV`, `fees`, `liability`, `maxLiabilityShares`, and `slashing reserve` (which contributes to the vault's minimal reserve calculation).
 
 The on‑chain `AccountingOracle` stores the last accepted root. `VaultHub.processVaultReport(proof, values)` can be called permissionlessly
 throughout the oracle period to update individual vaults lazily.
@@ -340,7 +342,7 @@ Returns
 1. **caller** must be `VaultHub`.
 2. `sharesAmount` must not be zero.
 3. Staking must not be paused.
-4. External balance limit must not be exceeded.
+4. External balance limit must not be exceeded (global backing invariant: `totalPooledEther <= internalEther + sum(vault.locked)` where `locked = liability + max(reserve, minimal reserve)`).
 5. Staking rate limit must not be exhausted.
 
 *Effects*
@@ -349,6 +351,7 @@ Returns
 2. Mint `sharesAmount` stETH shares to `receiver`.
 3. Total pooled ether increases by `sharesAmount * shareRate` (implicitly).
 4. Consumes staking rate limit of stETH corresponding to `sharesAmount`.
+5. The requesting vault's locked value increases accordingly to maintain proper collateralization.
 
 *Events*  
 `ExternalSharesMinted(receiver, sharesAmount)`.
@@ -429,8 +432,8 @@ Lido Core acts as a validation performance benchmark oracle in a sense that stET
 
 Invariant is enforced upon every new stETH mint.
 
-For the already minted, external shares should stay reasonably overcollaterized to accommodate locked increase due to the historically-positive stETH token rebase.
-Overcollaterization is controlled with the appropriately chosen `RR` and `FRT` values to allow fine-grainted control:
+For already minted external shares, vaults must maintain sufficient total value to cover the increasing locked value (liability + reserve) due to the historically-positive stETH token rebase.
+The health of overcollateralization is monitored through two thresholds:
 - block new minting requests when the `RR` threshold breached
 - allow force rebalance to be made by the protocol when the `FRT` threshold breached
 
@@ -541,9 +544,9 @@ Maintaining stETH as a single fungible token despite multiple backing sources pr
 
 The over-collateralization requirement at the vault level creates robust risk isolation:
 
-- **No risk socialization**: Each vault maintains its own reserve buffer (RR), ensuring that slashing or operational failures affect only that vault's participants, not the broader stETH holder base unless failure mode is activated.
-- **Incentive alignment**: Vault operators bear the cost of their own risk through locked reserves, incentivizing prudent validator management and operational excellence.
-- **Transparent risk pricing**: Different vault types can have different reserve requirements based on their risk profile, allowing market-based risk pricing while maintaining token fungibility.
+- **No risk socialization**: Each vault maintains its own reserve (calculated based on RR) plus a minimal reserve, ensuring that slashing or operational failures affect only that vault's participants, not the broader stETH holder base unless failure mode is activated.
+- **Incentive alignment**: Vault operators bear the cost of their own risk through locked value (`liability + max(reserve, minimal reserve)`), incentivizing prudent validator management and operational excellence.
+- **Transparent risk pricing**: Different vault types can have different reserve ratios and minimal reserve requirements based on their risk profile, allowing market-based risk pricing while maintaining token fungibility.
 - **Graceful degradation**: The FRT threshold enables orderly unwinding of unhealthy positions before they impact the global system, with forced rebalancing serving as a backstop.
 
 ### Upgradeable & extensible architecture
