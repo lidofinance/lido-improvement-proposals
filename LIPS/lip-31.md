@@ -44,7 +44,7 @@ Key motivations for this design include:
 
 4. **Platform evolution** – Moving from a single staking pool to a platform supporting multiple staking products aligns incentives among operators, builders, and stakers, fostering innovation while maintaining the battle-tested Core Pool for users seeking simple, traditional staking.
 
-By hard-coding **over-collateralization at the protocol level** and measuring backing **per-vault**, the design contains tail risks while unlocking new ether supply lines. stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not socialized unless extreme conditions trigger failure modes.
+By hard-coding **over-collateralization at the protocol level** and measuring backing **per-vault**, the design contains tail risks while unlocking new ether supply lines. stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not internalized to the protocol unless extreme conditions trigger failure modes.
 
 ## Specification
 
@@ -62,7 +62,7 @@ By hard-coding **over-collateralization at the protocol level** and measuring ba
 | **Locked** | `liability + max(reserve, minimalReserve)`, staking vault locked value |
 | **Global backing invariant** | `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked` |
 | **Reserve Breach** | If `TV – stETH.getPooledEthBySharesRoundUp(liability) < FRT × TV`, staking vault enters *unhealthy* state. The round-up ensures conservative liability measurement. |
-| **Bad debt** | If `stETH.getPooledEthBySharesRoundUp(liability) > TV`, staking vault enters *bad debt* state. Using round-up prevents hiding insolvency through rounding errors. |
+| **Bad debt shares** | If `liability > stETH.getSharesByPooledEth(TV)`, staking vault enters *bad debt* state |
 
 ### Design principles to uphold
 
@@ -137,7 +137,7 @@ The amount of external stETH shares minted MUST be fully backed via a staking va
 
 > NB: The mint operation MUST NOT incur the stETH token rebase.
 
-> **Important**: When checking vault capacity for minting, the protocol uses `getPooledEthBySharesRoundUp()` to calculate the ETH value of shares. The maximum mintable shares is determined by the vault's total value minus the required locked value (`liability + max(reserve, minimal reserve)`), ensuring proper over-collateralization is maintained.
+> **Important**: When determining vault minting capacity, the protocol calculates the available ETH value (total value minus required locked value where `locked = liability + max(reserve, minimal reserve)`), then converts this ETH amount to shares using the current share rate. The vault mints shares directly, not ETH amounts, ensuring proper over-collateralization is maintained.
 
 Upon external shares minting, the `Lido` contract increases the stored `externalShares`. The key insight is that the share rate used for external minting is based on internal values:
 
@@ -205,7 +205,7 @@ Rebalance is used to:
 
 #### Oracle reports
 
-Accounting oracle reports happen in the same cadence as before, but now include handling of vault-related bad debt (in cases when bad debt is assigned to be socialized by the protocol, happens only explicitly and MUST be assigned to the Lido DAO Agent).
+Accounting oracle reports happen in the same cadence as before, but now include handling of vault-related bad debt (in cases when bad debt is assigned to be internalized by the protocol, happens only explicitly and MUST be assigned to the Lido DAO Agent).
 
 Token rebase is implemented such that `externalEther` gets updated according to the newly delivered Lido Core pool changes after rewards and fees are distributed.
 
@@ -213,19 +213,22 @@ Token rebase is implemented such that `externalEther` gets updated according to 
 
 Rewards and penalties accrued by the Lido Core pool validator set define the stETH token rebase. The key change is that share rate calculations now use internal ether and shares:
 
-Transient balance as observed during the report gathering:
+Transient ether as observed during the report gathering:
 ```math
-transientCLBalance_{report} = 32ETH \times (CLValidators_{report} - CLValidators_{pre})
+appearedValidators_{report} = CLValidators_{report} - CLValidators_{pre}
+```
+```math
+transientEther_{report} = appearedValidatorsBalance = 32ETH \times appearedValidators_{report}
 ```
 Principal CL balance as observed during the report: 
 ```math
-principalCLbalance_{report} = CLbalance_{pre} + transientCLBalance_{report}
+principalCLbalance_{report} = CLbalance_{pre} + transientEther_{report}
 ```
 Rewards accrued as observed during the report:
 ```math
 CLrewards_{report} = [CLbalance_{report} + withdrawalVault.balance_{report}] - principalCLbalance_{report}
 ```
-Internal ether before fees:
+Internal ether (mind fees don't affect it):
 ```math
 internalEther_{\text{beforeFees}} = 
     internalEther_{pre} + CLrewards_{report} + elRewardsVault.balance_{report} - wqWithdrawals_{report}
@@ -237,6 +240,10 @@ internalShares_{\text{beforeFees}} =
 ```
 
 Protocol fees are now calculated based on internal values:
+
+```math
+feeEther = totalRewards * protocolFeeRate
+```
 ```math
 sharesToMintAsFees = \frac{feeEther \times internalShares_{\text{beforeFees}}}{internalEther_{\text{beforeFees}} - feeEther}
 ```
@@ -250,10 +257,9 @@ externalShares_{\text{post}} = externalShares_{pre} - badDebtToInternalize
 ```
 
 Lido Core continues to be the sole source of *token* rebases; however, the
-oracle now carries the extra field `vaultsRoot`, containing the Merkle root of each vault's `TV`, `fees`, `liability`, `maxLiabilityShares`, and `slashing reserve` (which contributes to the vault's minimal reserve calculation).
+oracle now carries the extra field `vaultsDataTreeRoot`, containing the Merkle root of each vault's totalValue, cumulativeLidoFees, liabilityShares, maxLiabilityShares, and slashingReserve (which contributes to the vault's minimal reserve calculation), more details about "lazy oracle" system in [LIP-32](./lip-32.md).
 
-The on‑chain `AccountingOracle` stores the last accepted root. `VaultHub.processVaultReport(proof, values)` can be called permissionlessly
-throughout the oracle period to update individual vaults lazily.
+The on‑chain `AccountingOracle` stores the last accepted root. `LazyOracle.updateVaultData(...)` can be called permissionlessly throughout the oracle period to update individual vaults lazily.
 
 ##### Bad debt internalization
 
@@ -286,55 +292,53 @@ postTotalPooledEther = postInternalEther + \frac{postExternalShares \times postI
 This ensures that:
 - External vaults don't affect the core pool's rebase calculations
 - Share rate remains stable and predictable
-- Bad debt socialization happens transparently
+- Bad debt internalization happens transparently
 
-### Critical importance of rounding up in collateral calculations
+### Critical importance of consistent valuation in collateral calculations
 
-The protocol uses `getPooledEthBySharesRoundUp()` consistently across all collateral health checks and bad debt calculations. This is a critical security measure that ensures conservative valuation of liabilities.
+The protocol employs different valuation approaches for different purposes: share-based comparisons for bad debt detection and ETH-based calculations (with round-up) for health checks and transfers. This design ensures both accuracy and conservative valuation where needed.
 
-#### Why rounding up matters
+#### Why consistent valuation matters
 
-When converting shares to ETH value for liability calculations, rounding up ensures:
+The protocol uses different approaches for different security properties:
 
-1. **Conservative bad debt detection** – A vault's liability is always measured at its maximum possible value, preventing edge cases where rounding down could hide insolvency.
+1. **Accurate bad debt detection** – Bad debt is detected by comparing shares directly (`liabilityShares > getSharesByPooledEth(totalValue)`), avoiding any optimistic rounding errors in the comparison.
 
-2. **Strict collateralization enforcement** – When checking if a vault has sufficient collateral, the liability is calculated as the worst-case (highest) value, ensuring true over-collateralization.
+2. **Strict collateralization enforcement** – When calculating liability values for health checks, the protocol uses `getPooledEthBySharesRoundUp()` to get the worst-case (highest) ETH value, ensuring true over-collateralization. For minting capacity, the protocol works in the opposite direction: calculating available ETH first, then converting to shares.
 
-3. **Protection against rounding attacks** – Malicious actors cannot exploit rounding errors to mint unbacked stETH or hide bad debt by manipulating share amounts.
-
-#### Example: Bad debt detection
-
-Consider a vault with:
-- Total Value (TV): 1000.4 ETH
-- Liability: 1000 shares
-- Share rate: 1.0005 ETH/share
-
-Using regular division (rounds down):
-- Liability value = 1000 × 1.0005 = 1000.5 ETH (rounds down to 1000 ETH)
-- Bad debt check: 1000 ETH ≤ 1000.4 ETH ✓ (incorrectly shows healthy)
-
-Using `getPooledEthBySharesRoundUp`:
-- Liability value = ceiling(1000 × 1.0005) = 1001 ETH
-- Bad debt check: 1001 ETH > 1000.4 ETH ✗ (correctly detects bad debt)
-
-This 1 wei difference in calculation can be the difference between detecting insolvency and allowing unbacked minting.
+3. **Protection against rounding attacks** – By using round-up for liabilities and exact calculations for minting capacity, malicious actors cannot exploit rounding errors to mint unbacked stETH or hide bad debt.
 
 #### Implementation consistency
 
 The protocol enforces this rounding consistently:
-- **Bad debt detection**: `stETH.getTotalPooledEtherBySharesRoundUp(liability) > TV`
-- **Reserve breach**: `TV – stETH.getTotalPooledEtherBySharesRoundUp(liability) < RR × TV`
-- **Rebalancing**: `msg.value` must equal `getPooledEthBySharesRoundUp(_amountOfShares)`
-- **Withdrawable calculations**: Obligations are valued using round-up to prevent over-withdrawal
+- **Bad debt detection**: `liabilityShares > getSharesByPooledEth(totalValue)` - Compares shares directly to detect when liability exceeds the vault's total value
+- **Health check (FRT breach)**: `getPooledEthBySharesRoundUp(liabilityShares) > totalValue × (100% - FRT)` - Uses round-up for conservative liability valuation
+- **Rebalancing**: `msg.value` must equal `getPooledEthBySharesRoundUp(_amountOfShares)` - Ensures exact ETH transfer for share conversion
+- **Withdrawable calculations**: Redemption obligations valued using `getPooledEthBySharesRoundUp()` to prevent over-withdrawal
 
 ## Specification (minimal)
 
-#### Function: `Lido.totalPooledEther() → uint256`
+#### Function: `Lido.getTotalPooledEther() → uint256`
 
 Returns  
 `internalEther + externalEther`, where:
 - `internalEther = bufferedEther + CLBalance + transientEther`
 - `externalEther = externalShares * internalEther / internalShares`
+
+#### Function: `Lido.getPooledEthBySharesRoundUp(uint256 sharesAmount) → uint256`
+
+Converts shares to ETH value with the result **rounded up**.
+
+*Requirements*
+- `sharesAmount` must be less than `UINT128_MAX`
+
+*Returns*
+The amount of ETH that corresponds to `sharesAmount` shares, calculated as:
+```
+ceilDiv(sharesAmount * internalEther, totalShares - externalShares)
+```
+
+*Note*: This function is critical for conservative liability calculations and exact ETH transfers in rebalancing operations.
 
 #### Function: `Lido.mintExternalShares(address receiver, uint256 sharesAmount)`
 *Requirements*
@@ -380,7 +384,7 @@ Returns
 1. **caller** must be `VaultHub`.
 2. `msg.value` must not be zero.
 3. Staking must not be paused.
-4. `msg.value` must match `sharesAmount * shareRate`.
+4. `msg.value` must exactly equal `getPooledEthBySharesRoundUp(sharesAmount)`.
 5. `externalShares >= sharesAmount`.
 6. Staking rate limit must not be exhausted.
 
@@ -407,10 +411,10 @@ Returns
 1. `externalShares -= sharesAmount`.
 2. Total shares remain the same.
 3. Internal shares effectively increase by `sharesAmount`.
-4. Share rate decreases (losses socialized across all stETH holders).
+4. Share rate decreases (internalize triggers losses distributed across all stETH holders).
 
 *Events*  
-`ExternalBadDebtInternalized(sharesAmount)`, `ExternalSharesBurnt(sharesAmount)`.
+`ExternalBadDebtInternalized(sharesAmount)`.
 
 ## Technical Design Decisions
 
@@ -433,7 +437,7 @@ Lido Core acts as a validation performance benchmark oracle in a sense that stET
 Invariant is enforced upon every new stETH mint.
 
 For already minted external shares, vaults must maintain sufficient total value to cover the increasing locked value (liability + reserve) due to the historically-positive stETH token rebase.
-The health of overcollateralization is monitored through two thresholds:
+The health of over-collateralization is monitored through two thresholds:
 - block new minting requests when the `RR` threshold breached
 - allow force rebalance to be made by the protocol when the `FRT` threshold breached
 
@@ -491,9 +495,9 @@ Pauses are implemented on multiple layers of the system:
 - Overall minting can be paused
 - All stETH token transfers can be paused
 
-### One new minter/burner for stETH
+### One new minter/burner for externally backed stETH
 
-This LIP introduces a new source of minting and burning, increasing the importance of access control, deployment configuration, and monitoring.
+This LIP introduces a new source of external shares minting and burning, increasing the importance of access control, deployment configuration, and monitoring.
 
 To limit the control surface, all minting and burning of external shares is authorized only via the single `VaultHub` contract. There is a global minting limit preventing external shares to exceed the sane limits upon initial proposal adoption (as said above).
 
@@ -520,8 +524,9 @@ Paused state prevents:
 - ether can't be funded or withdrawn from the registered vaults;
 - rebalance operations are paused;
 - staking vaults can't receive oracle reports;
-- ether can't be deposited to beacon chain from staking vaults
 - assigned obligations of staking vaults (redemptions and fees) can't be settled
+
+Note: VaultHub's pause doesn't impose deposits pause, thus requiring a separate simultaneous intervention for deposit mechanism if needed.
 
 ## Rationale
 
@@ -592,6 +597,7 @@ The wrapped stETH (wstETH) contract and its deployments across L1 and L2s mainta
 
 The withdrawal request and claim system maintains full backward compatibility:
 
+- **Finalization-induced surplus from withdrawal position capped balance discount**: There is a change in the finalization-induced surplus distribution. Minted fees to operators and treasury are not affected by this surplus anymore.
 - **NFT mechanics**: Withdrawal request NFTs continue to represent claims on the underlying ETH with the same finalization process and timing.
 - **Queue processing**: The withdrawal queue processes requests identically, with funds sourced from the buffer, validator exits, and now potentially vault rebalancing.
 - **Bunker mode**: The existing bunker mode protections and turbo mode operations function as designed, with external shares not affecting calculations.
