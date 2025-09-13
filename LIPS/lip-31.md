@@ -509,7 +509,7 @@ To limit the control surface, all minting and burning of external shares is auth
 
 ### External ether drained
 
-If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply (i.e., the `stETH.getPooledEthBySharesRoundUp(liability) > TV` invariant broken for a vault or a group of vaults).
+If external ether sources fail or experience a severe mass-slashing event, external shares remain in circulation whilst bad debt accrues in the stETH external ether supply (i.e., the `liability > stETH.getSharesByPooledEth(TV)` invariant broken for a vault or a group of vaults).
 
 Losses can be covered by:
 - replenishing the staking vaults accrued bad debt with additional funds;
