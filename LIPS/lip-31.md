@@ -61,7 +61,7 @@ By hard-coding **over-collateralization at the protocol level** and measuring ba
 | **Minimal reserve** | `minimalReserve`, minimal amount of additional reserve to be locked |
 | **Locked** | `liability + max(reserve, minimalReserve)`, staking vault locked value |
 | **Global backing invariant** | `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked` |
-| **Reserve Breach** | If `TV – stETH.getPooledEthBySharesRoundUp(liability) < RR × TV`, staking vault enters *unhealthy* state. The round-up ensures conservative liability measurement. |
+| **Reserve Breach** | If `TV – stETH.getPooledEthBySharesRoundUp(liability) < FRT × TV`, staking vault enters *unhealthy* state. The round-up ensures conservative liability measurement. |
 | **Bad debt** | If `stETH.getPooledEthBySharesRoundUp(liability) > TV`, staking vault enters *bad debt* state. Using round-up prevents hiding insolvency through rounding errors. |
 
 ### Design principles to uphold
