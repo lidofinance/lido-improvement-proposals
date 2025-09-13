@@ -44,6 +44,8 @@ Key motivations for this design include:
 
 4. **Platform evolution** – Moving from a single staking pool to a platform supporting multiple staking products aligns incentives among operators, builders, and stakers, fostering innovation while maintaining the battle-tested Core Pool for users seeking simple, traditional staking.
 
+5. **Economic alignment** – External vault operators pay ongoing fees for accessing infrastucture and stETH liquidity, ensuring that incentives between Lido Core and external vaults are aligned appropriately.
+
 By hard-coding **over-collateralization at the protocol level** and measuring backing **per-vault**, the design contains tail risks while unlocking new ether supply lines. stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not internalized to the protocol unless extreme conditions trigger failure modes.
 
 ## Specification
@@ -258,6 +260,8 @@ externalShares_{\text{post}} = externalShares_{pre} - badDebtToInternalize
 
 Lido Core continues to be the sole source of *token* rebases; however, the
 oracle now carries the extra field `vaultsDataTreeRoot`, containing the Merkle root of each vault's totalValue, cumulativeLidoFees, liabilityShares, maxLiabilityShares, and slashingReserve (which contributes to the vault's minimal reserve calculation), more details about "lazy oracle" system in [LIP-32](./lip-32.md).
+
+The **cumulativeLidoFees** field tracks the total fees owed by each vault to Lido DAO. These fees accumulate continuously and are settled to the Lido treasury.
 
 The on‑chain `AccountingOracle` stores the last accepted root. `LazyOracle.updateVaultData(...)` can be called permissionlessly throughout the oracle period to update individual vaults lazily.
 
@@ -552,6 +556,7 @@ The over-collateralization requirement at the vault level creates robust risk is
 - **No risk socialization**: Each vault maintains its own reserve (calculated based on RR) plus a minimal reserve, ensuring that slashing or operational failures affect only that vault's participants, not the broader stETH holder base unless failure mode is activated.
 - **Incentive alignment**: Vault operators bear the cost of their own risk through locked value (`liability + max(reserve, minimal reserve)`), incentivizing prudent validator management and operational excellence.
 - **Transparent risk pricing**: Different vault types can have different reserve ratios and minimal reserve requirements based on their risk profile, allowing market-based risk pricing while maintaining token fungibility.
+- **Fee-based compensation**: External vaults pay ongoing fees (infrastructure, liquidity, and reservation) that flow to Lido treasury, ensuring that providing service and liquidity is economically rewarded rather than dilutive.
 - **Graceful degradation**: The FRT threshold enables orderly unwinding of unhealthy positions before they impact the global system, with forced rebalancing serving as a backstop.
 
 ### Upgradeable & extensible architecture
