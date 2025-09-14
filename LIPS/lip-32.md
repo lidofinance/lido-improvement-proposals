@@ -16,7 +16,7 @@ This proposal defines sanity checks for stVaults oracle reporting in Lido V3, es
 
 ## Abstract
 
-Lido V3 introduces stVaults as part of a broader staking infrastructure platform, where independent operators manage validators via vault-specific withdrawal credentials contracts while minting stETH backed by their stake. As described in [LIP-31](./lip-31.md), the protocol implements a global accounting system through `VaultHub` - a central collateral registry that tracks each vault's total value and manages external shares minting/burning. This LIP proposes comprehensive sanity checks for the "lazy oracle" system (centered around LazyOracle contract) that reports vault parameters to ensure the integrity of this global accounting framework.
+Lido V3 introduces stVaults as part of a broader staking infrastructure platform, where independent operators manage validators via vault-specific withdrawal credentials contracts while minting stETH backed by their stake. As described in [LIP-31](./lip-31.md), the protocol implements a global accounting system through `VaultHub` - a central collateral registry that tracks each vault's total value and manages external shares minting/burning. This LIP proposes comprehensive sanity checks for the "lazy oracle" system (centered around the `LazyOracle` contract) that reports vault parameters to ensure the integrity of this global accounting framework.
 
 The proposal introduces two funding flow types: direct funding through the `fund()` method (verifiable on-chain), and indirect funding which requires a 3-day quarantine period (with an exception for increases less than 3.5% of vault total value). These mechanisms, combined with parameter validation for `totalValue`, `cumulativeLidoFees`, `liabilityShares`, and `slashingReserve`, create a robust defense against potential oracle manipulation that could compromise the global backing invariant: `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked`.
 
@@ -26,7 +26,7 @@ With the introduction of stVaults in Lido V3, the protocol implements a global a
 
 - The extended Accounting Oracle publishes Merkle roots of per-vault balances
 - `VaultHub` verifies inclusion proofs asynchronously, enabling scalable vault management
-- Vault owners submit on-demand reports with Merkle proofs for operations requiring updated vault state
+- Vault owners submit on-demand reports with Merkle proofs for operations requiring updated vault state through `LazyOracle`
 
 This architecture, while enabling efficient scaling, creates potential attack vectors if the oracle committee is compromised or software is malfunctioning. A misbehaving oracle could manipulate vault parameters to:
 
@@ -67,7 +67,7 @@ Therefore, existing sanity checks remain unchanged.
 
 ### Lazy Oracle Architecture and Global Accounting Integration
 
-As described in [LIP-31](./lip-31.md), the global accounting system implements a "lazy oracle" mechanism to enable scalable vault management:
+As described in [LIP-31](./lip-31.md), the global accounting system implements a "lazy oracle" mechanism (centered around the `LazyOracle` contract) to enable scalable vault management:
 
 1. **Extended Accounting Oracle**: Publishes Merkle roots containing per-vault state (`totalValue`, `cumulativeLidoFees`, `liabilityShares`, `slashingReserve`) 
 2. **VaultHub Integration**: Acts as the central collateral registry, verifying inclusion proofs asynchronously
@@ -479,6 +479,7 @@ if (_cumulativeLidoFees - previousCumulativeLidoFees > maxLidoFees) {
 if (_maxLiabilityShares < _liabilityShares || _maxLiabilityShares < record.maxLiabilityShares) {
     revert InvalidMaxLiabilityShares();
 }
+```
 
 ## Integration with Global Accounting System
 
