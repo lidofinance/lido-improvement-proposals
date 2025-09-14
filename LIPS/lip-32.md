@@ -107,7 +107,7 @@ Each vault report includes four critical parameters that require validation:
     - Enables premature collateral withdrawal, potentially violating the reserve ratio (RR) requirements
     - Allows premature disconnect from the VaultHub and Lido protocol
 
-#### 3. maxLiabilityShares
+#### 4. maxLiabilityShares
 
 **Definition:** Maximum external shares minted against the staking vault position within the latest AccountingOracle-reported frame (between reference slots). This value is used to calculate the vault's locked amount and prevent manipulation of collateral requirements.
 
