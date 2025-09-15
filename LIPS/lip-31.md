@@ -1,11 +1,11 @@
 ---
 lip: 31
 title: Expanding stETH liquidity layer with over-collateralized minting
-status: WIP
+status: Proposed
 author: Alexei Potapkin, Eugene Mamin, Eugene Pshenichnyy, Max Merkulov
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lido-v3-design-implementation-proposal/10665
 created: 2024-12-06
-updated: 2025-09-13
+updated: 2025-09-15
 ---
 
 # Expanding stETH liquidity layer with over-collateralized minting
@@ -44,7 +44,7 @@ Key motivations for this design include:
 
 4. **Platform evolution** – Moving from a single staking pool to a platform supporting multiple staking products aligns incentives among operators, builders, and stakers, fostering innovation while maintaining the battle-tested Core Pool for users seeking simple, traditional staking.
 
-5. **Economic alignment** – External vault operators pay ongoing fees for accessing infrastucture and stETH liquidity, ensuring that incentives between Lido Core and external vaults are aligned appropriately.
+5. **Economic alignment** – External vault operators pay ongoing fees for accessing infrastructure and stETH liquidity, ensuring that incentives between Lido Core and external vaults are aligned appropriately.
 
 By hard-coding **over-collateralization at the protocol level** and measuring backing **per-vault**, the design contains tail risks while unlocking new ether supply lines. stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not internalized to the protocol unless extreme conditions trigger failure modes.
 
@@ -59,9 +59,10 @@ By hard-coding **over-collateralization at the protocol level** and measuring ba
 | **Reserve Ratio (RR)** | Minimum share of TV that **should not** be represented by stETH. |
 | **Force Rebalance Threshold (FRT)** | Minimum share of TV that incurs force rebalance if becomes represented by stETH, invariant: `FRT < RR` |
 | **Liability** | stETH shares minted against the staking vault position (value rebases with stETH) |
-| **Reserve** | `reserve = ceilDiv(liability * RR, 1 - RR)`, additional reserve for liability to be locked |
-| **Minimal reserve** | `minimalReserve`, minimal amount of additional reserve to be locked |
-| **Locked** | `liability + max(reserve, minimalReserve)`, staking vault locked value |
+| **Reserve** | `reserve = ceilDiv(liability * RR, 1 - RR)`, additional reserve for liability to be locked based on the reserve ratio |
+| **Minimal reserve** | `minimalReserve = max(CONNECT_DEPOSIT, slashingReserve)`, the minimum amount of additional reserve that must be locked regardless of the calculated reserve from RR. Initially set to CONNECT_DEPOSIT (1 ETH) and can be increased based on slashing risk. |
+| **Slashing reserve** | Component of minimal reserve reported by the oracle that represents the amount needed to cover potential validator slashing penalties specific to each vault |
+| **Locked** | `liability + max(reserve, minimalReserve)`, staking vault locked value ensuring adequate over-collateralization |
 | **Global backing invariant** | `stETH.totalSupply() ≤ Core Pool total supply + Σ Staking Vault locked` |
 | **Reserve Breach** | If `TV – stETH.getPooledEthBySharesRoundUp(liability) < FRT × TV`, staking vault enters *unhealthy* state. The round-up ensures conservative liability measurement. |
 | **Bad debt shares** | If `liability > stETH.getSharesByPooledEth(TV)`, staking vault enters *bad debt* state |
@@ -170,6 +171,7 @@ After burning:
 - Total shares decrease: `totalShares_new = totalShares_old - ΔS_ext,burn`
 - External ether implicitly decreases by: `ΔS_ext,burn × shareRate`
 - The vault's available collateral increases accordingly
+- Redemption obligations decreases for the vault (if assigned before) 
 
 #### Rebalance
 
@@ -204,6 +206,7 @@ Rebalance is used to:
 - Improve vault health when the effective reserve (total value minus liability) falls below the desired level
 - Handle forced rebalancing when the effective reserve breaches the Force Rebalance Threshold (FRT)
 - Manage collateral to maintain the minimum locked value during slashing events
+- Reduce stETH redemption obligations (if assigned to the vault)
 
 #### Oracle reports
 
@@ -259,11 +262,13 @@ externalShares_{\text{post}} = externalShares_{pre} - badDebtToInternalize
 ```
 
 Lido Core continues to be the sole source of *token* rebases; however, the
-oracle now carries the extra field `vaultsDataTreeRoot`, containing the Merkle root of each vault's totalValue, cumulativeLidoFees, liabilityShares, maxLiabilityShares, and slashingReserve (which contributes to the vault's minimal reserve calculation), more details about "lazy oracle" system in [LIP-32](./lip-32.md).
+oracle now carries the extra field `vaultsDataTreeRoot`, containing the Merkle root of each vault's `totalValue`, `cumulativeLidoFees`, `liabilityShares`, `maxLiabilityShares`, and `slashingReserve`. The `slashingReserve` represents the oracle's assessment of ETH needed to cover potential validator slashing penalties for each vault, which directly contributes to the vault's minimal reserve calculation (`minimalReserve = max(CONNECT_DEPOSIT, slashingReserve)`). More details about the "lazy oracle" system parameters can be found in [LIP-32](./lip-32.md).
 
 The **cumulativeLidoFees** field tracks the total fees owed by each vault to Lido DAO. These fees accumulate continuously and are settled to the Lido treasury.
 
-The on‑chain `AccountingOracle` stores the last accepted root. `LazyOracle.updateVaultData(...)` can be called permissionlessly throughout the oracle period to update individual vaults lazily.
+The on‑chain `AccountingOracle` stores the last accepted root. `LazyOracle.updateVaultData(...)` can be called permissionlessly throughout the oracle period to update individual vaults lazily. Lazily in this context means:
+- asynchronously to the main report phase;
+- required to be posted on-demand (may skip certain reports at all).
 
 ##### Bad debt internalization
 
@@ -297,6 +302,54 @@ This ensures that:
 - External vaults don't affect the core pool's rebase calculations
 - Share rate remains stable and predictable
 - Bad debt internalization happens transparently
+
+### Minimal reserve and slashing reserve mechanics
+
+The protocol implements a two-tier reserve system to ensure vaults maintain adequate collateral under various risk scenarios:
+
+#### Minimal reserve calculation
+
+The minimal reserve (`minimalReserve`) represents the absolute minimum additional collateral that must be locked beyond the vault's liability, regardless of the reserve ratio calculation. It is determined as:
+
+```math
+minimalReserve = max(CONNECT_DEPOSIT, slashingReserve)
+```
+
+Where:
+- **CONNECT_DEPOSIT** = 1 ETH - The initial deposit required when a vault connects to the protocol, serving as a baseline commitment
+- **slashingReserve** - Oracle-reported value representing the estimated ETH needed to cover potential validator slashing penalties
+
+#### Slashing reserve determination
+
+The slashing reserve is a vault-specific value reported by the oracle as part of the vault data updates. It represents:
+
+1. **Validator slashing risk coverage** - Calculated based on the vault's validator set characteristics and potential correlated slashing scenarios
+2. **Dynamic adjustment** - Updated with each oracle report to reflect changes in the vault's risk profile
+3. **Vault-specific calculation** - Different vaults may have different slashing reserves based on their operational parameters and validator distribution
+
+#### Total locked value calculation
+
+The total amount a vault must lock is calculated as:
+
+```math
+locked = liability + max(reserve, minimalReserve)
+```
+
+Where:
+- `liability` = The ETH value of stETH shares minted to the vault (using round-up for conservative valuation)
+- `reserve` = `ceilDiv(liability * RR, 1 - RR)` - The reserve calculated from the reserve ratio
+- `minimalReserve` = As defined above
+
+This ensures that vaults always maintain the greater of:
+1. The percentage-based reserve (from RR)
+2. The absolute minimal reserve (including slashing coverage)
+
+#### Practical implications
+
+- **Initial connection**: When a vault first connects, it must deposit at least 1 ETH (CONNECT_DEPOSIT), which becomes its initial minimal reserve
+- **Ongoing operations**: As the vault operates and the oracle reports slashing reserves, the minimal reserve may increase if slashing risk exceeds 1 ETH
+- **Minting capacity**: A vault's ability to mint new stETH is constrained by ensuring the post-mint locked value requirement is met
+- **Risk isolation**: Each vault's slashing reserve is specific to its validator set, preventing risk mutualization across vaults
 
 ### Critical importance of consistent valuation in collateral calculations
 
@@ -447,8 +500,9 @@ The health of over-collateralization is monitored through two thresholds:
 
 ### Collateral updates (RR & FRT guidance)
 
-* **RR** (e.g., 10 %) must at minimum cover the *validator correlated slashing* scenario contemplated by the risk assessment framework for stVaults analysis.
+* **RR** (e.g., 10 %) must at minimum cover the *validator correlated slashing* scenario contemplated by the risk assessment framework for stVaults analysis. This percentage-based reserve works in conjunction with the slashing reserve to ensure adequate collateralization.
 * **FRT** should be chosen such that the staking vault with the fully inactive validators can move from breaching `RR` to `FRT` on a scale of a few weeks.
+* **Slashing reserve** provides an additional layer of protection by ensuring a minimum absolute amount is always reserved, particularly important anticipating extensive correlated slashing across multiple vaults of the same node operator.
 
 ### Round-up enforcement in collateral checks
 
