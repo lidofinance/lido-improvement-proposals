@@ -1,11 +1,11 @@
 ---
 lip: 31
 title: Expanding stETH liquidity layer with over-collateralized minting
-status: WIP
+status: Proposed
 author: Alexei Potapkin, Eugene Mamin, Eugene Pshenichnyy, Max Merkulov
-discussions-to: TBA
+discussions-to: https://research.lido.fi/t/lido-v3-design-implementation-proposal/10665
 created: 2024-12-06
-updated: 2025-09-13
+updated: 2025-09-15
 ---
 
 # Expanding stETH liquidity layer with over-collateralized minting
@@ -44,7 +44,7 @@ Key motivations for this design include:
 
 4. **Platform evolution** – Moving from a single staking pool to a platform supporting multiple staking products aligns incentives among operators, builders, and stakers, fostering innovation while maintaining the battle-tested Core Pool for users seeking simple, traditional staking.
 
-5. **Economic alignment** – External vault operators pay ongoing fees for accessing infrastucture and stETH liquidity, ensuring that incentives between Lido Core and external vaults are aligned appropriately.
+5. **Economic alignment** – External vault operators pay ongoing fees for accessing infrastructure and stETH liquidity, ensuring that incentives between Lido Core and external vaults are aligned appropriately.
 
 By hard-coding **over-collateralization at the protocol level** and measuring backing **per-vault**, the design contains tail risks while unlocking new ether supply lines. stETH remains a *single*, fungible liquidity layer; risk is isolated at the source, not internalized to the protocol unless extreme conditions trigger failure modes.
 
@@ -170,6 +170,7 @@ After burning:
 - Total shares decrease: `totalShares_new = totalShares_old - ΔS_ext,burn`
 - External ether implicitly decreases by: `ΔS_ext,burn × shareRate`
 - The vault's available collateral increases accordingly
+- Redemption obligations decreases for the vault (if assigned before) 
 
 #### Rebalance
 
@@ -204,6 +205,7 @@ Rebalance is used to:
 - Improve vault health when the effective reserve (total value minus liability) falls below the desired level
 - Handle forced rebalancing when the effective reserve breaches the Force Rebalance Threshold (FRT)
 - Manage collateral to maintain the minimum locked value during slashing events
+- Reduce stETH redemption obligations (if assigned to the vault)
 
 #### Oracle reports
 
@@ -259,11 +261,13 @@ externalShares_{\text{post}} = externalShares_{pre} - badDebtToInternalize
 ```
 
 Lido Core continues to be the sole source of *token* rebases; however, the
-oracle now carries the extra field `vaultsDataTreeRoot`, containing the Merkle root of each vault's totalValue, cumulativeLidoFees, liabilityShares, maxLiabilityShares, and slashingReserve (which contributes to the vault's minimal reserve calculation), more details about "lazy oracle" system in [LIP-32](./lip-32.md).
+oracle now carries the extra field `vaultsDataTreeRoot`, containing the Merkle root of each vault's `totalValue`, `cumulativeLidoFees`, `liabilityShares`, `maxLiabilityShares`, and `slashingReserve` (which contributes to the vault's minimal reserve calculation), more details about "lazy oracle" system in [LIP-32](./lip-32.md).
 
 The **cumulativeLidoFees** field tracks the total fees owed by each vault to Lido DAO. These fees accumulate continuously and are settled to the Lido treasury.
 
-The on‑chain `AccountingOracle` stores the last accepted root. `LazyOracle.updateVaultData(...)` can be called permissionlessly throughout the oracle period to update individual vaults lazily.
+The on‑chain `AccountingOracle` stores the last accepted root. `LazyOracle.updateVaultData(...)` can be called permissionlessly throughout the oracle period to update individual vaults lazily. Lazily in this context means:
+- asynchronously to the main report phase;
+- required to be posted on-demand (may skip certain reports at all).
 
 ##### Bad debt internalization
 

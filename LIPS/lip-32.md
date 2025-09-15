@@ -1,11 +1,11 @@
 ---
 lip: 32
 title: Sanity Checks for stVaults
-status: WIP
+status: Proposed
 author: Alexandr Drygin, Greg Shestakov, Victor Petrenko
-discussions-to: TBD
+discussions-to: https://research.lido.fi/t/lido-v3-design-implementation-proposal/10665
 created: 2025-09-01
-updated: 2025-09-13
+updated: 2025-09-15
 ---
 
 # LIP-32: Sanity Checks for stVaults
