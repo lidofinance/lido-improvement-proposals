@@ -567,7 +567,7 @@ If external ether sources fail or experience a severe mass-slashing event, exter
 
 Losses can be covered by:
 - replenishing the staking vaults accrued bad debt with additional funds;
-- socializing the bad debt among vaults containing slashed validors of the same node operator;
+- socializing the bad debt among vaults containing slashed validators of the same node operator;
 - executing a self-coverage application (see [LIP-18](./lip-18.md));
 - internalizing the losses to protocol, decreasing stETH token rebase (as it would have been with the Lido Core pool staking penalties) within the next oracle report (see bad debt internalization mechanism described above)
 
