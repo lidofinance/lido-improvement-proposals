@@ -5,7 +5,7 @@ status: Proposed
 author: Dmitry Gusakov, Sergey Khomutinin, Dmitry Chernukhin, Vladimir Gorkavenko
 discussions-to: https://research.lido.fi/t/community-staking-module/5917
 created: 2025-05-02
-updated: 2025-05-02
+updated: 2025-06-11
 ---
 
 
@@ -214,6 +214,8 @@ Node Operator creation uses either `PermisssionlessGate.sol` or `VettedGate.sol`
 - approved to be transferred by `CSAccounting.sol` (stETH, wstETH);
 - included in permit data approving transfers by `CSAccounting.sol` (stETH, wstETH);
 
+`VettedGate.sol` allows each vetted address a one-time operation of Node Operator creation or Node Operator type claim for the existing Node Operator. If one of the operations is performed, the other can not be used.
+
 #### Upload deposit data
 
 ![upload-dd](./assets/lip-29/upload-dd.png)
@@ -225,6 +227,8 @@ Node Operators can upload deposit data after creation. Before uploading, the req
 ![delete-dd](./assets/lip-29/delete-dd.png)
 
 If deposit data has not been deposited yet, the Node Operator can request its deletion from `CSModule.sol`. `CSModule.sol` validates that deposit data has not yet been deposited. If deletion is possible, `CSAccounting.sol` confiscates the `keyRemovalCharge` from the Node Operator's bond.
+
+As a part of the [optimistic vetting approach](https://hackmd.io/@lido/rJrTnEc2a#Optimistic-Vetting), the `removeKeys()` method sets the `totalVettedKeys` pointer to `totalAddedKeys`, effectively vetting back all of the previously unvetted but not deleted keys. More on unvetting [below](#Invalid-keys). 
 
 #### Top-up bond without deposit data upload
 
@@ -255,6 +259,8 @@ Once uploaded, deposit data is placed in the queue with respect to the Priority 
 ![invalid-keys](./assets/lip-29/invalid-keys.png)
 
 Due to the [optimistic vetting approach](https://hackmd.io/gGRgZ0yeTnm-9SSFuHrXwg#Deposit-data-validation-and-invalidation-aka-vetting-and-unvetting), invalid keys might be present in the queue. [DSM](https://docs.lido.fi/contracts/deposit-security-module) is responsible for detecting and reporting invalid keys through `StakingRouter`. If invalid keys are detected, a call to `decreaseOperatorVettedKeys` is expected from `StakingRouter` to `CSModule.sol`.
+
+Node Operators should [delete](#Delete-deposit-data) the invalid keys to resolve the situation. If the invalid keys are still present after deletion, the process repeats.
 
 #### Rewards distribution
 
@@ -297,7 +303,9 @@ If the Node Operator commits EL rewards stealing (or violates the [Lido on Ether
 
 ![eject-strikes](./assets/lip-29/eject-strikes.png)
 
-If the validator has reached the strikes threshold (`actual strikes >= threshold`) `CSM Bot` will initiate validator ejection using a permissionless method. `CSStrikes.sol` validates the proof and makes a call to `CSEjector.sol` if the number of strikes >= threshold. `CSEjector.sol` notify `VEBO` about the required validator ejection. Corresponding penalties are recorded in `CSExitPenalties.sol`.
+If the validator has reached the strikes threshold (`actual strikes >= threshold`) `CSM Bot` will initiate validator ejection using a permissionless method. `CSStrikes.sol` validates the proof and makes a call to `CSEjector.sol` if the number of strikes >= threshold. `CSEjector.sol` notify `TWG` about the required validator ejection. Corresponding penalties are recorded in `CSExitPenalties.sol`.
+
+> Note: `CSEjector.sol` should have an `ADD_FULL_WITHDRAWAL_REQUEST ROLE` granted on `TWG`
 
 #### Voluntary validator ejection
 
@@ -305,7 +313,7 @@ If the validator has reached the strikes threshold (`actual strikes >= threshold
 
 ![eject-voluntary](./assets/lip-29/eject-voluntary.png)
 
-If Node Operators want to use EIP-7002 to exit their validators, they can do so via a dedicated method in the `CSEjector.sol` contract. In this case, `CSEjector.sol` will notify `VEBO` about the required validator ejection.
+If Node Operators want to use [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) to exit their validators, they can do so via a dedicated method in the `CSEjector.sol` contract. In this case, `CSEjector.sol` will notify `TWG` about the required validator ejection.
 
 
 #### Withdrawal reporting
@@ -334,6 +342,16 @@ If the validator is reported as stuck, the recorded stuck penalty is applied, an
 With its updated functionality, `VEBO` can now trigger exits for the validators requested for exit in the `VEBO` report. However, the time when requested validators can be ejected is not limited. Hence, `CSModule.sol` should be notified by `StakingRouter` about the validator exits and the time between the request and ejection. If the time exceeds the threshold, the Node Operator should be penalized for not exiting their validators in time. If Triggerable Exit (TE) was used for the validator, depending on the exit type and if the validator was delayed to exit, the TE fee should be confiscated from the Node Operator's bond. Both stuck penalty and TE fee are recorded in `CSExitPenalties.sol` and applied upon validator withdrawal described above.
 
 > The validator is considered "stuck" if the proof is delivered stating that it was not exited for more than `allowedExitDelay` seconds since the moment it was requested/available for exit. `allowedExitDelay` is a parameter that can be set per-Node-Operator-type.
+
+### Claim beneficial Node Operator type
+
+:::info
+New in v2
+:::
+
+![claim-no-type](./assets/lip-29/claim-no-type.png)
+
+Existing Node Operators can claim a beneficial Node Operator type if their Node Operator's manager or reward address (depending on `extendedManagerPermissions`) is eligible. The claim process is similar to creating a Node Operator via `VettedGate`. If the address has already created a Node Operator using `VettedGate,` this address is no longer eligible to create more Node Operators via `VettedGate` or claim the Node Operator type described above.
 
 #### Referral program
 
@@ -414,7 +432,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | `ACCOUNTING_MANAGER_ROLE` | Removed in v2 and replaced with `DEFAULT_ADMIN_ROLE` |
 | `MANAGE_BOND_CURVES_ROLE` | Not assigned by default                              |
 | `SET_BOND_CURVE_ROLE`     | CSM Committee Multisig and `VettedGate.sol`          |
-| `RESET_BOND_CURVE_ROLE`   | Removed in v2                                      |
+| `RESET_BOND_CURVE_ROLE`   | Removed in v2                                        |
 | `RECOVERER_ROLE`          | Not assigned by default                              |
 
 #### `CSFeeDistributor.sol`
@@ -464,14 +482,15 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 
 #### `VettedGate.sol`
 
-| Role                 | Assignee                               |
-| -------------------- | -------------------------------------- |
-| `DEFAULT_ADMIN_ROLE` | Aragon Agent                           |
-| `PAUSE_ROLE`         | GateSeal contract                      |
-| `RESUME_ROLE`        | Not assigned by default                |
-| `SET_TREE_ROOT_ROLE` | CSM Committee Multisig or Gate Manager |
-| `START_REFERRAL_SEASON_ROLE` | Aragon Agent  |
-| `END_REFERRAL_SEASON_ROLE` | CSM Committee Multisig or Gate Manager |
+| Role                         | Assignee                               |
+| ---------------------------- | -------------------------------------- |
+| `DEFAULT_ADMIN_ROLE`         | Aragon Agent                           |
+| `PAUSE_ROLE`                 | GateSeal contract                      |
+| `RESUME_ROLE`                | Not assigned by default                |
+| `SET_TREE_ROLE`              | Dedicated EasyTrack                    |
+| `START_REFERRAL_SEASON_ROLE` | Aragon Agent                           |
+| `END_REFERRAL_SEASON_ROLE`   | CSM Committee Multisig or Gate Manager |
+| `RECOVERER_ROLE`             | Not assigned by default                |
 
 #### `CSEjector.sol`
 
@@ -480,6 +499,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | `DEFAULT_ADMIN_ROLE`         | Aragon Agent            |
 | `PAUSE_ROLE`                 | GateSeal contract       |
 | `RESUME_ROLE`                | Not assigned by default |
+| `RECOVERER_ROLE`             | Not assigned by default |
 
 #### `CSStrikes.sol`
 
@@ -493,7 +513,10 @@ This contract does not have roles.
 
 #### `PermissionlessGate.sol`
 
-This contract does not have roles.
+| Role                         | Assignee                |
+| ---------------------------- | ----------------------- |
+| `DEFAULT_ADMIN_ROLE`         | Aragon Agent            |
+| `RECOVERER_ROLE`             | Not assigned by default |
 
 ### Upgradability
 `CSModule.sol`, `CSAccounting.sol`,  `CSFeeOracle.sol`, `CSFeeDistributor.sol`, `CSParametersRegistry.sol`, `CSStrikes.sol`, `CSExitPenalties.sol`, and `VettedGate.sol` are upgradable using [OssifiableProxy](https://github.com/lidofinance/community-staking-module/blob/main/src/lib/proxy/OssifiableProxy.sol) contracts.
@@ -502,7 +525,11 @@ This contract does not have roles.
 
 ### Security considerations
 #### Bond exposure to negative stETH rebase
-The bond stored in stETH inevitably inherits all stETH features, including the possibility of a negative rebase. The effective bond amount (counted in ETH) will decrease in case of a negative rebase. This can lead to the case when a relatively large Node Operator might end up with unbonded keys. Also, it might result in an effective bond being lower than the bond required. Hence, Node Operators will lose part of their rewards.
+The bond stored in stETH inevitably inherits all stETH features, including the possibility of a negative rebase. 
+
+The effective bond amount (counted in ETH) will decrease in case of a negative rebase. This can lead to the case when a relatively large Node Operator might end up with unbonded keys. Sometimes, a negative stETH rebase might result in the unbonded validators being returned by CSM to the StakingRouter. However, a negative rebase will trigger [bunker mode](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#bunker-mode), and the deposits will be paused. This leaves enough time to detect affected Node Operators and manually update depositable validators.
+
+Negative stETH rebase might result in an effective bond being lower than the bond required. Hence, Node Operators will lose part of their rewards. 
 
 #### Malicious Oracles can steal all unclaimed CSM rewards
 A single updatable Merkle tree approach to the rewards distribution allows malicious Oracles to collude and submit a version of the Merkle tree, indicating that all rewards should be allocated to a single Node Operator (previously created by malicious actors). The worst-case scenario is when all unclaimed rewards stored on the CSM contract will be available for claim by a single Node Operator. 
@@ -539,6 +566,18 @@ As a result, the Node Operator's bond will be penalized for 32 ETH - `additional
 
 ##### Resolution
 Given no losses for the protocol, a significant cost of attack (1 or 8 ETH), and lack of feasible ways to mitigate it in the smart contract's code, it is proposed to acknowledge the possibility of the attack and be ready to propose a corresponding vote to the DAO if it will ever happen
+
+#### Possible keys upload front-run
+
+Ethereum TX calldata is publicly available for anyone while the TX is in the public mempool. This makes it possible for the attacker to use the validator's deposit data meant to be uploaded for one Node Operator in their own TX, effectively front-running the original transaction. In this case, the author of the original transaction will be in a situation where the deposit data uploaded will be considered a duplicate due to the front-run TX being executed earlier. Duplicated deposit data is unvetted according to the rules of the Lido protocol and should be deleted to resume stake allocation to the Node Operator. In normal conditions, CSM charges a fee for deleting each deposit data record. In case of a front-run, the affected Node Operator might have to pay the charge to resume deposits.
+
+It is worth noting that, despite being possible, the described attack is economically unreasonable since:
+- The attacker must put a sufficient amount of bond to perform keys upload.
+- The attacker must delete the uploaded deposit data to prevent deposits from happening.
+- If the attacker does not delete the deposit data and the deposit is made, the bond uploaded alongside the deposit data will eventually be penalized due to the ejection of the inactive keys (assuming the original owner of the keys will not keep them active)
+
+##### Resolution
+To ensure that the front-run attack is not applicable, we recommend that Node Operators use private mempools when uploading validator keys (deposit data) to CSM.
 
 ## Links
 

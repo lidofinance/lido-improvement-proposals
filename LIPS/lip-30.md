@@ -1,9 +1,9 @@
 ---
 lip: 30
 title: Triggerable Withdrawals Framework
-status: WIP
+status: Proposed
 author: Raman Siamionau, Evgeniy Pirogov
-discussions-to: TBD
+discussions-to: https://research.lido.fi/t/triggerable-withdrawals-framework-in-the-lido-protocol/10299
 created: 2025-05-21
 updated: 2025-09-23
 ---
@@ -36,7 +36,7 @@ For the **Lido protocol**, TW support means a substantial reduction in trust ass
 ## 1. Glossary
 
 ### **Validators Exit Bus (VEB)**
-An on-chain contract that serves as the central infrastructure for managing validator exit requests. It signals NOs to exit their validators by emitting exit request events, emits exit events, and maintains data and tools that enable anyone to prove a validator was requested to exit. Unlike VEBO, it supports exit reports from a wide range of entities.
+An on-chain contract that serves as the central infrastructure for managing validator exit requests. It signals NOs to exit their validators by emitting exit request events, and maintains data and tools that enable anyone to prove a validator was requested to exit. Unlike VEBO, it supports exit reports from a wide range of entities.
 
 ### **Validators Exit Bus Oracle (VEBO)**
 A component of the existing [oracle system](https://docs.lido.fi/guides/oracle-spec/validator-exit-bus) responsible for delivering exit request reports to the VEB on behalf of oracles. Its primary role is to initiate the exit of enough validators to efficiently fulfill pending withdrawal requests. It is a part of the VEB contract.
@@ -90,7 +90,7 @@ At a high level, the architecture is centered around the **VEB**, which serves a
 
 The **VEBO** is an extension of the **VEB**, designed to support oracle-driven reporting. While VEB serves as the central hub for coordinating exit events, VEBO adds an oracle-specific layer that enables oracles to submit and confirm exit reports.
 
-To manage all **TWRs** submitted by authorized entities, a dedicated smart contract called the **Triggerable Withdrawals Gateway (TWG)** is introduced. This contract acts as the single entry point for TWRs from trusted sources and forwards valid requests to the **Withdrawal Vault**. It is responsible for:
+To manage all **Triggerable Withdrawal Requests (TWRs)** submitted by authorized entities, a dedicated smart contract called the **Triggerable Withdrawals Gateway (TWG)** is introduced. This contract acts as the single entry point for TWRs from trusted sources and forwards valid requests to the **Withdrawal Vault**. It is responsible for:
 
 - Validating the roles and permissions of the caller;
 - Enforcing rate limits for safety and protocol stability;
@@ -102,7 +102,7 @@ Additionally, the architecture includes a **Validator Exit Delay Verifier**, a c
 
 ### 3.1 Report Validators to Exit
 
-This flow describes the **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract or a governance (possibly represented via [Easy Track](https://docs.lido.fi/guides/easy-track-guide/) factories can submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
+This flow describes a **two-phase delivery model** for reporting validators to exit. In the first phase, Oracles - via consensus on a smart contract or a governance mechanism (possibly represented via [Easy Track](https://docs.lido.fi/guides/easy-track-guide/) motions) can submit a hash of the exit requests data to the **VEB**. The report data includes a list of validators to be exited.
 
 The second phase involves revealing the actual report data and emitting exit events for the listed validators. When the data is revealed, the contract saves a timestamp linked to the data hash. This later allows any actor to prove that a specific validator was requested to exit, and when the corresponding event was emitted.
 
@@ -169,14 +169,14 @@ To do this, a participant must:
 
 The system calculates the difference between:
 
-- The timestamp of the exit request emission (from VEB) or validator’s `activation epoch + COMMITTEE_PERIOD`. [Details](#Calculating-secondsSinceEligibleExitRequest-Sent-to-the-Staking-Module);
+- The timestamp of the exit request emission (from VEB) or validator’s `activation epoch + COMMITTEE_PERIOD`.
 - The timestamp of the CL state showing the validator is still active.
 
 This time delta is passed to the **staking module**, which uses its internal logic to decide whether a penalty should be applied to the Node Operator and what kind of action is warranted.
 
 ![Report Late Validators](assets/lip-30/3_report_late_validators.png)
 
-## 4. Onchain Components
+## 4. On-chain Components
 
 This section provides a detailed breakdown of each smart contract involved in the Triggerable Withdrawals framework, including their purpose, responsibilities, functions, and external interfaces.
 
@@ -218,7 +218,7 @@ When the contract is paused, it prevents hash submissions, data reveals, and exi
 
 This contract uses the **Limits Library** to enforce rate limiting. Each **Validator Exit Request** consumes one unit of quota. All Validator Exit Requests, except those from Oracle reports, are subject to a single global limit. Oracle reports are limited with Oracle Sanity Checker contract.
 
-Technical implementation: [**Appendix A – Limit Implementation**](#Appendix-A-–-Limit-Implementation)
+Technical implementation: [**Appendix A – Limit Implementation**](#appendix-a--limit-implementation)
 
 In addition to limits, a restriction on the number of max processed validators per tx will be applied. This ensures that the report cannot consume excessive gas during processing.
 
@@ -240,7 +240,7 @@ VEBO is an extension of VEB designed specifically to support oracle-based report
 
 ---
 
-### 4.3 Triggerable Withdrawals Gateway
+### 4.2 Triggerable Withdrawals Gateway
 
 The **Triggerable Withdrawals Gateway** is a core contract responsible for receiving and processing all **Triggerable Withdrawal Requests (TWRs)**. It enforces rate limits on TWR creation, calculates the required fee per request, issues refund (if any) to the designated recipient, and forwards validated requests to the **Withdrawal Vault**. After processing, it notifies the **Staking Router** about the request for further action.
 
@@ -266,13 +266,11 @@ Since the Triggerable Withdrawals Gateway takes part in the withdrawal process, 
 
 Mechanism description: [Contracts pausability and Tiebreaker Committee](https://github.com/lidofinance/dual-governance/blob/develop/docs/mechanism.md#contracts-pausability-and-tiebreaker-committee).
 
----
-
-### 4.4 Withdrawal Vault
+### 4.3 Withdrawal Vault
 
 The **Withdrawal Vault** is a core contract capable of performing **Execution Layer (EL) requests**. We implement support for [EIP-7002: Execution Layer Triggerable Withdrawals](https://eips.ethereum.org/EIPS/eip-7002).
 
-### 4.5 Validator **Exit Delay** Verifier
+### 4.4 Validator **Exit Delay** Verifier
 
 The **Validator Exit Delay Verifier** is a contract responsible for detecting **late validators**—validators that were requested to exit via the VEB but have **not yet initiated exit on the CL**. It calculates the time during which Node Operators have failed to exit their validators and provides this information to **Staking Modules** via the **Staking Router**.
 
@@ -287,14 +285,14 @@ It is important to note that `secondsSinceEligibleExitRequest` is **not always e
 
 Therefore, this value represents the time **between the moment the Node Operator was first eligible to initiate the exit** (i.e., after activation and exit eligibility conditions were met) **and the moment the validator is still observed as active**.
 
-### 4.6 Staking Router
+### 4.5 Staking Router
 
 The main update introduces support in the **Staking Router** for a new interface that staking modules must implement. This interface includes two new methods:
 
 - One for reporting **late validators**;
 - One for reporting all **triggerable withdrawal requests** that have been executed for validators managed by the module.
 
-#### 4.7 IStakingModule
+#### 4.6 IStakingModule
 
 IStakingModule is updated with new methods required to fully support TW. New interface and methods description can be found below:
 
@@ -350,7 +348,7 @@ function onValidatorExitTriggered(
 function exitDeadlineThreshold(uint256 _nodeOperatorId) public view returns (uint256);
 ```
 
-### 4.8 Node Operator Registry and sDVT
+### 4.7 Node Operator Registry and sDVT
 
 In the **Node Operators Registry**, all logic related to **stuck keys** and corresponding penalties will be removed.
 
@@ -358,18 +356,18 @@ When a late validator is reported, the module will not take any direct action ot
 
 ⚠️ This update applies to both the Curated Module and the sDVT Module.
 
-### 4.9 Lido Locator
+### 4.8 Lido Locator
 
 The following new contract addresses are planned to be added to the **Lido Locator**:
 
 - `TriggerableWithdrawalsGateway`
 - `ValidatorExitDelayVerifier`
 
-### 4.10 Accounting Oracle
+### 4.9 Accounting Oracle
     
 The Accounting Oracle is no longer responsible for delivering stuck keys to the staking modules. Therefore, the data format related to stuck keys has been deprecated. Extra data tx from Oracles will be reverted in case if there are stuck keys info.
 
-## 5. Offchain Components
+## 5. Off-chain Components
 
 ### 5.1 Validator Exit Bus Oracle
 
@@ -438,9 +436,9 @@ The bot will:
 - Operate permissionlessly, ensuring anyone can contribute to protocol safety.
 - Rely on Staking Modules to expose public interfaces or logic to validate the delay and apply penalties.
 
-### 6. **Security considerations**
+## 6. **Security considerations**
 
-#### 6.1 Attack Vector: Vulnerability from Uncontrolled Creation of TWRs
+### 6.1 Attack Vector: Vulnerability from Uncontrolled Creation of TWRs
 
 If proper access controls or exit report validations are missing or incorrectly enforced in the **Triggerable Withdrawals flow**, a malicious actor may be able to **bypass intended safeguards** and force **unauthorized or premature exits** of active validators. This may occur under several conditions:
 
@@ -460,7 +458,7 @@ If proper access controls or exit report validations are missing or incorrectly 
 - Implement monitoring and alerting; allow the contract to be paused via the GreatSeal contract.
 - Add constraints to TWR creation for trusted smart contracts (e.g., validate key ownership, deposit origin.
 
-#### 6.2 Spam attack on TW limits. Trying to censorship usefull TWR
+### 6.2 Spam attack on TW limits. Trying to censorship usefull TWR
 
 The **Triggerable Withdrawals framework** enforces a TW **limit** to protect the protocol from excessive or abusive validator exits. However this mechanism can be exploited by a malicious actor to perform a **DoS** attack by **saturating the tw quota with spam validator TWRs**, spending limit quota and thereby blocking legitimate exits during that frame.
 
