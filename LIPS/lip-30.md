@@ -489,13 +489,13 @@ Below is a list of configuration values and roles that will be assigned as part 
 | `exitsPerFrame`        | 1     | Amount of quota replenished per frame |
 | `frameDuration`        | 48    | Duration of each frame in seconds     |
 
-| Role                               | Assignee                           |
-|------------------------------------|------------------------------------|
-| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                       |
-| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` contract |
-| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default            |
-| `PAUSE_ROLE`                       | GateSeal contract                  |
-| `RESUME_ROLE`                      | ResealManager contract             |
+| Role                               | Assignee                                            |
+|------------------------------------|-----------------------------------------------------|
+| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                                        |
+| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` and `CSEjector` contracts |
+| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default                             |
+| `PAUSE_ROLE`                       | GateSeal contract                                   |
+| `RESUME_ROLE`                      | ResealManager contract                              |
 
 #### StakingRouter.sol
 
