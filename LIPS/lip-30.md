@@ -489,7 +489,6 @@ Below is a list of configuration values and roles that will be assigned as part 
 | `SUBMIT_REPORT_HASH_ROLE`         | [Easy Track Motion](https://docs.lido.fi/guides/easy-track-guide/) will be used by Node Operators and sDVTComeette to eject validators |
 | `EXIT_REQUEST_LIMIT_MANAGER_ROLE` | Not assigned by default                                                                                                                |
 | `PAUSE_ROLE`                      | Triggerable Withdrawal GateSeal contract                                                                                               |
-| `RESUME_ROLE`                     | ResealManager contract                                                                                                                 |
 
 #### TriggerableWithdrawalsGateway.sol
 
@@ -503,6 +502,7 @@ Below is a list of configuration values and roles that will be assigned as part 
 |------------------------------------|------------------------------------------|
 | `DEFAULT_ADMIN_ROLE`               | Aragon Agent                             |
 | `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` contract       |
+| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `CSEjector` contract                     |
 | `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default                  |
 | `PAUSE_ROLE`                       | Triggerable Withdrawal GateSeal contract |
 | `PAUSE_ROLE`                       | ResealManager contract                   |
