@@ -490,6 +490,8 @@ Below is a list of configuration values and roles that will be assigned as part 
 | `EXIT_REQUEST_LIMIT_MANAGER_ROLE` | Not assigned by default                                                                                                                |
 | `PAUSE_ROLE`                      | Triggerable Withdrawal GateSeal contract                                                                                               |
 
+* The old gateseal will be disconnected by revoking the `PAUSE_ROLE`.
+
 #### TriggerableWithdrawalsGateway.sol
 
 | Name                   | Value | Description                           |
@@ -507,8 +509,6 @@ Below is a list of configuration values and roles that will be assigned as part 
 | `PAUSE_ROLE`                       | Triggerable Withdrawal GateSeal contract |
 | `PAUSE_ROLE`                       | ResealManager contract                   |
 | `RESUME_ROLE`                      | ResealManager contract                   |
-
-* The old gateseal will be disconnected by revoking the `PAUSE_ROLE`.
 
 #### WithdrawalQueue.sol
 
