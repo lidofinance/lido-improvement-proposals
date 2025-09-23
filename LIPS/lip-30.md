@@ -33,7 +33,7 @@ For the **Lido protocol**, TW support means a substantial reduction in trust ass
 
 # Specification
 
-## 1. Gloassary
+## 1. Glossary
 
 ### **Validators Exit Bus (VEB)**
 An on-chain contract that serves as the central infrastructure for managing validator exit requests. It signals NOs to exit their validators by emitting exit request events, emits exit events, and maintains data and tools that enable anyone to prove a validator was requested to exit. Unlike VEBO, it supports exit reports from a wide range of entities.
@@ -253,6 +253,18 @@ This contract uses the **Limits Library** to enforce rate limiting. Each **TWR**
 [Analytics numbers](https://hackmd.io/5wN10bGaSbyPwpzcVkdVVw?view) 
 
 Technical implementation: [**Appendix A – Limit Implementation**](#Appendix-A-–-Limit-Implementation) 
+
+---
+
+#### Pausable Contract
+
+The **Triggerable Withdrawals Gateway** contract is pausable using the [GateSeal](https://github.com/lidofinance/gate-seals?tab=readme-ov-file#what-is-a-gateseal) to prevent unexpected behavior that could harm the protocol.
+
+When the contract is paused, it prevents any TWR creation and does not forward them to the Withdrawal Vault.
+
+Since the Triggerable Withdrawals Gateway takes part in the withdrawal process, it is crucial to add it to the list of contracts that can be resumed to prevent ties between the protocol and governance. The contract will be added to the DualGovernance contract as a Withdrawal Blocker and can be resumed by the Tiebreaker Committee.
+
+Mechanism description: [Contracts pausability and Tiebreaker Committee](https://github.com/lidofinance/dual-governance/blob/develop/docs/mechanism.md#contracts-pausability-and-tiebreaker-committee).
 
 ---
 
