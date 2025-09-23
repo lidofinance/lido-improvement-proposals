@@ -488,8 +488,7 @@ Below is a list of configuration values and roles that will be assigned as part 
 | `DEFAULT_ADMIN_ROLE`              | Aragon Agent                                                                                                                           |
 | `SUBMIT_REPORT_HASH_ROLE`         | [Easy Track Motion](https://docs.lido.fi/guides/easy-track-guide/) will be used by Node Operators and sDVTComeette to eject validators |
 | `EXIT_REQUEST_LIMIT_MANAGER_ROLE` | Not assigned by default                                                                                                                |
-| `PAUSE_ROLE`                      | GateSeal contract                                                                                                                      |
-| `RESUME_ROLE`                     | ResealManager contract                                                                                                                 |
+| `PAUSE_ROLE`                      | Triggerable Withdrawal GateSeal contract                                                                                               |
 
 #### TriggerableWithdrawalsGateway.sol
 
@@ -499,13 +498,25 @@ Below is a list of configuration values and roles that will be assigned as part 
 | `exitsPerFrame`        | 1     | Amount of quota replenished per frame |
 | `frameDuration`        | 48    | Duration of each frame in seconds     |
 
-| Role                               | Assignee                                            |
-|------------------------------------|-----------------------------------------------------|
-| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                                        |
-| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` and `CSEjector` contracts |
-| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default                             |
-| `PAUSE_ROLE`                       | GateSeal contract                                   |
-| `RESUME_ROLE`                      | ResealManager contract                              |
+| Role                               | Assignee                                 |
+|------------------------------------|------------------------------------------|
+| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                             |
+| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` contract       |
+| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `CSEjector` contract                     |
+| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default                  |
+| `PAUSE_ROLE`                       | Triggerable Withdrawal GateSeal contract |
+| `PAUSE_ROLE`                       | ResealManager contract                   |
+| `RESUME_ROLE`                      | ResealManager contract                   |
+
+* The old gateseal will be disconnected by revoking the `PAUSE_ROLE`.
+
+#### WithdrawalQueue.sol
+
+| Role                               | Assignee                           |
+|------------------------------------|------------------------------------|
+| `PAUSE_ROLE`                       | Withdrawal Queue GateSeal contract |
+
+* The old gateseal will be disconnected by revoking the `PAUSE_ROLE`.
 
 #### StakingRouter.sol
 
@@ -533,9 +544,9 @@ Below is a list of configuration values and roles that will be assigned as part 
 
 #### Add
 
-| Name                            | Value | Description                                                                                                                  |
-|---------------------------------|-------|------------------------------------------------------------------------------------------------------------------------------|
-| `EXIT_LOOKBACK_WINDOW_IN_SLOTS` | 50400 | Specifies the number of slots the Oracle should scan backward from the reference slot when retrieving validator exit events. |
+| Name                            | Value  | Description                                                                                                                  |
+|---------------------------------|--------|------------------------------------------------------------------------------------------------------------------------------|
+| `EXIT_LOOKBACK_WINDOW_IN_SLOTS` | 100800 | Specifies the number of slots the Oracle should scan backward from the reference slot when retrieving validator exit events. |
 
 #### Remove
 
