@@ -303,7 +303,9 @@ If the Node Operator commits EL rewards stealing (or violates the [Lido on Ether
 
 ![eject-strikes](./assets/lip-29/eject-strikes.png)
 
-If the validator has reached the strikes threshold (`actual strikes >= threshold`) `CSM Bot` will initiate validator ejection using a permissionless method. `CSStrikes.sol` validates the proof and makes a call to `CSEjector.sol` if the number of strikes >= threshold. `CSEjector.sol` notify `VEBO` about the required validator ejection. Corresponding penalties are recorded in `CSExitPenalties.sol`.
+If the validator has reached the strikes threshold (`actual strikes >= threshold`) `CSM Bot` will initiate validator ejection using a permissionless method. `CSStrikes.sol` validates the proof and makes a call to `CSEjector.sol` if the number of strikes >= threshold. `CSEjector.sol` notify `TWG` about the required validator ejection. Corresponding penalties are recorded in `CSExitPenalties.sol`.
+
+> Note: `CSEjector.sol` should have an `ADD_FULL_WITHDRAWAL_REQUEST ROLE` granted on `TWG`
 
 #### Voluntary validator ejection
 
@@ -311,7 +313,7 @@ If the validator has reached the strikes threshold (`actual strikes >= threshold
 
 ![eject-voluntary](./assets/lip-29/eject-voluntary.png)
 
-If Node Operators want to use EIP-7002 to exit their validators, they can do so via a dedicated method in the `CSEjector.sol` contract. In this case, `CSEjector.sol` will notify `VEBO` about the required validator ejection.
+If Node Operators want to use [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) to exit their validators, they can do so via a dedicated method in the `CSEjector.sol` contract. In this case, `CSEjector.sol` will notify `TWG` about the required validator ejection.
 
 
 #### Withdrawal reporting
