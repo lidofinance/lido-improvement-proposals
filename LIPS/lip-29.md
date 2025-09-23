@@ -214,7 +214,7 @@ Node Operator creation uses either `PermisssionlessGate.sol` or `VettedGate.sol`
 - approved to be transferred by `CSAccounting.sol` (stETH, wstETH);
 - included in permit data approving transfers by `CSAccounting.sol` (stETH, wstETH);
 
-`VettedGate.sol` allows each vetted address a one-time operation of Node Operator creation or Node Operator type claim for the existing Node Operator. If one of the operations is performed, the other can not be used.
+`VettedGate.sol` allows each vetted address a one-time operation of Node Operator creation or Node Operator type claim for the existing Node Operator. If one of the operations is performed, the other can not be used.  `VettedGate.sol` should have `SET_BOND_CURVE_ROLE` role in `CSAccounting.sol` to assign Node Operator types (bond curves).
 
 #### Upload deposit data
 
