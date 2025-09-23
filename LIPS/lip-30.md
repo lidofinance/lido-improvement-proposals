@@ -5,7 +5,7 @@ status: Proposed
 author: Raman Siamionau, Evgeniy Pirogov
 discussions-to: https://research.lido.fi/t/triggerable-withdrawals-framework-in-the-lido-protocol/10299
 created: 2025-05-21
-updated: 2025-07-04
+updated: 2025-09-23
 ---
 
 # Simple Summary
@@ -255,6 +255,16 @@ This contract uses the **Limits Library** to enforce rate limiting. Each **TWR**
 Technical implementation: [**Appendix A – Limit Implementation**](#Appendix-A-–-Limit-Implementation) 
 
 ---
+
+#### Pausable Contract
+
+The **Triggerable Withdrawals Gateway** contract is pausable using the [GateSeal](https://github.com/lidofinance/gate-seals?tab=readme-ov-file#what-is-a-gateseal) to prevent unexpected behavior that could harm the protocol.
+
+When the contract is paused, it prevents any TWR creation and does not forward them to the Withdrawal Vault.
+
+Since the Triggerable Withdrawals Gateway takes part in the withdrawal process, it is crucial to add it to the list of contracts that can be resumed to prevent ties between the protocol and governance. The contract will be added to the DualGovernance contract as a Withdrawal Blocker and can be resumed by the Tiebreaker Committee.
+
+Mechanism description: [Contracts pausability and Tiebreaker Committee](https://github.com/lidofinance/dual-governance/blob/develop/docs/mechanism.md#contracts-pausability-and-tiebreaker-committee).
 
 ### 4.3 Withdrawal Vault
 
@@ -518,6 +528,23 @@ Below is a list of configuration values and roles that will be assigned as part 
 | Name                    | Value  | Description                                                                                                                                                  |
 |-------------------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `exitDeadlineInSeconds` | 432000 | Number of seconds within which Node Operators must complete a validator exit. Inherited from STUCK_PENALTY_DELAY (retrievable via `getStuckPenaltyDelay()`). |
+
+### Oracle Daemon Configs Variables
+
+#### Add
+
+| Name                            | Value | Description                                                                                                                  |
+|---------------------------------|-------|------------------------------------------------------------------------------------------------------------------------------|
+| `EXIT_LOOKBACK_WINDOW_IN_SLOTS` | 50400 | Specifies the number of slots the Oracle should scan backward from the reference slot when retrieving validator exit events. |
+
+#### Remove
+
+| Name                                             | Why removed?                                                       |
+|--------------------------------------------------|--------------------------------------------------------------------|
+| `NODE_OPERATOR_NETWORK_PENETRATION_THRESHOLD_BP` | Removed predicate in VEBO that calculated NO network participation |
+| `VALIDATOR_DELAYED_TIMEOUT_IN_SLOTS`             | Removed predicate in VEBO that checked for delayed validators      |
+| `VALIDATOR_DELINQUENT_TIMEOUT_IN_SLOTS`          | Removed functionality in AO that reported stuck keys               |
+
 
 ## 8. **Appendix**
 
