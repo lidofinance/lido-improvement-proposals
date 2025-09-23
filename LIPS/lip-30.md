@@ -490,7 +490,7 @@ Below is a list of configuration values and roles that will be assigned as part 
 | `DEFAULT_ADMIN_ROLE`              | Aragon Agent                                                                                                                           |
 | `SUBMIT_REPORT_HASH_ROLE`         | [Easy Track Motion](https://docs.lido.fi/guides/easy-track-guide/) will be used by Node Operators and sDVTComeette to eject validators |
 | `EXIT_REQUEST_LIMIT_MANAGER_ROLE` | Not assigned by default                                                                                                                |
-| `PAUSE_ROLE`                      | GateSeal contract                                                                                                                      |
+| `PAUSE_ROLE`                      | Triggerable Withdrawal GateSeal contract                                                                                               |
 | `RESUME_ROLE`                     | ResealManager contract                                                                                                                 |
 
 #### TriggerableWithdrawalsGateway.sol
@@ -501,13 +501,24 @@ Below is a list of configuration values and roles that will be assigned as part 
 | `exitsPerFrame`        | 1     | Amount of quota replenished per frame |
 | `frameDuration`        | 48    | Duration of each frame in seconds     |
 
+| Role                               | Assignee                                 |
+|------------------------------------|------------------------------------------|
+| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                             |
+| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` contract       |
+| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default                  |
+| `PAUSE_ROLE`                       | Triggerable Withdrawal GateSeal contract |
+| `PAUSE_ROLE`                       | ResealManager contract                   |
+| `RESUME_ROLE`                      | ResealManager contract                   |
+
+* The old gateseal will be disconnected by revoking the `PAUSE_ROLE`.
+
+#### WithdrawalQueue.sol
+
 | Role                               | Assignee                           |
 |------------------------------------|------------------------------------|
-| `DEFAULT_ADMIN_ROLE`               | Aragon Agent                       |
-| `ADD_FULL_WITHDRAWAL_REQUEST_ROLE` | `ValidatorsExitBusOracle` contract |
-| `EXIT_REQUEST_LIMIT_MANAGER_ROLE`  | Not assigned by default            |
-| `PAUSE_ROLE`                       | GateSeal contract                  |
-| `RESUME_ROLE`                      | ResealManager contract             |
+| `PAUSE_ROLE`                       | Withdrawal Queue GateSeal contract |
+
+* The old gateseal will be disconnected by revoking the `PAUSE_ROLE`.
 
 #### StakingRouter.sol
 
