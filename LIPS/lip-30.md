@@ -536,9 +536,9 @@ Below is a list of configuration values and roles that will be assigned as part 
 
 ### Curated and sDVT Staking Module
 
-| Name                    | Value  | Description                                                                                                                                                  |
-|-------------------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `exitDeadlineInSeconds` | 432000 | Number of seconds within which Node Operators must complete a validator exit. Inherited from STUCK_PENALTY_DELAY (retrievable via `getStuckPenaltyDelay()`). |
+| Name                    | Value  | Description                                                                                                                                                                   |
+|-------------------------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `exitDeadlineInSeconds` | 345600 | Number of seconds within which Node Operators must complete a validator exit. Inherited from `VALIDATOR_DELINQUENT_TIMEOUT_IN_SLOTS` (retrievable from `OracleDaemonConfig`). |
 
 ### Oracle Daemon Configs Variables
 
