@@ -535,9 +535,9 @@ Below is a list of configuration values and roles that will be assigned as part 
 
 #### Add
 
-| Name                            | Value | Description                                                                                                                  |
-|---------------------------------|-------|------------------------------------------------------------------------------------------------------------------------------|
-| `EXIT_LOOKBACK_WINDOW_IN_SLOTS` | 50400 | Specifies the number of slots the Oracle should scan backward from the reference slot when retrieving validator exit events. |
+| Name                            | Value  | Description                                                                                                                  |
+|---------------------------------|--------|------------------------------------------------------------------------------------------------------------------------------|
+| `EXIT_LOOKBACK_WINDOW_IN_SLOTS` | 100800 | Specifies the number of slots the Oracle should scan backward from the reference slot when retrieving validator exit events. |
 
 #### Remove
 
