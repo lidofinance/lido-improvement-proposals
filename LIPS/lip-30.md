@@ -1,11 +1,11 @@
 ---
 lip: 30
 title: Triggerable Withdrawals Framework
-status: Proposed
+status: Implemented
 author: Raman Siamionau, Evgeniy Pirogov
 discussions-to: https://research.lido.fi/t/triggerable-withdrawals-framework-in-the-lido-protocol/10299
 created: 2025-05-21
-updated: 2025-09-23
+updated: 2025-10-15
 ---
 
 # Simple Summary
