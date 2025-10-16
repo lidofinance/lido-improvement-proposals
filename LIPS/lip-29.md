@@ -1,11 +1,11 @@
 ---
 lip: 29
 title: Community Staking Module v2
-status: Proposed
+status: Implemented
 author: Dmitry Gusakov, Sergey Khomutinin, Dmitry Chernukhin, Vladimir Gorkavenko
 discussions-to: https://research.lido.fi/t/community-staking-module/5917
 created: 2025-05-02
-updated: 2025-06-11
+updated: 2025-10-15
 ---
 
 
