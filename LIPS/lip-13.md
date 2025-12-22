@@ -6,6 +6,8 @@ lip: lip-13
 status: Implemented
 author: Alexey Potapkin, Eugene Pshenichnyy, Victor Suzdalev, Eugene Mamin
 discussions-to: https://research.lido.fi/t/lip-13-easy-track-payments-limit/1670
+created: 2022-02-09
+updated: 2025-12-22
 ---
 
 # Easy Track payment limits
@@ -163,17 +165,10 @@ But it could reduce a cumulative damage significantly.
 * [Aragon ACL docs](https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation)
 * [LIP-13 implementation](https://github.com/lidofinance/scripts/pull/33)
 
-## Appendix A. Current limits
+## Appendix A. Easy Track payment limits history
 Following the implementation of LIP-13, the Easy Track payment limits have been
-adjusted through subsequent DAO governance decisions (see the latest relevant vote
-[here](https://vote.lido.fi/vote/195)).
-
-The currently active limits are:
-
-- 1,000 ETH
-- 1,000 stETH
-- 5,000,000 LDO
-- 2,000,000 DAI
-- 2,000,000 USDC
-- 2,000,000 USDT
-- 2,000,000 sUSDS
+adjusted through subsequent DAO governance decisions:
+- [Aragon Vote #115](https://vote.lido.fi/vote/115): 1k ETH, 1k stETH, 5M LDO, 100k DAI
+- [Aragon Vote #147](https://vote.lido.fi/vote/147): 1k ETH, 1k stETH, 5M LDO, 2M DAI
+- [Aragon Vote #171](https://vote.lido.fi/vote/171): 1k ETH, 1k stETH, 5M LDO, 2M DAI, 2M USDC, 2M USDT
+- [Aragon Vote #195](https://vote.lido.fi/vote/195): 1k ETH, 1k stETH, 5M LDO, 2M DAI, 2M USDC, 2M USDT, 2M sUSDS - currently in effect
