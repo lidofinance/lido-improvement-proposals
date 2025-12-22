@@ -141,8 +141,9 @@ As initial values to start with, we propose:
 Also, this limits will be working in whitelist mode and transferring all other 
 ERC-20 tokens will be prohibited.
 
-Note: The limits above reflect the initial proposed configuration. The currently active
-limits are documented in the "Appendix A. Current limits" section below.
+Note: The limits above reflect the initial proposed configuration. The history 
+of payment limit changes, along with the currently active limits, 
+is documented in the "Appendix A. Easy Track payment limits history" section below.
 
 ### Test cases 
 
