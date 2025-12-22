@@ -137,7 +137,10 @@ As initial values to start with, we propose:
 - 100,000 DAI
 
 Also, this limits will be working in whitelist mode and transferring all other 
-ERC-20 tokens will be prohibited. 
+ERC-20 tokens will be prohibited.
+
+Note: The limits above reflect the initial proposed configuration. The currently active
+limits are documented in the "Appendix A. Current limits" section below.
 
 ### Test cases 
 
@@ -159,3 +162,18 @@ But it could reduce a cumulative damage significantly.
 * [Guide to Easy Track](https://docs.lido.fi/guides/easy-track-guide)
 * [Aragon ACL docs](https://hack.aragon.org/docs/aragonos-ref#parameter-interpretation)
 * [LIP-13 implementation](https://github.com/lidofinance/scripts/pull/33)
+
+## Appendix A. Current limits
+Following the implementation of LIP-13, the Easy Track payment limits have been
+adjusted through subsequent DAO governance decisions (see the latest relevant vote
+[here](https://vote.lido.fi/vote/195)).
+
+The currently active limits are:
+
+- 1,000 ETH
+- 1,000 stETH
+- 5,000,000 LDO
+- 2,000,000 DAI
+- 2,000,000 USDC
+- 2,000,000 USDT
+- 2,000,000 sUSDS
