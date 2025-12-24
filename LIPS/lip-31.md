@@ -1,11 +1,11 @@
 ---
 lip: 31
 title: Expanding stETH liquidity layer with over-collateralized minting
-status: Proposed
+status: Implemented
 author: Alexei Potapkin, Eugene Mamin, Eugene Pshenichnyy, Max Merkulov
 discussions-to: https://research.lido.fi/t/lido-v3-design-implementation-proposal/10665
 created: 2024-12-06
-updated: 2025-09-15
+updated: 2025-12-24
 ---
 
 # Expanding stETH liquidity layer with over-collateralized minting
