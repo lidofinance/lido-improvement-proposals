@@ -303,7 +303,7 @@ Sub-node operator weights are calculated as follows. Assume we have 3 sub-node-o
 
 ![Sub Operators](./assets/lip-33/sub_operators.png)
 
-The sum of the effective weights should not exceed $max(w_1, w_2, w_3)$. Hence, $\sum_{i=1}^{n}s_i \le 10000$. To ensure consistency we can require this sum to be equal to 10_000 BP when creating, or updating `OperatorGroup`.
+The sum of the effective weights should not exceed $max(w_1, w_2, w_3)$. Hence, $\sum_{i=1}^{n}s_i \le 10000$, but in the implementation we will use strict equality $\sum_{i=1}^{n}s_i = 10000$. To ensure consistency we can require this sum to be equal to 10_000 BP when creating, or updating `OperatorGroup`.
 
 `SubNodeOperator.share` allows node operators to determine stake distribution between their sub-node operators. For example, if the operator wants to get ~80% of the stake allocated to their DVT setup, and the rest to the vanilla sub-node operator, they can set shares to 8000 BP, and 2000 BP.
 
@@ -520,7 +520,7 @@ Different instances of [`CuratedGate.sol`](#CuratedGatesol) represent different 
 
 ##### Operator addition to `OperatorGroup`
 
-To become eligible for deposits, a Node Operator should be a part of an OperatorGroup in the [`MetaRegistry.sol`](#MetaRegistrysol). Adding to the group is a permissioned operation performed by CMC.
+To become eligible for deposits, a Node Operator should be a part of an OperatorGroup in the [`MetaRegistry.sol`](#MetaRegistrysol). Adding to the group is a permissioned operation performed by CMC via EasyTrack.
 
 #### Stake Allocation
 
@@ -884,7 +884,7 @@ The check from the [original](https://github.com/lidofinance/lido-improvement-pr
 ```solidity
 uint256 public immutable MIN_WITHDRAWAL_RATIO;
 ...
-uint256 totalDepositedEther = WithdrawnValidatorLib.MIN_ACTIVATION_BALANCE + MODULE.getKeyAddedBalance(nodeOperatorId, keyIndex);
+uint256 totalDepositedEther = WithdrawnValidatorLib.MIN_ACTIVATION_BALANCE + MODULE.getKeyConfirmedBalance(nodeOperatorId, keyIndex);
 withdrawalAmount = withdrawal.object.amountWei();
 if (withdrawalAmount < (totalDepositedEther * MIN_WITHDRAWAL_RATIO) / MAX_BP) revert PartialWithdrawal();
 ```
