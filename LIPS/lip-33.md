@@ -545,6 +545,23 @@ Once uploaded, deposit data becomes available for allocation of the initial `32 
 
 The top-up phase involves a call from the `StakingRouter` to [`CuratedModule.sol`](#CuratedModulesol), providing information about the keys planned for top-up and top-up limits calculated using CL proofs. [`CuratedModule.sol`](#CuratedModulesol) calculates the stake allocation using the `maxDepositAmount` provided and allocates the stake among the provided keys, respecting the calculated allocation and the `topUpLimits` supplied by the `StakingRouter`. [`CuratedModule.sol`](#CuratedModulesol) also verifies that the keys provided belong to the corresponding Node Operators for security reasons.
 
+##### Deposits order and priority
+
+There are a few ways in which validators can get their balance increased, namely:
+- **Initial 32 ETH deposit.** This deposit serves as a starting point in the validator's lifeline and adds 32 ETH to the validator's balance.
+- **Top-up deposit.** Once the validator index is assigned, the Lido protocol can perform secure top-up deposits to the validator. This will simply increase the validator's balance.
+- **Consolidations from the legacy CM v1.** This is the third source of balance increase for the validator. In the same manner as a top-up deposit, it can only be made (both from the Lido protocol's security perspective and under Ethereum network rules) to a validator with an assigned index. Moreover, the target validator (the one that will receive the balance after consolidation) should also be active on the Ethereum network.
+
+Given the above-mentioned, the following guidelines for deposits is used in CM v2:
+- **Initial deposits have the highest priority.** Whenever there are keys that can receive initial 32 ETH deposits, buffered ETH is used for them.
+- It is recommended to use the earliest deposited keys as targets for consolidations.
+- Top-up deposits should not clash with consolidations and respect the current and pending validator balance when submitted.
+
+The actual process of deposits for CM v2 looks as follows:
+- After module activation, the first phase consists only of initial deposits to all available keys, with consolidations and top-ups disabled.
+- Once there is a significant amount of activated keys in CM v2, the consolidation process starts, and top-up deposits are enabled.
+- Whenever there are keys that can receive initial 32 ETH deposits, buffered ETH is used for them first.
+
 #### Node Operator Addresses Management
 
 > Changed in CM v2
