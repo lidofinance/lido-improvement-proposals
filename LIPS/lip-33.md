@@ -3,9 +3,9 @@ lip: 33
 title: Community Staking Module v3 and Curated Module v2
 status: Proposed
 author: Dmitry Gusakov (@dgusakov), Sergey Khomutinin (@skhomuti), Dmitry Chernukhin (@madlabman), Vladimir Gorkavenko (@vgorkavenko)
-discussions-to: https://research.lido.fi/t/community-staking-module/5917
+discussions-to: https://research.lido.fi/t/community-staking-module/5917, https://research.lido.fi/t/future-of-the-curated-module-cmv2-landscape/10929
 created: 2026-03-18
-updated: 2026-03-18
+updated: 2026-03-26
 ---
 
 # LIP-33. Community Staking Module v3 and Curated Module v2
@@ -18,9 +18,27 @@ Curated Module v2 (CM v2) is a new chapter for the Lido protocol. Based on the s
 
 ## Motivation
 
-Over the past 1.5 years, CSM has proven to be the most reliable and scalable staking module in the Lido protocol. Fundamental concepts such as validator bonds, automated performance management, and tailored Node Operator types have meaningfully improved the Lido protocol's resilience and decentralization. Today, we introduce the next chapter of the staking modules in the Lido protocol: the CSM upgrade, featuring support for the much-anticipated 0x02 validator withdrawal credentials and more. `0x02` validator WCs are essential for the Ethereum network's scalability and future upgrades. Bundled with a few more technical improvements, CSM v3 will make CSM even more user-friendly and reliable.
+Over the past 1.5 years, CSM has proven to be the most reliable and scalable staking module in the Lido protocol. Fundamental concepts such as validator bonds, automated performance management, and tailored Node Operator types have meaningfully improved the Lido protocol's resilience and decentralization. Today, we introduce the next chapter of the staking modules in the Lido protocol: the CSM upgrade, featuring support for the much-anticipated 0x02 validator withdrawal credentials and more. `0x02` validator WCs are essential for the Ethereum network's scalability and future upgrades. While current version will support `0x02` validators only for a new separate instance of the module, it will allow Lido protocol to keep increasing permissionless participation without compromising on using `0x01` validators for this purpose. Bundled with a few more technical improvements, CSM v3 will make CSM even more user-friendly and reliable.
 
 In addition to CSM upgrade the time has come for the Curated Module to evolve. Being almost unchanged since the Lido v2 release, the Curated module design doesn't fit into the modern vision, so we need to introduce a new version of the Curated module to allow for future evolution, as described in the [forum post](https://research.lido.fi/t/future-of-the-curated-module-cmv2-landscape/10929). Curated Module v2 will be a new deployment and will assume migration from the old version via validator consolidations. Using CSM v3 as a base, Curated Module v2 features several unique mechanics such as Meta Operators Registry and Weighted Stake Allocation. These features lay a solid foundation for the future evolution of the Curated Module that encompasses the Validation Market. While the market is not included in the scope of the current release, it will be added in the future. For now, the main feature that will be enabled by the Curated Module v2 is support for `0x02` validator WCs. This will allow the Lido protocol to migrate the majority of its protocol stake to 0x02 validators, significantly boosting 0x02 WC adoption at the Ethereum network level.
+
+A few numbers to illustrate the impact of the proposed modules:
+- `0x02` instance of CSM v3 will allow for an increase in the permissionless participation in the Lido protocol towards 15% or more while keeping the total number of the permissionless validators below the current level due to anticipated migration of the existing large operators to `0x02` WCs and new operators with sufficient capital entering the protocol with `0x02` WCs. Rough estimates suggest that around 80% of the existing `0x01` validators will be migrated to `0x02` WCs over the next few years, if not months. This will reduce the count of permissionless validators by around 90%, while keeping the permissionless stake at the same level or even increasing it.
+- Migration of the existing Curated Module to CM v2 initially announced in the [blog post](https://blog.lido.fi/lidos-roadmap-to-pectra-delivering-validator-consolidations-in-the-protocol/) will result in a reduction of the number of validators in the Curated Module by almost 60 times pushing total share of Ethereum staked with `0x02` validators from the current 21% to around 42% or more given the current [share of the Curated Module](https://explorer.rated.network/o/Lido%20Curated%20Module?network=mainnet&timeWindow=1d&viewBy=operator&page=1&pageSize=15&idType=poolShare) in the total Ethereum stake being around 21%.
+- Introduction of the weighted stake allocation mechanism in CM v2 will allow for a fairer distribution of stake between the Node Operators in the Curated Module. It will lay the fundamental groundwork for the future introduction of the Validation Market, which will transition the Lido protocol's revenue model from the current fixed fee to a dynamic fee based on market demand and supply. Such a transition will align the Lido protocol's revenue model with market dynamics and enable more sustainable long-term growth.
+
+Without the proposed changes, a few potential issues might arise in the future:
+- Without support for `0x02` validator WCs in CSM, growing the permissionless participation in the Lido protocol will result in a negative effect on the network due to an excessive number of validators with `0x01` WCs, and will likely be limited.
+- Without support for `0x02` validator WCs in the Curated Module, the majority of the protocol stake will be locked with `0x01` WCs, which will significantly hinder the adoption of `0x02` WCs at the Ethereum network level and will result in a significant portion of the protocol stake being locked with `0x01` WCs for a long time. This will also make it impossible to sunset the existing Curated Module and transition to a more modern design.
+- Without the introduction of the weighted stake allocation mechanism in CM v2, the distribution of stake between Node Operators in the Curated Module will be less fair and less aligned with the market demand and supply. This will also make it impossible to transition to the Validation Market and dynamic fee model in the future.
+
+## Migration Plan
+
+Due to the introduction of the `0x02` validator, WCs support in both CSM and CMv2, the following migration plan is proposed:
+- Current instance of CSM will be upgraded to a version of CSM v3 that will continue supporting `0x01` WCs only.
+- A new instance of CSM v3 (new `stakingModuleId`) with support for `0x02` WCs will be deployed. Operators willing to run new validators with `0x02` WCs will be advised to use this instance, while existing validators with `0x01` WCs will continue operating on the existing CSM v3 instance.
+- Any existing CSM operators willing to migrate their existing validators to `0x02` WCs will have to exit their validators from the existing instance of CSM v3 and create new ones in the new instance of CSM v3 with `0x02` WCs. This process will likely be facilitated with the introduction of a special Node Operator type in the `0x02` instance of CSM v3 for the existing ICS operators. This type will feature a deposit-priority boost to incentivize existing operators to migrate to `0x02` WCs. All operators from the existing CSM instance will be incentivized to migrate to the new instance with `0x02` WCs with better economic conditions.
+- The new instance of the Curated Module v2 (new `stakingModuleId`) will be deployed. Existing Curated Module v1 validators will be migrated to CM v2 via validator consolidations. The migration process will be coordinated with the existing Curated Module v1 operators to ensure a smooth transition.
 
 ## Specification
 
@@ -559,7 +577,7 @@ Given the above-mentioned, the following guidelines for deposits is used in CM v
 
 The actual process of deposits for CM v2 looks as follows:
 - After module activation, the first phase consists only of initial deposits to all available keys, with consolidations and top-ups disabled.
-- Once there is a significant amount of activated keys in CM v2, the consolidation process starts, and top-up deposits are enabled.
+- Once there is a sufficient amount (enough active keys per Node Operator to start consolidations) of activated keys in CM v2, the consolidation process starts, and top-up deposits are enabled.
 - Whenever there are keys that can receive initial 32 ETH deposits, buffered ETH is used for them first.
 
 #### Node Operator Addresses Management
