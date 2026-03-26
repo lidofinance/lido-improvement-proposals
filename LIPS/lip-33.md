@@ -12,15 +12,15 @@ updated: 2026-03-18
 
 ## Simple Summary
 
-Community Staking Module v3 (CSM v3) is a technical upgrade to the existing [CSM v2](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-29.md). It features native support of `0x02` validator withdrawal credentials (assuming operations when each `0x02` validator is fully deposited to `2048 ETH`) and built-in Node Operator reward splitters. Additionally, several technical improvements have been made, including improved penalty handling, an optimized reward-claim mechanism, and more granular role-based access controls for managing Node Operator type parameters.
+Community Staking Module v3 (CSM v3) is a technical upgrade to the existing [CSM v2](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-29.md). It features native support of `0x02` validator withdrawal credentials (assuming operations when each `0x02` validator is fully deposited to `2048 ETH`) however under separate instance, not the existing one, and built-in Node Operator reward splitters. Additionally, several technical improvements have been made, including improved penalty handling, an optimized reward-claim mechanism, and more granular role-based access controls for managing Node Operator type parameters.
 
-Curated Module v2 (CM v2) is a new chapter for the Lido protocol. Based on the solid codebase of CSM, it inherits new concepts introduced in CSM v3, like support for `0x02` validators, integration features, and many more. A robust bonding mechanism allows CM v2 to streamline Node Operator management, reduce operational complexity, and increase protocol security. With CM v2, the curated part of the Lido Validator set will benefit from all the advantages CSM has to offer.
+Curated Module v2 (CM v2) is a new chapter for the Lido protocol. Based on the solid codebase of CSM, it inherits new concepts introduced in CSM v3, like support for `0x02` validators, integration features, and many more. A robust bonding mechanism allows CM v2 to streamline Node Operator management, reduce operational complexity, and increase protocol security. With CM v2, the curated part of the Lido Validator set will benefit from all the advantages CSM has to offer. Currently existing Curated Module v1 will undergo a sunset process by migrating stake into CM v2 throughout the coordinated migration campaign.
 
 ## Motivation
 
 Over the past 1.5 years, CSM has proven to be the most reliable and scalable staking module in the Lido protocol. Fundamental concepts such as validator bonds, automated performance management, and tailored Node Operator types have meaningfully improved the Lido protocol's resilience and decentralization. Today, we introduce the next chapter of the staking modules in the Lido protocol: the CSM upgrade, featuring support for the much-anticipated 0x02 validator withdrawal credentials and more. `0x02` validator WCs are essential for the Ethereum network's scalability and future upgrades. Bundled with a few more technical improvements, CSM v3 will make CSM even more user-friendly and reliable.
 
-In addition to CSM upgrade the time has come for the Curated Module to evolve. Being almost unchanged since the Lido v2 release, the Curated module is meaningfully outdated by now, so we need to introduce a new version of the Curated module to allow for future evolution, as described in the [forum post](https://research.lido.fi/t/future-of-the-curated-module-cmv2-landscape/10929). Curated Module v2 will be a new deployment and will assume migration from the old version via validator consolidations. Using CSM v3 as a base, Curated Module v2 features several unique mechanics such as Meta Operators Registry and Weighted Stake Allocation. These features lay a solid foundation for the future evolution of the Curated Module that encompasses the Validation Market. While the market is not included in the scope of the current release, it will be added in the future. For now, the main feature that will be enabled by the Curated Module v2 is support for `0x02` validator WCs. This will allow the Lido protocol to migrate the majority of its protocol stake to 0x02 validators, significantly boosting 0x02 WC adoption at the Ethereum network level.
+In addition to CSM upgrade the time has come for the Curated Module to evolve. Being almost unchanged since the Lido v2 release, the Curated module design doesn't fit into the modern vision, so we need to introduce a new version of the Curated module to allow for future evolution, as described in the [forum post](https://research.lido.fi/t/future-of-the-curated-module-cmv2-landscape/10929). Curated Module v2 will be a new deployment and will assume migration from the old version via validator consolidations. Using CSM v3 as a base, Curated Module v2 features several unique mechanics such as Meta Operators Registry and Weighted Stake Allocation. These features lay a solid foundation for the future evolution of the Curated Module that encompasses the Validation Market. While the market is not included in the scope of the current release, it will be added in the future. For now, the main feature that will be enabled by the Curated Module v2 is support for `0x02` validator WCs. This will allow the Lido protocol to migrate the majority of its protocol stake to 0x02 validators, significantly boosting 0x02 WC adoption at the Ethereum network level.
 
 ## Specification
 
@@ -213,7 +213,7 @@ The list of sealable contracts:
 
 > New in CM v2
 
-`CuratedGate.sol` is a supplementary contract that enables Node Operator creation for the vetted addresses, which serves as an entry point to [`CuratedModule.sol`](#CuratedMosulesol). Alongside Node Operator creation, a contract can assign a custom Node Operator type (bondCurveId) in `Accounting.sol`. Deployed using `MerkleGateFactory.sol` to allow the addition of the new instances later without additional code security audits. The list of curated participants is individually upgradable for each instance of the [`CuratedGate.sol`](#CuratedGatesol) using a dedicated EasyTrack factory.
+`CuratedGate.sol` is a supplementary contract that enables Node Operator creation for the vetted addresses, which serves as an entry point to [`CuratedModule.sol`](#CuratedModulesol). Alongside Node Operator creation, a contract can assign a custom Node Operator type (bondCurveId) in `Accounting.sol`. Deployed using `MerkleGateFactory.sol` to allow the addition of the new instances later without additional code security audits. The list of curated participants is individually upgradable for each instance of the [`CuratedGate.sol`](#CuratedGatesol) using a dedicated EasyTrack factory.
 
 ##### `MetaRegistry.sol`
 
@@ -277,7 +277,7 @@ It also stores Node Operator names and descriptions. Both Node Operators and CMC
 
 #### Meta Operators Registry
 
-[`CuratedModule.sol`](#CuratedMosulesol) uses the [`MetaRegistry.sol`](#MetaRegistrysol) contract to fetch information about Node Operators' stake and allocation weights. [`MetaRegistry.sol`](#MetaRegistrysol) has a permissioned method (expected to be called by [CMC](#CMC)) to add information about `OperatorGroup`. `OperatorGroup` has the following form:
+[`CuratedModule.sol`](#CuratedModulesol) uses the [`MetaRegistry.sol`](#MetaRegistrysol) contract to fetch information about Node Operators' stake and allocation weights. [`MetaRegistry.sol`](#MetaRegistrysol) has a permissioned method (expected to be called by [CMC](#CMC)) to add information about `OperatorGroup`. `OperatorGroup` has the following form:
 
 ```solidity
 struct OperatorGroup {
@@ -903,7 +903,7 @@ Since top-ups are now the essential part of the deposit flow in the protocol, it
 5. Top-up is applied on CL and gets withdrawn
 6. If the amount of the top-up that was just withdrawn fits into `[max_reported_validator_balance * (100% - MIN_WITHDRAWAL_RATIO), max_reported_validator_balance]` Node Operator's bond will be penalized for `max_reported_validator_balance - topup_amount`
 
-Alternatively, the simmilar case can happen when the validator should have been penalized because `exit_balance < max_reported_validator_balance`, but there was a top-up with the `amount > max_reported_validator_balance`, and this top-up withdrawal is used as a withdrawal proof. In this the losses are for the protocol and not Node Operator since the penalty that should have been applied is not applied.
+Alternatively, the similar case can happen when the validator should have been penalized because `exit_balance < max_reported_validator_balance`, but there was a top-up with the `amount > max_reported_validator_balance`, and this top-up withdrawal is used as a withdrawal proof. In this the losses are for the protocol and not Node Operator since the penalty that should have been applied is not applied.
 
 > The new issue does not apply to the old 0x01 CSM.
 
