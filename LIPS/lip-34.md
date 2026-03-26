@@ -1,5 +1,5 @@
 ---
-lip: 33
+lip: 34
 title: CircuitBreaker
 status: Proposed
 author: Azat Serikov
@@ -7,7 +7,7 @@ discussions-to: TBD
 created: 2026-03-20
 ---
 
-# LIP-33: CircuitBreaker
+# LIP-34: CircuitBreaker
 
 ## Simple Summary
 
