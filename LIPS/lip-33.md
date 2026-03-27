@@ -5,7 +5,7 @@ status: Proposed
 author: Dmitry Gusakov (@dgusakov), Sergey Khomutinin (@skhomuti), Dmitry Chernukhin (@madlabman), Vladimir Gorkavenko (@vgorkavenko)
 discussions-to: https://research.lido.fi/t/community-staking-module/5917, https://research.lido.fi/t/future-of-the-curated-module-cmv2-landscape/10929
 created: 2026-03-18
-updated: 2026-03-26
+updated: 2026-03-27
 ---
 
 # LIP-33. Community Staking Module v3 and Curated Module v2
@@ -139,7 +139,7 @@ The scheme above depicts CM v2's smart contracts architecture and changes made c
 [`Ejector.sol`](#Ejectorsol) is a supplementary contract responsible for interactions with [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002)-powered Lido Withdrawal credentials via `TWG`. Node Operators can voluntarily eject their validators. [`ValidatorStrikes.sol`](#ValidatorStrikessol) uses [`Ejector.sol`](#Ejector.sol) to trigger exits for validators that have surpassed the strike threshold.
 
 **Changes in CSM v3 and CM v2:**
-- `voluntaryEject` method is optimized to accept keyIndex list only.
+- `voluntaryEject` method is optimized to accept keyIndex list only instead of `startIndex` and `keysCount` to save byte code for two implementations.
 
 ##### `ExitPenalties.sol`
 
@@ -194,6 +194,8 @@ The list of sealable contracts:
 - [`Verifier.sol`](#Verifiersol)
 - [`VettedGate.sol`](#VettedGatesol) (multiple instances)
 - [`Ejector.sol`](#Ejectorsol)
+
+> Note: [`CuratedGate.sol`](#CuratedGatesol) instances are not added to `GateSeal` and paused by [`CMC`](#CMC) instead.
 
 #### CSM-only contracts
 
@@ -706,7 +708,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 
 #### [`ParametersRegistry.sol`](#ParametersRegistrysol)
 
-> Note that the contract uses a custom role check modifier that allows both `roleMember` and `roleAdmin` to call methods
+> Note that the contract uses a custom role check modifiers. One allows both `roleMember` and `roleAdmin` to call methods, the other allows `roleMember` and and members of `MANAGE_CURVE_PARAMETERS_ROLE` to call methods. `MANAGE_CURVE_PARAMETERS_ROLE` is added to simplify addition of the new bond curves within governance actions.
 
 | Role                                        | Assignee                |
 | ------------------------------------------- | ----------------------- |
@@ -717,6 +719,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | `MANAGE_PERFORMANCE_PARAMETERS_ROLE`        | Not assigned by default |
 | `MANAGE_REWARD_SHARE_ROLE`                  | Not assigned by default |
 | `MANAGE_VALIDATOR_EXIT_PARAMETERS_ROLE`     | Not assigned by default |
+| `MANAGE_CURVE_PARAMETERS_ROLE`              | Not assigned by default |
 
 #### [`Ejector.sol`](#Ejectorsol)
 
@@ -781,7 +784,7 @@ This contract does not have roles.
 | `PAUSE_ROLE`              | Gate Seal contract and DG Reseal Manager                                    |
 | `RESUME_ROLE`             | DG Reseal Manager                                                           |
 | `MANAGE_BOND_CURVES_ROLE` | Not assigned by default                                                     |
-| `SET_BOND_CURVE_ROLE`     | Instances of [`CuratedGate.sol`](#CuratedGatesol) |
+| `SET_BOND_CURVE_ROLE`     | Instances of [`CuratedGate.sol`](#CuratedGatesol) that use non-default bond curves |
 | `RECOVERER_ROLE`          | Not assigned by default                                                     |
 
 #### [`FeeDistributor.sol`](#FeeDistributorsol)
@@ -824,7 +827,7 @@ This contract does not have roles.
 
 #### [`ParametersRegistry.sol`](#ParametersRegistrysol)
 
-> Note that the contract uses a custom role check modifier that allows both `roleMember` and `roleAdmin` to call methods
+> Note that the contract uses a custom role check modifiers. One allows both `roleMember` and `roleAdmin` to call methods, the other allows `roleMember` and and members of `MANAGE_CURVE_PARAMETERS_ROLE` to call methods. `MANAGE_CURVE_PARAMETERS_ROLE` is added to simplify addition of the new bond curves within governance actions.
 
 | Role                                        | Assignee                |
 | ------------------------------------------- | ----------------------- |
@@ -835,6 +838,7 @@ This contract does not have roles.
 | `MANAGE_PERFORMANCE_PARAMETERS_ROLE`        | Not assigned by default |
 | `MANAGE_REWARD_SHARE_ROLE`                  | Not assigned by default |
 | `MANAGE_VALIDATOR_EXIT_PARAMETERS_ROLE`     | Not assigned by default |
+| `MANAGE_CURVE_PARAMETERS_ROLE`              | Not assigned by default |
 
 #### [`Ejector.sol`](#Ejectorsol)
 
@@ -902,9 +906,9 @@ The check from the [original](https://github.com/lidofinance/lido-improvement-pr
 ```solidity
 uint256 public immutable MIN_WITHDRAWAL_RATIO;
 ...
-uint256 totalDepositedEther = WithdrawnValidatorLib.MIN_ACTIVATION_BALANCE + MODULE.getKeyConfirmedBalance(nodeOperatorId, keyIndex);
+uint256 expectedBalance = MODULE.getKeyConfirmedBalances(nodeOperatorId, keyIndex, 1)[0] + ValidatorBalanceLimits.MIN_ACTIVATION_BALANCE;
 withdrawalAmount = withdrawal.object.amountWei();
-if (withdrawalAmount < (totalDepositedEther * MIN_WITHDRAWAL_RATIO) / MAX_BP) revert PartialWithdrawal();
+if (withdrawalAmount < (expectedBalance * MIN_WITHDRAWAL_RATIO) / MAX_BP) revert PartialWithdrawal();
 ```
 
 Hence, with the updated condition in place, the attacker will have to make a deposit greater than `MIN_WITHDRAWAL_RATIO` of the total ETH deposited to a validator. This change makes an attack even more expensive and unreasonable. Also, since slashed validators are now reported via a separate flow, the attack no longer applies to them.
