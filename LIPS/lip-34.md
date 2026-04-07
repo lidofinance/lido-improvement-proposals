@@ -1,7 +1,7 @@
 ---
 lip: 34
 title: CircuitBreaker
-status: Proposed
+status: Draft
 author: Azat Serikov
 discussions-to: TBD
 created: 2026-04-07
