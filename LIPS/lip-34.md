@@ -145,7 +145,7 @@ Revoking GateSeal roles in the same vote eliminates ambiguity for committees abo
 
 ### Step 3. Monitoring
 
-With the vote enactment, off-chain monitoring switches to track CircuitBreaker state and alert on approaching deadlines.
+With the vote enactment, off-chain monitoring switches to track CircuitBreaker state and alert on approaching deadlines. The on-chain enumerable set of registered pausables provides the single source of truth for monitoring.
 
 ## References
 
