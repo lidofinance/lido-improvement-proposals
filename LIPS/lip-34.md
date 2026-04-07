@@ -1,10 +1,10 @@
 ---
 lip: 34
-title: CircuitBreaker
-status: Proposed
+title: CircuitBreaker — Programmable panic layer
+status: Draft
 author: Azat Serikov
 discussions-to: TBD
-created: 2026-03-20
+created: 2026-04-07
 ---
 
 # LIP-34: CircuitBreaker
