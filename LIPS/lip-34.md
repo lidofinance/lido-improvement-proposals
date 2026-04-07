@@ -4,7 +4,7 @@ title: CircuitBreaker
 status: Proposed
 author: Azat Serikov
 discussions-to: TBD
-created: 2026-03-20
+created: 2026-04-07
 ---
 
 # LIP-34: CircuitBreaker
