@@ -141,7 +141,7 @@ A single on-chain vote performs all of the following:
 
 Revoking GateSeal roles in the same vote eliminates ambiguity for committees about which mechanism to use. Atomic execution ensures there is no intermediate state where neither mechanism is active.
 
-### Step 3. Verification
+### Step 3. Monitoring
 
 With the vote enactment, off-chain monitoring switches to track CircuitBreaker state and alert on approaching deadlines.
 
