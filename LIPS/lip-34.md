@@ -11,13 +11,13 @@ created: 2026-03-20
 
 ## Simple Summary
 
-CircuitBreaker is an emergency pause contract that allows the Lido DAO to grant pause authority to multisig committees (pausers). Pausers can instantly pause their assigned contracts bypassing the DAO vote. Each pause is single-use: the pauser authority is cleared upon trigger and must be explicitly restored by the DAO. Pausers must periodically prove liveness to remain authorized.
+CircuitBreaker is an emergency pause contract that allows the Lido DAO to grant pause authority to multisig committees (pausers). Pausers can temporarily pause their assigned contracts bypassing the DAO vote. Each pause is single-use: the pauser authority is cleared upon trigger and must be explicitly restored by the DAO. Pausers must periodically prove liveness to remain authorized.
 
 ## Motivation
 
 ### Background
 
-During an emergency, the DAO cannot respond quickly due to the on-chain governance process which takes days to enact a decision. The protocol requires a mechanism that enables designated committees to pause critical contracts immediately, without waiting for a governance vote.
+During an emergency, the DAO cannot respond quickly due to the on-chain governance process which takes days to enact a decision. The protocol requires a mechanism that enables designated committees to temporary pause critical contracts immediately, without waiting for a governance vote.
 
 The current mechanism is [GateSeals](https://github.com/lidofinance/gate-seals), temporary, single-use pause contracts deployed with a fixed committee, pause duration, set of pausable contracts, and an expiry of up to one year. A GateSeal expires either upon trigger or after one year since deployment, whichever occurs first.
 
