@@ -84,6 +84,8 @@ The heartbeat interval is a global value within immutable bounds, adjustable by 
 
 **Immutable admin.** Preventing ownership transfer eliminates transfer-related exploits and accidental admin loss. In the unlikely event the admin address must change, a new CircuitBreaker is deployed.
 
+**On-chain enumerability.** Even though a single pausable-to-pauser mapping would suffice for the contract's essential functions, CircuitBreaker maintains an enumerable set of pausables. This is to make the contract storage more transparent to external scrutiny and monitoring without relying on event indexing.
+
 ## Trust Assumptions
 
 - The admin is assumed to be honest.
