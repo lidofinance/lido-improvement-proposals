@@ -1,6 +1,6 @@
 ---
 lip: 34
-title: CircuitBreaker
+title: CircuitBreaker — Programmable panic layer
 status: Draft
 author: Azat Serikov
 discussions-to: TBD
