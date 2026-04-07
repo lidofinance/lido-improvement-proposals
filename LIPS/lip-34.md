@@ -11,111 +11,139 @@ created: 2026-03-20
 
 ## Simple Summary
 
-CircuitBreaker lets the DAO delegate emergency pause authority to multisig committees. These committees can instantly pause critical contracts without a DAO vote. Each pausable contract has exactly one assigned pauser. The pauser can pause a contract only once and must be reassigned by the DAO to be able to pause again. Pausers must maintain a periodic heartbeat to remain authorized.
+CircuitBreaker is an emergency pause contract that allows the Lido DAO to grant pause authority to multisig committees (pausers). Pausers can instantly pause their assigned contracts bypassing the DAO vote. Each pause is single-use: the pauser authority is cleared upon trigger and must be explicitly restored by the DAO. Pausers must periodically prove liveness to remain authorized.
 
 ## Motivation
 
 ### Background
 
-In an active exploit, the DAO cannot respond quickly enough due to vote duration. The protocol needs a mechanism for designated committees to pause critical contracts instantly, without waiting for governance.
+During an emergency, the DAO cannot respond quickly due to the on-chain governance process which takes days to enact a decision. The protocol requires a mechanism that enables designated committees to pause critical contracts immediately, without waiting for a governance vote.
 
-The current mechanism is [GateSeals](https://github.com/lidofinance/gate-seals) - temporary, one-off contracts deployed with a fixed committee, pause duration, set of pausable contracts, and an expiry of up to one year. A GateSeal expires on trigger or after a year since deployment, whichever comes first.
+The current mechanism is [GateSeals](https://github.com/lidofinance/gate-seals), temporary, single-use pause contracts deployed with a fixed committee, pause duration, set of pausable contracts, and an expiry of up to one year. A GateSeal expires either upon trigger or after one year since deployment, whichever occurs first.
 
 ### Problem
 
-The redeployment cycle creates operational burden: deploy a new GateSeal, hold a snapshot vote, run an on-chain vote revoking the pause roles from the old GateSeal and granting them to a new one. Adding a new pausable contract requires deploying a new GateSeal. Swapping a dead committee requires deploying a new GateSeal and re-granting all permissions.
+Each GateSeal cycle requires a new deployment, a Snapshot vote, and an on-chain vote that revokes the pause role from the previous GateSeal address and grants it to the new one. This process repeats annually. Adding a new pausable contract requires deploying a new GateSeal. Replacing an unresponsive committee requires deploying a new GateSeal and re-granting all permissions.
 
 ### Solution
 
-CircuitBreaker is a permanent contract that replaces the temporary GateSeal mechanism. Like an electrical circuit breaker, it trips under fault conditions, protects the system, and is reset by an authorized party. It does not self-destruct after tripping.
+CircuitBreaker replaces GateSeals with a single permanent contract. Under normal operation, committees extend their own authority by sending periodic heartbeats without a DAO vote required. The DAO only votes when something changes: adding a new pausable contract or replacing a committee, neither of which happens frequently. The pause role is granted to the CircuitBreaker address once per pausable contract. No redeployment or role rotation is necessary.
 
-The DAO grants the pause role on a pausable contract to the CircuitBreaker address, and that grant survives all pause cycles. Adding a new pausable contract or swapping a committee requires a single governance vote item. No redeployment, no role rotation.
 
 ## CircuitBreaker
 
-A single contract holds pause authority for the pausable contracts. The DAO Agent (admin) maps each pausable contract to one pauser and configures two global parameters: pause duration and heartbeat interval. Pausers prove liveness through periodic heartbeats. An expired heartbeat blocks pausing. On trigger, the pauser assignment is cleared and the DAO must explicitly reassign the pauser. The contract uses no proxy, no inheritance, and no libraries. The admin address is immutable.
+CircuitBreaker manages emergency pausing for the protocol. The admin (DAO Agent) registers pausable contracts and assigns a pauser to each one. The admin configures two global parameters: pause duration and heartbeat interval. Pausers prove liveness through periodic heartbeats; a pauser who fails to do so loses the ability to pause. Upon a successful pause, the pauser authority is cleared. The DAO must explicitly reassign the pauser to the contract.
 
 ### Roles
 
-**Admin.** The DAO Agent. Immutable, set in the constructor and cannot be changed. Assigns pausers, configures pause duration and heartbeat interval. Cannot pause.
+**Admin.** The DAO Agent. The admin registers pausable contracts, assigns pausers, and configures pause duration and heartbeat interval. The admin cannot invoke a pause.
 
-**Pauser.** A multisig committee approved by the DAO. Can pause contracts it is assigned to and send heartbeats. Cannot configure anything.
+The admin address is immutable, set in the constructor. This eliminates the entire class of ownership transfer exploits and accidental admin loss. If the Lido Agent changes address (e.g. due to a DAO executor migration), redeploying CircuitBreaker is trivial compared to the rest of the protocol migration effort. 
+
+**Pauser.** A multisig committee approved by the DAO. A pauser can pause contracts assigned to it and send heartbeats. A pauser cannot modify any configuration.
 
 ### Deployment
 
-The constructor takes seven parameters: admin address, min/max bounds for pause duration, min/max bounds for heartbeat interval, initial pause duration, and initial heartbeat interval. Initial values must fall within their respective bounds. Bounds are immutable but configurable per network as testnet deployments may require different bounds for testing purposes.
+The constructor accepts seven parameters: immutable admin address, immutable min/max bounds for pause duration, immutable min/max bounds for heartbeat interval, and initial values for both parameters. Initial values must fall within their respective bounds. Bounds are set in the constructor (as opposed to hardcoded constants), as testnet deployments may require different ranges for testing purposes.
 
-### Pausable-pauser mapping
+### Pausable-pauser pair
 
-Each pausable contract maps to exactly one pauser. One pauser can have multiple pausables. The admin assigns or replaces a pauser via `setPauser(pausable, pauser)`. Passing `address(0)` removes the assignment. On non-zero assignment, the pauser's heartbeat is automatically updated, meaning newly assigned pausers start as active.
+Each pausable contract is assigned exactly one pauser. This provides clear accountability in an emergency. However, a single pauser can be responsible for multiple pausable contracts. The admin registers, replaces, or removes a pauser for a given pausable. When a pauser is assigned, its heartbeat is refreshed automatically, meaning newly assigned pausers start in an active state. All registered pausables are tracked onchain in an enumerable set for better storage transparency. The list of pausers can be derived from the set of pausables.
 
-The contract does not verify that CircuitBreaker holds the pause role on the target pausable contract or that the target implements the `IPausable` interface correctly. This is the DAO's responsibility during the governance vote that assigns the pauser.
+CircuitBreaker does not verify that it holds the pause role on the target contract or that the target implements the expected interface. These properties can change after registration: the pause role can be revoked, and the contract's implementation can change via a proxy upgrade. Verifying them at registration time would not provide any guarantee at trigger time. Instead, correctness at the time of trigger is treated as a trust assumption.
 
 ### Pause duration
 
-A single global value within set bounds, applied uniformly to all pausables on trigger. Updatable by the admin. Suggested bounds 5 to 30 days.
-
-### Heartbeat
-
-The heartbeat is tied to the pauser address. One heartbeat transaction proves liveness for every contract that pauser manages.
-
-A pauser is active when `block.timestamp <= latestHeartbeat[pauser] + heartbeatInterval`. The heartbeat blocks both pausing and heartbeat renewal: a pauser whose heartbeat has expired cannot pause or refresh. A committee that cannot prove liveness should not be trusted to respond in an emergency.
-
-The heartbeat interval is a single global value within bounds, updatable by the admin. Changing it retroactively affects all existing pausers, i.e. a reduction can make a pauser inactive or, vice versa, an interval increase can make a pauser active again.
+Pause duration is a single global value within immutable bounds, adjustable by the admin. The same duration applies to every pause regardless of the target contract. The purpose of the pause is to give the DAO enough time to assess the situation and act through governance. That timeline depends on how long a DAO vote takes, not on which contract was paused.
 
 ### Pausing
 
-When a pauser calls triggers a pause, the contract verifies the caller is the assigned pauser with an active heartbeat, updates the heartbeat, clears the pauser assignment, calls `pausable.pauseFor(pauseDuration)` on the target contract, and verifies it is paused as a post-condition. If the post-condition fails, the transaction reverts.
+To trigger a pause, the pauser specifies the target pausable contract. The contract verifies that the caller is the registered pauser for that contract and that the caller's heartbeat has not expired. It then refreshes the heartbeat, clears the pauser assignment, invokes the pause on the target contract for the configured duration, and verifies that the target reports as paused. If the post-condition is not satisfied, the transaction reverts. A pauser can trigger at most one pause per contract per assignment. 
 
-The pauser assignment is cleared before the external call to the pausable. A transient storage reentrancy guard prevents cross-pausable reentrancy through malicious `pauseFor` implementations.
+A reentrancy guard prevents a malicious pausable from re-entering CircuitBreaker to pause a different pausable contract.
 
-After a successful pause, the DAO must call `setPauser` to reassign the pauser (or assign a new pauser). This bounds trust delegation: one pause per assignment. Batching multiple pauses is done externally via multisig multi-send.
+To pause multiple contracts in a single transaction atomically, the pauser must construct a multi-send batch externally.
+
+### Heartbeat
+
+Each pauser must periodically send a heartbeat to remain authorized. The heartbeat serves as a liveness proof: it demonstrates that the committee is ready to respond in an emergency. CircuitBreaker requires one heartbeat per pauser regardless of the number of assigned contracts.
+
+When a heartbeat is sent, the contract computes an expiry timestamp (the current block timestamp plus the heartbeat interval) and stores it. The pauser is considered live until the block timestamp exceeds this stored expiry. A pauser whose expiry has passed can neither pause nor send another heartbeat. The only way to restore authorization is for the DAO to reassign the pauser, which sets a new expiry.
+
+The heartbeat interval is a global value within immutable bounds, adjustable by the admin. Because each pauser's expiry is computed and stored at heartbeat time, changing the interval has no effect on existing expiry timestamps. The new interval applies only to subsequent heartbeats and registrations.
 
 ### Design decisions
 
-**One pauser per pausable.** Multiple pausers per pausable create ambiguity about responsibility. A 1:1 mapping keeps accountability clear.
+**One pauser per pausable.** One pauser per contract provides clear accountability. Allowing multiple pausers for the same contract introduces ambiguity regarding responsibility.
 
-**Single-use pause.** Clearing the assignment on trigger limits trust. A compromised committee fires exactly once per assigned contract.
+**Single-use pause.** Clearing the authority upon trigger limits trust exposure. A compromised committee can trigger a single pause per assigned contract.
 
-**Heartbeat gates pausing.** Enforcing liveness blocks expired pausers from acting. A pauser who fails to maintain liveness is considered unreliable and cannot be trusted to act in an emergency.
+**Heartbeat expiry.** A committee that cannot prove liveness in due time is considered unreliable and cannot be trusted to act in an emergency.
 
-**One pause duration for all contracts.** Pause duration is defined by the governance timings, not the specifics of the contract.
+**Single pause duration.** The pause window exists for the DAO to assess the situation and act. This timeline is determined by governance timelines, not by properties of the individual paused contract.
 
-**Immutable admin.** Eliminates ownership transfer exploits and accidental admin loss. If the admin needs to change (which is extremely rare), a new CircuitBreaker needs to be deployed.
+**Immutable admin.** Preventing ownership transfer eliminates transfer-related exploits and accidental admin loss. In the unlikely event the admin address must change, a new CircuitBreaker is deployed.
 
 ## Trust Assumptions
 
-- Admin is always honest. Admin can make mistakes.
-- Pauser is a DAO-approved multisig at assignment time. Pauser can become compromised, lose keys, or make mistakes.
-- CircuitBreaker has the necessary pause roles at trigger time.
-- Pausable is trusted at assignment time. Pausable can become malicious. Pausable implements `IPausable`:
+- The admin is assumed to be honest.
+- A pauser is a trusted DAO-approved multisig at the time of assignment.
+- A pausable contract is trusted at the time of assignment.
+- CircuitBreaker holds the necessary pause role on the target contract at the time of trigger.
+- Pausable contracts are expected to implement the IPausableUntil interface.
 
 ```solidity
-interface IPausable {
+interface IPausableUntil {
     function isPaused() external view returns (bool);
     function pauseFor(uint256 _duration) external;
 }
 ```
 
-Lido's `PausableUntil` base contract satisfies this interface.
-
 ## Integration
 
-The DAO grants the pause role on a pausable contract to the CircuitBreaker address and assigns the pauser in the same vote.
+### DAO Agent
 
-CircuitBreaker operates under Dual Governance ([LIP-28](./lip-28.md)). Admin calls (`setPauser`, `setPauseDuration`, `setHeartbeatInterval`) go through Dual Governance. Emergency `pause` calls bypass governance which is the contract's purpose. Reassignment after a pause goes through normal governance and is subject to veto.
+The DAO Agent is set as the admin of CircuitBreaker in the constructor. This routes all configuration changes through Dual Governance, giving stETH holders the ability to veto changes to emergency pause authority.
+
+### Dual Governance
+
+CircuitBreaker operates under Dual Governance ([LIP-28](./lip-28.md)). The DAO Agent that serves as CircuitBreaker's admin routes all calls through the Dual Governance timelock. Admin operations (registering a pauser, adjusting pause duration, adjusting heartbeat interval) are submitted as governance proposals and are subject to the full Dual Governance flow: proposal submission, the dynamic timelock (minimum 3 days, up to 45 days depending on stETH signalling), and the veto window. The pause duration should be sufficient to cover the base Aragon vote duration and minimum Dual Governance timelock. If the situation requires a longer pause, it can be extended through an Aragon vote or the ResealManager.
+
+### Reseal Manager
+
+Dual Governance includes a Reseal Committee that can extend a temporary pause to an indefinite one via the ResealManager. The ResealManager holds its own pause and resume roles on pausable contracts, independent of CircuitBreaker. Both mechanisms can coexist: CircuitBreaker triggers the initial pause, and the Reseal Committee can extend it if the situation requires prolonged pause while Dual Governance is active.
 
 ## Security Considerations
 
-**Single point of failure.** A bug in CircuitBreaker affects all pausers and protected contracts. Mitigation: the contract is designed with simplicity as the core principle: immutable admin, no proxy, no inheritance, no libraries, and no external dependencies beyond `IPausable`.
+**Single point of failure.** A vulnerability in CircuitBreaker affects all pausers and all pausable contracts. CircuitBreaker addresses this by minimizing the attack surface: the contract has no proxy, no inheritance, no libraries, and no external dependencies. The admin is immutable, eliminating the governance surface around ownership.
 
-**Compromised pauser.** A compromised pauser can fire pause an assigned contract. Mitigation: the pause authority is single-use which limits impact.
+**Compromised pauser.** A compromised committee can trigger a pause on each of its assigned contracts. CircuitBreaker limits the damage by making the pause single-use: the assignment is cleared on trigger, so the compromised committee cannot pause the same contract again without a DAO vote to reassign it.
 
-**Lost pauser keys.** A pauser that loses keys retains its assignment. Mitigation: when the heartbeat expires, the pauser loses authority.
+**Lost pauser keys.** A pauser that loses access to its keys cannot act. The heartbeat mechanism surfaces unresponsive pausers: once the expiry passes, the pauser loses authorization. The DAO can reassign the pausable to a new committee.
 
-**Malicious pausable.** A malicious `pauseFor` implementation could attempt reentrancy. Mitigation: the contract uses a transient storage reentrancy guard.
+**Malicious pausable.** A pausable contract may become malicious after registration (e.g. through a proxy upgrade). CircuitBreaker eliminates reentrancy using the Check-Effects-Interactions pattern and a reentrancy lock. CircuitBreaker holds no protocol roles beyond the pause role, so a malicious pausable that gains control during the call has no additional surface to exploit.
 
-**Off-chain operational complexity.** Risk concentrates off-chain: multisig compromise, key management, response time during active exploits. Mitigation: offchain alerting.
+## Migration from GateSeals
+
+The migration transfers emergency pause authority from the existing GateSeals to CircuitBreaker. It is executed as a single atomic governance vote.
+
+### Step 1. Deploy CircuitBreaker
+
+CircuitBreaker is deployed with the DAO Agent as admin and the agreed-upon bounds for pause duration and heartbeat interval. The deployment is permissionless and does not require a governance vote.
+
+### Step 2. DAO vote
+
+A single on-chain vote performs all of the following:
+
+1. Grant the pause role on each pausable contract to the CircuitBreaker address.
+2. Register each pausable-pauser pair on CircuitBreaker.
+3. Revoke the pause roles from the existing GateSeal addresses.
+
+Revoking GateSeal roles in the same vote eliminates ambiguity for committees about which mechanism to use. Atomic execution ensures there is no intermediate state where neither mechanism is active.
+
+### Step 3. Verification
+
+With the vote enactment, off-chain monitoring switches to track CircuitBreaker state and alert on approaching deadlines.
 
 ## References
 
