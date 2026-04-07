@@ -125,6 +125,19 @@ Dual Governance includes a Reseal Committee that can extend a temporary pause to
 
 **Malicious pausable.** A pausable contract may become malicious after registration (e.g. through a proxy upgrade). CircuitBreaker eliminates reentrancy using the Check-Effects-Interactions pattern and a reentrancy lock. CircuitBreaker holds no protocol roles beyond the pause role, so a malicious pausable that gains control during the call has no additional surface to exploit.
 
+## Comparison with GateSeals
+ 
+| | GateSeal | CircuitBreaker |
+|---|---|---|
+| **Rotation burden** | DAO performs a full redeploy every year | Committee self-extends via heartbeat. DAO votes only to add or replace a committee |
+| **Pause duration** | Hardcoded 4 to 14 day range at deploy time. Changing requires redeployment | Single global value within bounds, adjustable by admin without redeployment |
+| **Permission re-grants after use** | New address every cycle, pause roles must be re-granted | Permanent address. Pause roles granted once per contract, survive all cycles |
+| **Adding new pausable contracts** | Deploy new GateSeal and hold a role grant vote | Vote to register the pauser and grant the role |
+| **Scaling** | One GateSeal per scope, each with its own lifecycle | All pausers and contracts in one contract. One heartbeat per pauser |
+| **Coverage gaps** | Possible between expiry and redeployment | Possible between heartbeat expiry and pauser replacement |
+| **Swapping a dead committee** | Deploy new GateSeal, re-grant all permissions | Vote to replace pauser |
+| **Granular use** | Subset selection possible but entire GateSeal expires | Per-contract pausing. Pausing one does not affect others |
+
 ## Migration from GateSeals
 
 The migration transfers emergency pause authority from the existing GateSeals to CircuitBreaker. It is executed as a single atomic governance vote.
