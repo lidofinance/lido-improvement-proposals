@@ -2,10 +2,10 @@
 lip: 32
 title: Sanity Checks for stVaults
 status: Implemented
-author: Alexandr Drygin, Greg Shestakov, Victor Petrenko
+author: Alexander Drygin, Greg Shestakov, Victor Petrenko
 discussions-to: https://research.lido.fi/t/lido-v3-design-implementation-proposal/10665
 created: 2025-09-01
-updated: 2025-12-24
+updated: 2026-04-08
 ---
 
 # LIP-32: Sanity Checks for stVaults
@@ -39,6 +39,12 @@ The most critical risk is that a misbehaving oracle, in collusion with node oper
 
 This proposal addresses these risks by implementing comprehensive sanity checks and a quarantine mechanism for funds that cannot be verified on-chain immediately, ensuring the integrity of the global accounting system.
 
+## Changelog
+
+- 1.1.0 - 2026-04-08: Remove redundant `maxLiabilityShares` upper-bound check against on-chain `record.maxLiabilityShares` in `LazyOracle`; manipulation protection is provided by VaultHub's equality guard, which skips the update when reported and on-chain values differ, preserving the peak collateral requirement until the next oracle period
+- 1.0.1 - 2025-12-24: Change status from Proposed to Implemented
+- 1.0.0 - 2025-09-01: Initial version
+
 ## Specification
 
 ### Existing Sanity Checks
@@ -47,14 +53,14 @@ Lido V2's existing oracle sanity checks validate the following [parameters](http
 
 ```solidity
 function checkAccountingOracleReport(
-    uint256 _timeElapsed, 
-    uint256 _preCLBalance, 
-    uint256 _postCLBalance, 
-    uint256 _withdrawalVaultBalance, 
-    uint256 _elRewardsVaultBalance, 
-    uint256 _sharesRequestedToBurn, 
-    uint256 _preCLValidators, 
-    uint256 _postCLValidators 
+    uint256 _timeElapsed,
+    uint256 _preCLBalance,
+    uint256 _postCLBalance,
+    uint256 _withdrawalVaultBalance,
+    uint256 _elRewardsVaultBalance,
+    uint256 _sharesRequestedToBurn,
+    uint256 _preCLValidators,
+    uint256 _postCLValidators
 )
 ```
 
@@ -63,13 +69,13 @@ stVaults do not affect these existing parameters as:
 - stVault rewards and withdrawals use separate withdrawal credentials
 - Burn requests are handled independently
 
-Therefore, existing sanity checks remain unchanged. 
+Therefore, existing sanity checks remain unchanged.
 
 ### Lazy Oracle Architecture and Global Accounting Integration
 
 As described in [LIP-31](./lip-31.md), the global accounting system implements a "lazy oracle" mechanism (centered around the `LazyOracle` contract) to enable scalable vault management:
 
-1. **Extended Accounting Oracle**: Publishes Merkle roots containing per-vault state (`totalValue`, `cumulativeLidoFees`, `liabilityShares`, `slashingReserve`) 
+1. **Extended Accounting Oracle**: Publishes Merkle roots containing per-vault state (`totalValue`, `cumulativeLidoFees`, `liabilityShares`, `slashingReserve`)
 2. **VaultHub Integration**: Acts as the central collateral registry, verifying inclusion proofs asynchronously
 3. **On-demand Reports**: Vault owners submit Merkle proofs when operations require updated state (minting, burning, withdrawals)
 
@@ -77,7 +83,7 @@ This architecture maintains the global backing invariant (`stETH.totalSupply() â
 
 ### Vault Parameters and Attack Vectors
 
-Each vault report includes four critical parameters that require validation: 
+Each vault report includes four critical parameters that require validation:
 
 #### 1. totalValue
 
@@ -85,7 +91,7 @@ Each vault report includes four critical parameters that require validation:
 
 **Attack vectors:**
 - **Overstatement:** Enables minting of unbacked stETH by inflating the vault's locked value, violating the global backing invariant
-- **Understatement:** May trigger inappropriate forced rebalance when the vault falsely appears to breach the Force Rebalance Threshold (FRT) 
+- **Understatement:** May trigger inappropriate forced rebalance when the vault falsely appears to breach the Force Rebalance Threshold (FRT)
 
 #### 2. cumulativeLidoFees
 
@@ -100,10 +106,10 @@ Each vault report includes four critical parameters that require validation:
 **Definition:** External shares minted against the staking vault position, representing the vault's stETH liability that rebases with the token.
 
 **Attack vectors:**
-- **Overstatement:** 
+- **Overstatement:**
     - Freezes excess funds by inflating the vault's recorded liability
     - Blocks legit disconnect from the VaultHub and Lido protocol (i.e., can block an exit escape hatch for vaults)
-- **Understatement:** 
+- **Understatement:**
     - Enables premature collateral withdrawal, potentially violating the reserve ratio (RR) requirements
     - Allows premature disconnect from the VaultHub and Lido protocol
 
@@ -111,18 +117,18 @@ Each vault report includes four critical parameters that require validation:
 
 **Definition:** Maximum external shares minted against the staking vault position within the latest AccountingOracle-reported frame (between reference slots). This value is used to calculate the vault's locked amount and prevent manipulation of collateral requirements.
 
-**Invariant:** Greater or equal than `liabilityShares` and currently stored on-chain `maxLiabilityShares`
+**Invariant:** Greater or equal than `liabilityShares`
 
-**Purpose:** 
+**Purpose:**
 - Tracks the peak liability within an oracle period to ensure proper collateralization
 - Used in locked value calculation
 - Prevents vault owners from manipulating locked requirements through rapid mint/burn cycles (e.g., within a single transaction)
 
 **Attack vectors:**
-- **Overstatement:** 
+- **Overstatement:**
     - Freezes excess funds by inflating the vault's recorded max liability per frame
     - Blocks legit disconnect from the VaultHub and Lido protocol (i.e., can block an exit escape hatch for vaults)
-- **Understatement:** 
+- **Understatement:**
     - Enables premature collateral withdrawal, potentially violating the reserve ratio (RR) requirements
     - Allows premature disconnect from the VaultHub and Lido protocol
 
@@ -131,16 +137,16 @@ Each vault report includes four critical parameters that require validation:
 **Definition:** Locked assets reserved for slashing penalties.
 
 **Attack vectors:**
-- **Overstatement:** 
+- **Overstatement:**
     - Unnecessarily locks vault funds
     - Blocks legit disconnect from the VaultHub and Lido protocol (i.e., can block an exit escape hatch for vaults)
-- **Understatement:** 
+- **Understatement:**
     - Allows penalty avoidance during slashing events
     - Allows premature disconnect from the VaultHub and Lido protocol
 
 ### Proposed Sanity Checks
 
-Based on the identified attack vectors, we propose the following validation mechanisms: 
+Based on the identified attack vectors, we propose the following validation mechanisms:
 
 #### totalValue Upper Bound
 
@@ -178,8 +184,7 @@ The upper bound for `totalValue` requires special consideration due to the criti
 **Rationale:** Overstated `liabilityShares` only temporarily freezes excess funds, which self-corrects with the next accurate report, also check is partially implemented together with `maxLiabilityReport` checks in LazyOracle:
 
 ```solidity
-if (_reportedMaxLiabilityShares < _reportedLiabilityShares 
-    || _reportedMaxLiabilityShares < record.maxLiabilityShares) {
+if (_reportedMaxLiabilityShares < _reportedLiabilityShares) {
     revert InvalidMaxLiabilityShares();
 }
 ```
@@ -214,12 +219,12 @@ uint256 minimalReserve = Math256.max(CONNECT_DEPOSIT, _reportSlashingReserve);
 
 **Definition:** Maximum liability shares minted during the current oracle period, used to calculate locked value.
 
-**Validation:** `_maxLiabilityShares >= _liabilityShares && _maxLiabilityShares >= record.maxLiabilityShares`
+**Validation:** `_maxLiabilityShares >= _liabilityShares`
 
 **Implementation:** Enforce in LazyOracle:
 
 ```solidity
-if (_maxLiabilityShares < _liabilityShares || _maxLiabilityShares < record.maxLiabilityShares) {
+if (_maxLiabilityShares < _liabilityShares) {
     revert InvalidMaxLiabilityShares();
 }
 ```
@@ -297,7 +302,7 @@ The quarantine approach prevents sybil attacks that would bypass daily limits. H
 - Previous `totalValue`: 10,000 ETH
 - New `totalValue` with rewards: 10,300 ETH (3% increase)
 - Result: No quarantine, immediate availability
-- If increase > 3.5%: Amount above 3.5% enters quarantine 
+- If increase > 3.5%: Amount above 3.5% enters quarantine
 
 #### Justification for 3.5% Threshold
 
@@ -399,8 +404,8 @@ This design eliminates oracle trust requirements for `inOutDelta` validation.
 **Direct Funds Verification:**
 ```solidity
 uint256 onchainTotalValueOnRefSlot = uint256(
-    int256(uint256(record.report.totalValue)) + 
-    _inOutDeltaOnRefSlot - 
+    int256(uint256(record.report.totalValue)) +
+    _inOutDeltaOnRefSlot -
     record.report.inOutDelta
 );
 ```
@@ -409,7 +414,7 @@ Direct funds update `inOutDelta` on-chain, enabling trustless verification witho
 
 **Indirect Funds Quarantine:**
 ```solidity
-uint256 quarantineThreshold = onchainTotalValueOnRefSlot * 
+uint256 quarantineThreshold = onchainTotalValueOnRefSlot *
     (TOTAL_BASIS_POINTS + maxRewardRatioBP) / TOTAL_BASIS_POINTS;
 ```
 
@@ -436,8 +441,8 @@ uint256(int256(-1)) = 2^256 - 1
 
 **Protection:**
 ```solidity
-if (int256(totalValueWithoutQuarantine) + 
-    currentInOutDelta - 
+if (int256(totalValueWithoutQuarantine) +
+    currentInOutDelta -
     inOutDeltaOnRefSlot < 0) {
     revert UnderflowInTotalValueCalculation();
 }
@@ -447,12 +452,12 @@ if (int256(totalValueWithoutQuarantine) +
 
 **Lower Bound (Monotonicity):**
 ```solidity
-uint256 previousCumulativeLidoFees = 
+uint256 previousCumulativeLidoFees =
     obligations.settledLidoFees + obligations.unsettledLidoFees;
-    
+
 if (previousCumulativeLidoFees > _cumulativeLidoFees) {
     revert CumulativeLidoFeesTooLow(
-        _cumulativeLidoFees, 
+        _cumulativeLidoFees,
         previousCumulativeLidoFees
     );
 }
@@ -460,13 +465,13 @@ if (previousCumulativeLidoFees > _cumulativeLidoFees) {
 
 **Upper Bound (Rate Limiting):**
 ```solidity
-uint256 maxLidoFees = 
-    (vaultsDataTimestamp - record.report.timestamp) * 
+uint256 maxLidoFees =
+    (vaultsDataTimestamp - record.report.timestamp) *
     maxLidoFeeRatePerSecond;
-    
+
 if (_cumulativeLidoFees - previousCumulativeLidoFees > maxLidoFees) {
     revert CumulativeLidoFeesTooLarge(
-        _cumulativeLidoFees - previousCumulativeLidoFees, 
+        _cumulativeLidoFees - previousCumulativeLidoFees,
         maxLidoFees
     );
 }
@@ -474,9 +479,9 @@ if (_cumulativeLidoFees - previousCumulativeLidoFees > maxLidoFees) {
 
 #### Max Liability Shares Validation
 
-**Upper Bound:**
+**Invariant:**
 ```solidity
-if (_maxLiabilityShares < _liabilityShares || _maxLiabilityShares < record.maxLiabilityShares) {
+if (_maxLiabilityShares < _liabilityShares) {
     revert InvalidMaxLiabilityShares();
 }
 ```
@@ -516,7 +521,7 @@ The `maxLiabilityShares` parameter plays a crucial role in maintaining collatera
 1. **Initial State**: Set to 0 when vault is connected
 2. **During Minting**: Updated to the new liability amount whenever shares are minted
 3. **Oracle Period Tracking**: Maintains the peak liability within each oracle reporting period
-4. **Report Processing**: 
+4. **Report Processing**:
    - If on-chain `maxLiabilityShares` equals reported value: Update to max(current liability, reported liability)
    - If on-chain value differs: Maintain current value to prevent manipulation
 5. **Lock Calculation**: Used to compute `locked = liabilityValue + max(reserve, minimalReserve)` where liabilityValue is derived from `maxLiabilityShares`
