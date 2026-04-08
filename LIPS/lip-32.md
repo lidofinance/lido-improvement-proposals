@@ -5,7 +5,7 @@ status: Implemented
 author: Alexander Drygin, Greg Shestakov, Victor Petrenko
 discussions-to: https://research.lido.fi/t/lido-v3-design-implementation-proposal/10665
 created: 2025-09-01
-updated: 2026-03-19
+updated: 2026-04-08
 ---
 
 # LIP-32: Sanity Checks for stVaults
@@ -38,6 +38,12 @@ This architecture, while enabling efficient scaling, creates potential attack ve
 The most critical risk is that a misbehaving oracle, in collusion with node operators, could potentially steal up to 30% of ETH from the Lido protocol by creating vaults with artificially inflated values, given the global external shares minting limits.
 
 This proposal addresses these risks by implementing comprehensive sanity checks and a quarantine mechanism for funds that cannot be verified on-chain immediately, ensuring the integrity of the global accounting system.
+
+## Changelog
+
+- 1.1.0 - 2026-04-08: Remove redundant `maxLiabilityShares` upper-bound check against on-chain `record.maxLiabilityShares` in `LazyOracle`; manipulation protection is provided by VaultHub's equality guard, which skips the update when reported and on-chain values differ, preserving the peak collateral requirement until the next oracle period
+- 1.0.1 - 2025-12-24: Change status from Proposed to Implemented
+- 1.0.0 - 2025-09-01: Initial version
 
 ## Specification
 
