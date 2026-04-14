@@ -1752,10 +1752,10 @@ Two new factories are proposed to be registered; EasyTrack admin roles would rem
 
 ## Useful Links
 
-- [CSM v3 Spec](https://hackmd.io/@lido/csm-v3-spec)
-- [Curated Module v2 Spec](https://hackmd.io/@lido/cm-v2-spec)
-- [Miro board with all schemas](https://miro.com/app/board/uXjVIn4CFuc=/)
+- [LIP-33. Community Staking Module v3 and Curated Module v2](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md)
+- [Hoodi Curated Module v2 Migration - Node Operator Overview](https://enchanted-direction-844.notion.site/Hoodi-Curated-Module-v2-Migration-Node-Operator-Overview-PUBLIC-880bf633d0c982ea9dc58158d876d9e3?source=copy_link)
 - [ConsolidationGateway Limits](https://docs.google.com/document/d/1sq-CVq0AAznt0I7uamX0IWHzzaX3iGc3xfghDtB-9DA/edit?tab=t.0)
 - [TriggerableWithdrawalsGateway Limits](https://hackmd.io/@5wamg-wlRCCzGh0aoCqR0w/SJ-bhZ5elx/edit)
 - [Sanity checks specification](https://docs.google.com/document/d/1YAWLxZk90dkcwCeQkv8xSeWYfVNKGCJmicZpPn-aGR0/edit?tab=t.0)
 - [CL balance decrease calculations](https://docs.google.com/document/d/1MK9XMU-xVdw0XQG9cxtR0rxusuBr1CI4DuGNxNXgswI/edit?tab=t.0)
+- [DG Reseal Manager](https://github.com/lidofinance/dual-governance/blob/main/contracts/ResealManager.sol)
