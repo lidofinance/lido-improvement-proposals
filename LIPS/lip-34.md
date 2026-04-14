@@ -14,9 +14,9 @@ Staking Router v3 is a comprehensive upgrade to the Lido protocol's core infrast
 
 The deposit system transitions from a push model, where Lido orchestrates deposits, to a pull model, where the Staking Router withdraws ETH from the Lido buffer as needed. This decouples deposit logic from the Lido contract and enables two deposit flows: predeposits (32 ETH initial deposits for both `0x01` and `0x02` keys) and top-ups (additional deposits for `0x02` validators up to the 2048 ETH maximum effective balance). Top-ups are secured through on-chain Merkle proof verification of validator state via the new `TopUpGateway` contract.
 
-A consolidation pipeline enables stake migration from Curated Module v1 (CMv1) to Curated Module v2 (CMv2) modules. Operators initiate migrations via EasyTrack motions, the `ConsolidationMigrator` validates and routes requests through the `ConsolidationBus` (which enforces execution delays and batch limits), and the `ConsolidationGateway` verifies target validator withdrawal credentials on-chain before submitting consolidation requests through the `WithdrawalVault`.
+A consolidation pipeline is introduced to enable stake migration from Curated Module v1 (CMv1) to Curated Module v2 (CMv2) modules. Operators would initiate migrations via EasyTrack motions, the `ConsolidationMigrator` would validate and route requests through the `ConsolidationBus` (which enforces execution delays and batch limits), and the `ConsolidationGateway` would verify target validator withdrawal credentials on-chain before submitting consolidation requests through the `WithdrawalVault`.
 
-The validator exit flow is updated: On-chain Validators Exit Bus Oracle (VEBO) introduces a new report format with key index data, enabling key-type-aware sanity checks based on upper-bound total effective balance rather than validator count. Off-chain Validators Exit Oracle (VEO) exit selection logic is updated to support balance-based prioritization, consolidation-aware exits, and operator-weight-based withdrawals for CMv2.
+The validator exit flow is also updated: the on-chain Validators Exit Bus Oracle (VEBO) introduces a new report format with key index data, enabling key-type-aware sanity checks based on upper-bound total effective balance rather than validator count. The off-chain Validators Exit Oracle (VEO) exit selection logic is updated to support balance-based prioritization, consolidation-aware exits, and operator-weight-based withdrawals for CMv2.
 
 Finally, a deposit reserve mechanism is introduced to protect a configurable portion of the buffered ether for CL deposits, preventing withdrawal demand from consuming ETH needed for stake rebalancing and initial deposits during the CMv1 to CMv2 migration.
 
@@ -24,9 +24,9 @@ Finally, a deposit reserve mechanism is introduced to protect a configurable por
 
 Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between operators and modules via consolidation operations, support new deposits into large validators naturally streamlining the network, and lay the groundwork for smarter, leaner validator management overall.
 
-**A new, `0x02`-ready, accounting model.** Although already supported by the stVaults architecture, this is a fundamental shift for Lido Core. Currently, the Lido protocol handles critical aspects of validator accounting — deposits, rewards, withdrawals — through a unit-based approach where 1 validator equals 32 ETH. A balance-based accounting model is absolutely crucial for supporting large validators and consolidations because it allows the protocol to treat validators as flexible balances rather than fixed units, enabling seamless consolidation and validators top-ups. For this to happen, a major rework of several key components of the on-chain protocol is necessary.
+**A new, `0x02`-ready, accounting model.** Although already supported by the stVaults architecture, this is a fundamental shift for Lido Core. Currently, the Lido protocol handles critical aspects of validator accounting — deposits, rewards, withdrawals — through a unit-based approach where 1 validator equals 32 ETH. A balance-based accounting model is essential for supporting large validators and consolidations because it allows the protocol to treat validators as flexible balances rather than fixed units, enabling seamless consolidation and validator top-ups. For this to happen, a significant rework of several key components of the on-chain protocol would be required.
 
-**Stake migration from CMv1 to CMv2.** This initial, optimistic and governance-driven implementation provides a secure and transparent way to operationalize consolidations, ensuring immediate utility for Node Operators. The consolidation process will also make it possible to quickly migrate stake from the old Curated Module v1 to the new Curated Module v2.
+**Stake migration from CMv1 to CMv2.** An initial, optimistic and governance-driven implementation would provide a secure and transparent way to operationalize consolidations, ensuring immediate utility for Node Operators. The consolidation process would also make it possible to quickly migrate stake from the old Curated Module v1 to the new Curated Module v2.
 
 **Deposit reserve for reliable stake rebalancing.** Historically, stake rebalancing between modules through new deposits and withdrawals has been slow and unreliable — SDVT took over 1.5 years to reach its target share. A deposit reserve mechanism guarantees ETH availability for migration deposits and new module onboarding, regardless of withdrawal demand.
 
@@ -52,9 +52,9 @@ The solution is to transition from counting validators to direct balance account
 
 Currently, in the `Lido` contract the protocol stores two values: `clValidators` (number of validators on the CL) and `clBalance` (their total balance). The validator count is used to calculate transient balance and perform security checks.
 
-It is propsed that in Lido, the `clBalance` and `clValidators` is replaced by `clValidatorsBalance` and `clPendingBalance`. The oracle report structure changes accordingly — instead of total balance, it now delivers balances split by state.
+It is proposed to replace `clBalance` and `clValidators` in Lido with `clValidatorsBalance` and `clPendingBalance`. The oracle report structure changes accordingly — instead of total balance, it now delivers balances split by state.
 
-#### Accouting oracle report changes
+#### Accounting oracle report changes
 
 ```diff
 - clBalanceGwei
@@ -170,7 +170,7 @@ interface ILido {
 }
 ```
 
-The following deposit-related members will be removed from Lido:
+With this transition, the following deposit-related members are no longer needed and are proposed to be removed from Lido:
 
 - `unsafeChangeDepositedValidators(uint256 _newDepositedValidators)` and the associated `UNSAFE_CHANGE_DEPOSITED_VALIDATORS_ROLE` — no longer required due to the transition to balance-based deposit tracking
 
@@ -221,7 +221,7 @@ A module with one validator at 2048 ETH now receives a fair share of rewards cor
 
 ### Migration
 
-The migration must preserve data integrity and ensure correct rewards calculation in the first report after the upgrade.
+The migration aims to preserve data integrity and ensure correct rewards calculation in the first report after the upgrade.
 
 #### Lido Migration
 
@@ -361,11 +361,11 @@ OR
 
 Currently, external services use `Lido.getBeaconStat()`, which returns `depositedValidators`, `beaconValidators`, and `beaconBalance`.
 
-However, `beaconValidators` no longer reflects the actual consensul layer (CL) state and is now always equal to `depositedValidators`.
+However, `beaconValidators` would no longer reflect the actual consensus layer (CL) state and would always be equal to `depositedValidators`.
 
-The `getBeaconStat` is **marked as deprecated**.
+It is proposed to **mark `getBeaconStat` as deprecated**.
 
-For new integrations, it is recommended to use `getBalanceStats()`, as it reflects the current accounting model and provides more detailed information about the protocol state.
+For new integrations, `getBalanceStats()` is recommended, as it reflects the current accounting model and provides more detailed information about the protocol state.
 
 ## Consolidation
 
@@ -383,11 +383,11 @@ The Consolidation Gateway verifies the target validators’ WC proofs, checks co
 
 The Gateway then forwards the requests, and the fee to the Withdrawal Vault contract, which submits the request to the system contract.
 
-Dedicated on-chain monitoring ensures that operators submit valid consolidation requests (i.e., no attempts to consolidate validators scheduled for exit by VEBO, no consolidation of inactive validators, and no duplicate pending consolidation requests).
+Dedicated on-chain monitoring would help ensure that operators submit valid consolidation requests (i.e., no attempts to consolidate validators scheduled for exit by VEBO, no consolidation of inactive validators, and no duplicate pending consolidation requests).
 
 ### Consolidation EasyTrack
 
-When an operator creates an EasyTrack proposal to request consolidation permission, it would provide:
+When an operator creates an EasyTrack proposal to request consolidation permission, they would provide:
 
 - **A single source operator ID** in CMv1
 - **A list of target operator IDs** in CMv2
@@ -641,13 +641,13 @@ This execution delay ensures that honest Council members have sufficient time to
 
 It is proposed that anyone can permissionlessly execute consolidation batch via calling `executeConsolidation` method with the same batch which was originally added by authorized actors via `addConsolidationRequests`, along with the required fee and `ValidatorWitness` proofs for each target validator.
 
-The new Consolidation Executor bot will designed, this bot will monitor consolidation bus and execute consolidation request batches sequentially, in the order in which they were initially submitted to the Consolidation Message Bus contract.
+A new Consolidation Executor bot is expected to be designed to monitor the Consolidation Bus and execute consolidation request batches sequentially, in the order in which they were initially submitted to the Consolidation Message Bus contract.
 
 ### Consolidation Gateway
 
-It is recommended to introduce a single entry point for processing consolidation requests. This entry point is responsible for verifying target validators’ withdrawal credentials, checking consolidation preconditions, enforcing consolidation limits, and enabling the consolidation flow to be paused independently in the event of an emergency.
+It is proposed to introduce a single entry point for processing consolidation requests. This entry point would be responsible for verifying target validators’ withdrawal credentials, checking consolidation preconditions, enforcing consolidation limits, and enabling the consolidation flow to be paused independently in the event of an emergency.
 
-Using the Withdrawal Vault for this purpose is not advisable. The Withdrawal Vault manages multiple independent concerns, including protocol withdrawals and triggerable exit requests. Treating it as a pausable unit would prevent selectively pausing consolidation requests while continuing to accept triggerable withdrawal requests, which is operationally undesirable.
+Using the Withdrawal Vault for this purpose would not be advisable. The Withdrawal Vault manages multiple independent concerns, including protocol withdrawals and triggerable exit requests. Treating it as a pausable unit would prevent selectively pausing consolidation requests while continuing to accept triggerable withdrawal requests, which is operationally undesirable.
 
 To address this, the `ConsolidationGateway` is introduced as a pausable contract (see [PausableUntil.sol](https://github.com/lidofinance/core/blob/master/contracts/0.8.9/utils/PausableUntil.sol)) designed to handle consolidation requests in a controlled and secure manner. It:
 
@@ -714,7 +714,7 @@ It is proposed to add the following methods to the WithdrawalVault contract:
 - `addConsolidationRequests`
 - `getConsolidationRequestFee`
 
-Only the **ConsolidationGateway** contract should be allowed to add consolidation requests.
+Only the **ConsolidationGateway** contract would be permitted to add consolidation requests.
 
 ```solidity
 interface IWithdrawalVault {
@@ -788,10 +788,10 @@ interface ILido {
 }
 ```
 
-The following deposit-related members will be removed from the Lido contract as part of the pull model transition:
+As part of the pull model transition, the following deposit-related members are proposed to be removed from the Lido contract:
 
 - `deposit(uint256 _maxDepositsCount, uint256 _stakingModuleId, bytes _depositCalldata)` — the old push-model deposit method.
-- The `IStakingRouter.getStakingModuleMaxDepositsCount()` interface usage — Lido no longer needs to determine per-module deposit allocation, as the Staking Router handles this independently under the pull model.
+- The `IStakingRouter.getStakingModuleMaxDepositsCount()` interface usage — Lido would no longer need to determine per-module deposit allocation, as the Staking Router would handle this independently under the pull model.
 
 #### Staking Router
 
@@ -890,7 +890,7 @@ For the **0x02 version of CSM**, the module maintains a global internal queue an
 4. For the selected validators, the Depositor Bot calculates pending deposit amounts.
 5. The Depositor Bot calls the `TopUpGateway` with key data (module ID, key indices, operator IDs), proofs, and validator CL data.
 
-Because the 0x02 CSM cursor **must never be blocked**, the Depositor Bot **must not skip any validators**, even if one:
+Because the 0x02 CSM cursor **should never be blocked**, the Depositor Bot **should not skip any validators**, even if one:
 
 - is slashed,
 - is marked for exit,
@@ -985,9 +985,9 @@ The Merkle proof for the validator must establish that the hash-tree-root of thi
 
 After verifying the validator state via proofs, the `TopUpGateway` validates the following:
 
-- **Withdrawal credentials** MUST match the expected `0x02`-format Lido withdrawal credentials.
-- **Activation status:** the validator MUST be activated before the proved header slot:
-  - `activationEpoch` MUST be less than the epoch corresponding to the proved slot.
+- **Withdrawal credentials** should match the expected `0x02`-format Lido withdrawal credentials.
+- **Activation status:** the validator should be activated before the proved header slot:
+  - `activationEpoch` should be less than the epoch corresponding to the proved slot.
 
 If any of these checks fail, `TopUpGateway` reverts.
 
@@ -1037,7 +1037,7 @@ effective_balance + pending_deposits ≤ MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY
 
 If a validator is frontrun, it is not risky for top-ups, since the withdrawal credentials are verified on-chain.
 
-Top-ups must not be executed if the protocol is in bunker mode or paused, or if the module is not active.
+Top-ups should not be executed if the protocol is in bunker mode or paused, or if the module is not active.
 
 If it is necessary to stop predeposits/top-ups, for example during a hard fork, the Depositor Bot will be temporarily stopped.
 
@@ -1077,7 +1077,7 @@ If monitoring detects that the number of top-up–eligible keys has fallen below
 
 ### Staking Router
 
-The existing `deposit` methods should be updated to support the ETH pull model and enable initial 32 ETH deposits to 0x02 withdrawal credentials. The updated `deposit` method will:
+It is proposed to update the existing `deposit` methods to support the ETH pull model and enable initial 32 ETH deposits to 0x02 withdrawal credentials. The updated `deposit` method would:
 
 1. **Calculate module allocation.** The amount of ETH that can be deposited into a module is divided by 32 (for both module types) to determine the maximum number of deposits (`maxDepositsCount`). This value is additionally capped by `maxDepositsCountPerBlock`, which can be configured individually for each module.
 2. **Obtain keys for the initial deposit.** After determining the deposit limit, the Staking Router calls the existing `IStakingModule(stakingModuleAddress).obtainDepositData(maxDepositsCount, depositCalldata)` method to fetch public keys and signatures. The `obtainDepositData` call may return up to `maxDepositsCount` keys.
@@ -1128,7 +1128,7 @@ interface IStakingRouter {
 
 #### Staking Router Configuration
 
-In the `StakingRouter`, a new `withdrawalCredentialsType` property is proposed to be added to the module configuration. This property distinguishes modules that use 0x01 withdrawal credentials from modules that use 0x02 withdrawal credentials and support top-ups up to 2,048 ETH.
+It is proposed to add a new `withdrawalCredentialsType` property to the module configuration in the `StakingRouter`. This property would distinguish modules that use 0x01 withdrawal credentials from modules that use 0x02 withdrawal credentials and support top-ups up to 2,048 ETH.
 
 ```solidity
 struct StakingModule {
@@ -1210,7 +1210,7 @@ interface IStakingModuleV2 {
 
 #### CMv2
 
-The new Curated module should include this method to guide the Depositor Bot on which operators need to be topped up.
+The new Curated module is expected to include this method to guide the Depositor Bot on which operators need to be topped up.
 
 ```solidity
 /// @notice Returns operators and the amount of ETH that can be allocated to each operator from `depositAmount`.
@@ -1319,10 +1319,10 @@ Therefore, VEO should take deposit reserve into account when calculating the amo
 
 During stake migration from CMv1 to CMv2, and in other cases after the migration is finished:
 
-- Source consolidation validators **must not** be selected for exit by VEO; otherwise, exit requests would be wasted on validators that are already about to be consolidated.
-- Target validators **may** be selected by VEO, but VEO should take into account the balances of their associated consolidation source validators, since those balances will be consolidated into the target validator.
+- Source consolidation validators **should not** be selected for exit by VEO; otherwise, exit requests would be wasted on validators that are already about to be consolidated.
+- Target validators **can** be selected by VEO, but VEO should take into account the balances of their associated consolidation source validators, since those balances will be consolidated into the target validator.
 
-VEBO should inspect the `PendingConsolidation` queue to differentiate exit requests from consolidation requests when calculating the required ETH withdrawal amount.
+It is expected that VEBO would inspect the `PendingConsolidation` queue to differentiate exit requests from consolidation requests when calculating the required ETH withdrawal amount.
 
 #### CMv2 Meta Registry and CMv1 Operator Balances
 
@@ -1369,7 +1369,7 @@ _The full list of predicates used by VEO to build the sorted list of exitable va
 
 ## Stake Rebalancing
 
-Current sporadic stake rebalancing between modules via new deposits and withdrawals raises several challenges that cannot be efficiently solved with current rebalancing approaches:
+The current sporadic stake rebalancing between modules via new deposits and withdrawals raises several challenges that are difficult to solve efficiently with existing rebalancing approaches:
 
 - Efficiently rebalance stake between modules; it took SDVT over a year and a half to reach its target share. A future possible CSM share limit increase up to 10% might require significant time.
 - Ensure that there is always enough ETH for initial 32 ETH deposits to 0x02-type keys in the CMv2 module to support stake migration from the CMv1 to the CMv2 module via consolidation.
@@ -1378,7 +1378,7 @@ To solve these challenges, it is proposed to add a deposit reserve mechanism to 
 
 ### Deposit Reserve
 
-Current conditions, such as cycling arbitrage and vampire attacks via withdrawals, can result in submitted ether being withdrawn before it is ever deposited. This situation limits the ability to allocate stake to new modules and node operators.
+Under current conditions, cycling arbitrage and vampire attacks via withdrawals can result in submitted ether being withdrawn before it is ever deposited. This situation limits the ability to allocate stake to new modules and node operators.
 
 To ensure that there is always enough ETH for stake rebalancing and initial 32 ETH deposits to 0x02-type keys in the CMv2 module during the migration process, it is proposed to reserve a portion of the protocol's buffered ether for CL deposits, protecting it from being consumed by withdrawal demand.
 
@@ -1536,11 +1536,11 @@ interface IStakingRouter {
 }
 ```
 
-In addition to a distinct method, a special role should be created (`STAKING_MODULE_SHARE_MANAGE_ROLE`) to allow for granular permissions in the updated version of the `StakingRouter.sol`.
+In addition to a distinct method, it is proposed to create a special role (`STAKING_MODULE_SHARE_MANAGE_ROLE`) to allow for granular permissions in the updated version of the `StakingRouter.sol`.
 
 ## Proposed params and roles
 
-Below is a list of roles, configuration values and deployment parameters that will be assigned as part of the upcoming upgrade. If certain parameters are not listed, they will either remain unchanged or are defined by network-level constraints.
+Below is a list of roles, configuration values, and deployment parameters proposed to be assigned as part of the upcoming upgrade. If certain parameters are not listed, they would either remain unchanged or are defined by network-level constraints.
 
 ### Lido
 
@@ -1743,7 +1743,7 @@ Parameter upgrade for `TriggerableWithdrawalGateway`:
 
 ### EasyTrack
 
-Two new factories are registered; EasyTrack admin roles are unchanged.
+Two new factories are proposed to be registered; EasyTrack admin roles would remain unchanged.
 
 | Factory                          | Permission target                  |
 | -------------------------------- | ---------------------------------- |
