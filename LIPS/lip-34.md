@@ -22,7 +22,7 @@ Finally, a deposit reserve mechanism is introduced to protect a configurable por
 
 # Motivation
 
-Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between operators and modules via consolidation operations, support new deposits into large validators naturally streamlining the network, and lay the groundwork for smarter, leaner validator management overall.
+Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between operators and modules via consolidation operations, support new deposits into large validators, naturally streamlining the network, and lay the groundwork for smarter, leaner validator management overall.
 
 **A new, `0x02`-ready, accounting model.** Although already supported by the stVaults architecture, this is a fundamental shift for Lido Core. Currently, the Lido protocol handles critical aspects of validator accounting — deposits, rewards, withdrawals — through a unit-based approach where 1 validator equals 32 ETH. A balance-based accounting model is essential for supporting large validators and consolidations because it allows the protocol to treat validators as flexible balances rather than fixed units, enabling seamless consolidation and validator top-ups. For this to happen, a significant rework of several key components of the on-chain protocol would be required.
 
@@ -121,7 +121,7 @@ All deposits made after the accounting report reference slot were not included i
 
 The transient balance `(depositedValidators - clValidators) × 32 ETH` compensates for deposits in transit.
 
-**Proposed:** deposits are tracked through balance using a two counter. When ETH moves from the buffer to the Deposit Contract:
+**Proposed:** deposits are tracked through balance using two counters. When ETH moves from the buffer to the Deposit Contract:
 
 ```diff
 + buffered -= amount
@@ -244,7 +244,7 @@ The migration aims to preserve data integrity and ensure correct rewards calcula
    - `clValidators`
    - `depositedValidators`
 2. Compute the transient balance as
-   `transientBalance = depositedValidators − clValidators) × 32 ETH`.
+   `transientBalance = (depositedValidators − clValidators) × 32 ETH`.
 3. Populate the new state:
    - `clValidatorsBalance = clBalance`
    - `clPendingBalance = transientBalance`
@@ -287,12 +287,12 @@ Most of the pre-existing sanityCheck parameters have been recalculated from the 
 2. **consolidationEthAmountPerDayLimit (91,800 ETH)**
    This was calculated based on the current state of the network, including deposit queue and a buffer for potential DAO changes over a two-month period (37.3M + 3.2M + 3M).
 
-#### [VEBO] checkMaximumOfAmoutEthCalledToExitInReport
+#### [VEBO] checkMaximumOfAmountEthCalledToExitInReport
 
-This check verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type case multiplied by their weight. Under this check, we assume the weight of a 0x02-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048.
+This check verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type cases multiplied by their weights. Under this check, we assume the weight of a 0x02-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048.
 
 ```
-сount_of_0x01_keys * maxEffectiveBalanceWeightWCType01 +
+count_of_0x01_keys * maxEffectiveBalanceWeightWCType01 +
 + count_of_0x02_keys * maxEffectiveBalanceWeightWCType02
 <= maxBalanceExitRequestedPerReportInEth
 ```
@@ -308,7 +308,7 @@ sum(validatorBalancesGweiByStakingModule) == clValidatorsBalanceGwei
 #### [AO] checkCLBalanceDecrease
 
 Changed to be compatible with Pectra hard-fork.  
-New sanity check allows CLValidatorBalance to be decreased by 3.6% in 36-day window. Such value (3.6%) represent maximum balance decrease due to attestation penalties, initial slashing penalty and correlation penalty while there are less than 1.08% of network balance slashed, more than total 11 million ETH staked and network is not in inactivity leak mode.
+New sanity check allows CLValidatorBalance to be decreased by 3.6% in a 36-day window. Such a value (3.6%) represents the maximum balance decrease due to attestation penalties, initial slashing penalty, and correlation penalty while less than 1.08% of the network balance is slashed, more than a total of 11 million ETH is staked, and the network is not in inactivity leak mode.
 
 [Here you can find particular algorithm and calculations](https://docs.google.com/document/d/1MK9XMU-xVdw0XQG9cxtR0rxusuBr1CI4DuGNxNXgswI/edit?tab=t.0)
 
@@ -639,7 +639,7 @@ This execution delay ensures that honest Council members have sufficient time to
 
 #### Executor Bot
 
-It is proposed that anyone can permissionlessly execute consolidation batch via calling `executeConsolidation` method with the same batch which was originally added by authorized actors via `addConsolidationRequests`, along with the required fee and `ValidatorWitness` proofs for each target validator.
+It is proposed that anyone can permissionlessly execute a consolidation batch by calling `executeConsolidation` method with the same batch which was originally added by authorized actors via `addConsolidationRequests`, along with the required fee and `ValidatorWitness` proofs for each target validator.
 
 A new Consolidation Executor bot is expected to be designed to monitor the Consolidation Bus and execute consolidation request batches sequentially, in the order in which they were initially submitted to the Consolidation Message Bus contract.
 
@@ -868,7 +868,7 @@ For **CMv2**, the Depositor Bot operates on a per-operator basis:
 1. The Depositor Bot computes `depositAmount = min(buffered ether, module allocation)`.
 2. It calls `getDepositsAllocation(uint256 depositAmount)` on the module to determine how much to allocate to each operator from the computed `depositAmount`.
 3. Across this list of operators, the Depositor Bot chooses the oldest validators and checks that:
-   - the validator has not exceeded a **2045.75** ETH (this constant is discussed in the _Top-Up Limit Calculation_ section) balance (actual + pending);
+   - the validator has not exceeded a **2045.75 ETH** balance (this constant is discussed in the _Top-Up Limit Calculation_ section) balance (actual + pending);
    - the validator is active;
    - the validator is not marked for exit (`exitEpoch != FAR_FUTURE`);
    - the validator is not slashed;
@@ -1332,7 +1332,7 @@ In the current implementation, when validators are exited from the CMv1 module, 
 
 Given the uneven migration, it is necessary to correctly account for the aggregate operator balances across the CMv1 and CMv2 modules in order to properly determine from which operators stake exits should be initiated.
 
-The [Meta Registry](https://hackmd.io/@lido/cm-v2-spec#Meta-Operators-Registry) stores information about the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module. As a result, when selecting validators to exit from the CMv1 module, the VEO will be able to take into account the amount of stake already migrated by operators to the CMV2 module.
+The [Meta Registry](https://hackmd.io/@lido/cm-v2-spec#Meta-Operators-Registry) stores information about the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module. As a result, when selecting validators to exit from the CMv1 module, the VEO will be able to take into account the amount of stake already migrated by operators to the CMv2 module.
 
 #### Operator weight in the CSMv2 module
 
@@ -1509,7 +1509,7 @@ The factory accepts the following parameters for motion creation:
 
 These parameters are validated against the current parameters of the staking module to ensure that changes to both parameters are within the [limits](#Limits) set upon ET factory deployment and that the current values are provided correctly.
 
-The `currentXXX` values are required to ensure that the motion can be enacted only if the parameters have not been changed while the motion is in progress. This guarantees that concurrent motions can not be executed simultaneously and that effectively only one motion can be in progress at any moment.
+The `currentXXX` values are required to ensure that the motion can be enacted only if the parameters have not been changed while the motion is in progress. This guarantees that concurrent motions cannot be executed simultaneously and that effectively only one motion can be in progress at any moment.
 
 Once all of the actions above are done, the new motion is created.
 
