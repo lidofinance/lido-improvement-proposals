@@ -165,7 +165,7 @@ The scheme above depicts CM v2's smart contracts architecture and changes made c
 [`VettedGate.sol`](#VettedGatesol) is a supplementary contract that enables Node Operator creation for the vetted addresses, which serves as an entry point to [`CSModule.sol`](#CSModulesol). Alongside Node Operator creation, a contract can assign a custom Node Operator type (bondCurveId) in `Accounting.sol`. Deployed using `MerkleGateFactory.sol` to allow the addition of the new instances later without additional code security audits. The list of vetted participants is upgradable for each instance of the [`VettedGate.sol`](#VettedGatesol) individually.
 
 **Changes in CSM v3 and CM v2:**
-- Referral program was removed since it was never used and not expected to be used in the current form.
+- Referral program was removed since it was never used and not expected to be used in the current form. Note that the `referrer` argument is still present in the `createNodeOperator` method on `CSModule.sol` to keep track of the information about integrations used to create a Node Operator.
 
 ##### `EasyTrack`
 
