@@ -1,32 +1,30 @@
 ---
-lip: 34
+lip: 35
 title: Staking Router v3
 status: Proposed
 author: Maksim Kuraian, KRogLA, Alexander Kolesnikov, Anna Mukharam
-discussions-to:
+discussions-to: TBD
 created: 2026-04-03
-updated:
+updated: 2026-04-20
 ---
 
-# Simple Summary
+# LIP-35. Staking Router v3
 
-Staking Router v3 is a comprehensive upgrade to the Lido protocol's core infrastructure, driven by the Pectra hard fork and EIP-7251 (MaxEB). It replaces the validator-count-based accounting model with direct balance tracking, where `clValidatorsBalance` and `clPendingBalance` supersede the legacy `clBalance` and `clValidators` counters. Rewards distribution shifts from per-validator-count shares to per-module-balance shares, ensuring that operators running high-balance `0x02` validators receive fair compensation proportional to their actual stake contribution.
+## Simple Summary
 
-The deposit system transitions from a push model, where Lido orchestrates deposits, to a pull model, where the Staking Router withdraws ETH from the Lido buffer as needed. This decouples deposit logic from the Lido contract and enables two deposit flows: predeposits (32 ETH initial deposits for both `0x01` and `0x02` keys) and top-ups (additional deposits for `0x02` validators up to the 2048 ETH maximum effective balance). Top-ups are secured through on-chain Merkle proof verification of validator state via the new `TopUpGateway` contract.
+Staking Router v3 upgrades Lido's core protocol for EIP-7251 (MaxEB). Validator accounting moves from per-validator counts to direct balance tracking, rewards are distributed per-module balance, and the deposit flow switches from a push model orchestrated by the Lido contract to a pull model where the Staking Router withdraws ETH from Lido as needed. A new `TopUpGateway` enables top-ups of 0x02 validators up to 2048 ETH, secured by on-chain Merkle-proof verification of validator state.
 
-A consolidation pipeline is introduced to enable stake migration from Curated Module v1 (CMv1) to Curated Module v2 (CMv2) modules. Operators would initiate migrations via EasyTrack motions, the `ConsolidationMigrator` would validate and route requests through the `ConsolidationBus` (which enforces execution delays and batch limits), and the `ConsolidationGateway` would verify target validator withdrawal credentials on-chain before submitting consolidation requests through the `WithdrawalVault`.
+A consolidation pipeline enables stake migration from Curated Module v1 to v2, and the validator exit flow (VEBO/VEO) becomes key-type-aware and balance-based, with sanity checks bound by total effective balance rather than validator count.
 
-The validator exit flow is also updated: the on-chain Validators Exit Bus Oracle (VEBO) introduces a new report format with key index data, enabling key-type-aware sanity checks based on upper-bound total effective balance rather than validator count. The off-chain Validators Exit Oracle (VEO) exit selection logic is updated to support balance-based prioritization, consolidation-aware exits, and operator-weight-based withdrawals for CMv2.
+A deposit reserve protects a portion of buffered ether for CL deposits, preventing withdrawal demand from consuming ETH needed for stake rebalancing and initial deposits during the CMv1 to CMv2 migration.
 
-Finally, a deposit reserve mechanism is introduced to protect a configurable portion of the buffered ether for CL deposits, preventing withdrawal demand from consuming ETH needed for stake rebalancing and initial deposits during the CMv1 to CMv2 migration.
+## Motivation
 
-# Motivation
+Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between modules via consolidation operations, support new deposits into large validators, naturally streamlining the network, and lay the groundwork for smarter, leaner validator management overall.
 
-Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between operators and modules via consolidation operations, support new deposits into large validators, naturally streamlining the network, and lay the groundwork for smarter, leaner validator management overall.
+**A new, `0x02`-ready, accounting model.** Although already supported by the stVaults architecture, this is a fundamental shift for Lido Core. Currently, the Lido protocol handles critical aspects of validator accounting — deposits, rewards, withdrawals — through a unit-based approach where 1 validator equals 32 ETH. A balance-based accounting model is essential for supporting large validators and consolidations because it allows the protocol to treat validators as flexible balances rather than fixed units, enabling seamless consolidation and validator top-ups. For this to happen, a significant rework of several key components of the on-chain protocol is required.
 
-**A new, `0x02`-ready, accounting model.** Although already supported by the stVaults architecture, this is a fundamental shift for Lido Core. Currently, the Lido protocol handles critical aspects of validator accounting — deposits, rewards, withdrawals — through a unit-based approach where 1 validator equals 32 ETH. A balance-based accounting model is essential for supporting large validators and consolidations because it allows the protocol to treat validators as flexible balances rather than fixed units, enabling seamless consolidation and validator top-ups. For this to happen, a significant rework of several key components of the on-chain protocol would be required.
-
-**Stake migration from CMv1 to CMv2.** An initial, optimistic and governance-driven implementation would provide a secure and transparent way to operationalize consolidations, ensuring immediate utility for Node Operators. The consolidation process would also make it possible to quickly migrate stake from the old Curated Module v1 to the new Curated Module v2.
+**Stake migration from CMv1 to CMv2.** The consolidation process would provide a secure and transparent way to quickly migrate stake from the old Curated Module v1 to the new Curated Module v2.
 
 **Deposit reserve for reliable stake rebalancing.** Historically, stake rebalancing between modules through new deposits and withdrawals has been slow and unreliable — SDVT took over 1.5 years to reach its target share. A deposit reserve mechanism guarantees ETH availability for migration deposits and new module onboarding, regardless of withdrawal demand.
 
@@ -90,7 +88,7 @@ totalClBalance = clValidatorsBalance + clPendingBalance
    - Deposits with an invalid BLS signature are skipped.
    - The first BLS-valid deposit for a key determines the key’s status: if it points to Lido withdrawal credentials, the key is accepted and the deposit is kept; otherwise the key is considered front-run and all of its deposits are discarded.
    - Subsequent deposits to an already-accepted key are added to that key's group.
-5. **Sum balances:** `clPendingValidatorsBalance` is the sum of deposit amounts across all deposits attributed to accepted pending Lido keys.
+5. **Sum balances:** `clPendingBalance` is the sum of deposit amounts across all deposits attributed to accepted pending Lido keys.
 
 ### From Transient to Pending
 
@@ -275,7 +273,7 @@ The first report after migration is correct by construction:
 
 ### Sanity Checks
 
-The list of checks has been updated following the **Pectra hard-fork** and the subsequent expansion of parameters passed to the VEBO and Accounting Oracles.
+The list of checks has been updated following the **Pectra hard-fork** and the subsequent expansion of parameters passed to the Validator Exit Bus Oracle (VEBO) and Accounting Oracles (AO).
 
 [Here you can find full description of changes](https://docs.google.com/document/d/1YAWLxZk90dkcwCeQkv8xSeWYfVNKGCJmicZpPn-aGR0/edit?tab=t.0)
 
@@ -1728,7 +1726,7 @@ Constructor parameters (implementation):
 | `_admin`                 | Aragon Agent (via temporary admin) | Receives `DEFAULT_ADMIN_ROLE`                                                             |
 | `_maxValidatorsPerTopUp` | `100`                              | Maximum number of validators a single `topUp` can process                                 |
 | `_minBlockDistance`      | `1`                                | Minimum block distance between `topUp` calls                                              |
-| `_maxRootAgeSec`         | `300`                              | Maximum age (seconds) of the beacon root used to prove validator state                    |
+| `_maxRootAgeSec`         | `600`                              | Maximum age (seconds) of the beacon root used to prove validator state                    |
 | `_targetBalanceGwei`     | `2046750000000` (2046.75 ETH)      | Validator target balance ceiling after top-up (leaves 1.25 ETH safety margin below MaxEB) |
 | `_minTopUpGwei`          | `1000000000` (1 ETH)               | Minimum top-up amount; smaller calculated top-ups are skipped                             |
 
