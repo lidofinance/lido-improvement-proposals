@@ -713,7 +713,7 @@ To address this, the `ConsolidationGateway` is introduced as a pausable contract
 - **Validates ETH fees**, ensuring they meet the minimum consolidation cost
 - **Transfers the required fee** to the `WithdrawalVault`
 - **Refunds any excess ETH** to a specified recipient
-- **Can be paused** via the `GateSeal` mechanism for emergency control
+- **Can be paused** via the `CircuitBreaker` mechanism for emergency control
 
 ```solidity
 interface IConsolidationGateway {
@@ -1672,7 +1672,7 @@ New non-proxy contract.
 | Role                             | Assignee                                     |
 | -------------------------------- | -------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE`             | Agent                                        |
-| `PAUSE_ROLE`                     | ConsolidationGateway GateSeal, ResealManager |
+| `PAUSE_ROLE`                     | CircuitBreaker, ResealManager                |
 | `RESUME_ROLE`                    | ResealManager                                |
 | `ADD_CONSOLIDATION_REQUEST_ROLE` | ConsolidationBus                             |
 | `EXIT_LIMIT_MANAGER_ROLE`        | Not assigned by default                      |
@@ -1690,16 +1690,14 @@ Constructor parameters:
 | `gIFirstValidatorCurr`          | `0x0000000000000000000000000000000000000000000000000096000000000028` | Generalized index for first validator after fork pivot        |
 | `pivotSlot`                     | `0`                                                                  | Slot at which the active generalized index switches           |
 
-### ConsolidationGateway GateSeal
+### ConsolidationGateway CircuitBreaker registration
 
-New `GateSeal` instance guarding `ConsolidationGateway`.
+`ConsolidationGateway` is registered as a pausable contract on the existing [CircuitBreaker](./lip-34.md) instance, with a dedicated pauser committee assigned to it. Pause duration and heartbeat interval are global CircuitBreaker parameters and are not set per registration.
 
-| Name               | Value                    | Description                                  |
-| ------------------ | ------------------------ | -------------------------------------------- |
-| `sealingCommittee` | Dedicated multisig (TBD) | Multisig permitted to trigger the seal       |
-| `sealDuration`     | `1209600` (14 days)      | Duration a seal keeps the gateway paused     |
-| `sealables`        | `[ConsolidationGateway]` | Contracts that can be paused by the seal     |
-| `expiryTimestamp`  | deploy time + 365 days   | Gate seal becomes inert after this timestamp |
+| Name         | Value                    | Description                                                       |
+| ------------ | ------------------------ | ----------------------------------------------------------------- |
+| `pausable`   | `ConsolidationGateway`   | Contract registered as pausable on CircuitBreaker                 |
+| `pauser`     | Dedicated multisig (TBD) | Multisig authorized to trigger a pause on `ConsolidationGateway`  |
 
 ### ConsolidationBus
 
