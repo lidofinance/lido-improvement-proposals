@@ -369,7 +369,7 @@ For new integrations, `getBalanceStats()` is recommended, as it reflects the cur
 
 ![Consolidation flow](./assets/lip-35/consolidation_flow.png)
 
-It is suggested that node operators initiate the consolidation process via an EasyTrack motion.
+It is suggested that the first step in the consolidation process is an EasyTrack motion to set consolidation parameters.
 
 Operators will use EasyTrack to specify a **source/target operator pair** (CMv1 → CMv2), along with a **Consolidation Manager address**—the address that will be granted permission to submit consolidation requests for consolidating validators from the source operator to the target operator. Once the motion is enacted, stake transfers from a CMv1 operator entity to its corresponding CMv2 entity are permitted, allowing the operator to submit consolidation requests to the Migrator contract.
 
@@ -401,15 +401,28 @@ A single node operator in the CMv1 module may consolidate into multiple operator
 
 ### Consolidation Migrator
 
-The **Consolidation Migrator** contract validates stake consolidation (migration) requests from a source operator in one module to a target operator in another module.
+The **Consolidation Migrator** contract validates stake consolidation (migration) requests from a source operator in one module to a target operator in another module. The **source module ID** and **target module ID** are provided at deployment time in the implementation contract and are immutable thereafter.
 
-It ensures that:
+```
+// Consolidation Migrator receive key indexes grouped by target keys
+sourceOperatorId
+targetOperatorId
+groups: [
+  {
+    sourceKeyIndices: [...], // many sources
+    targetKeyIndex.          // single target
+  },
+  ...
+]
+```
+
+The **Consolidation Migrator** receives a source operator ID, a target operator ID, and key indices grouped by target keys. It then uses the respective modules to resolve the provided key indices into pubkeys and additionally ensures that:
 
 - Consolidation requests are submitted by the authorized **Consolidation Manager address**
 - Consolidations are permitted only for explicitly allowed **(sourceOperator → targetOperator)** pairs
-- Each validator key involved in a consolidation is marked as `used`
+- Each validator key involved in a consolidation has been deposited by Lido.
 
-The **source module ID** and **target module ID** are provided at deployment time in the implementation contract and are immutable thereafter.
+If all checks pass, the **Consolidation Migrator** sends the resolved public keys (grouped by target key) from both the source and target modules to the **Consolidation Bus**.
 
 To manage the list of allowed consolidation pairs (source → target operators), it is proposed to add three methods:
 
@@ -417,7 +430,7 @@ To manage the list of allowed consolidation pairs (source → target operators),
 
 `disallowPair` — disallows consolidation from a source operator to a target operator. This method may be called to correct an incorrectly allowed pair, update the consolidation manager address, or stop consolidation for operational reasons.
 
-`selfDisallowPair` — allows the original submitter to revoke (disallow) a previously allowed pair. Permissionless, but restricted to the submitter of the pair.
+`selfDisallowPair` — allows the original submitter to revoke (disallow) a previously allowed pair. Permissionless, but restricted to the submitter of the pair. It is proposed to grant the CMC Committee (also known as CM Committee Multisig) permission to call this method.
 
 Note. Once a consolidation pair is disallowed, it may be allowed again by creating and enacting a new EasyTrack motion by the operator.
 
@@ -549,17 +562,60 @@ To validate whether a target key has already been used (deposited), the `getNode
 
 ### Consolidation Message Bus
 
-The Message Bus decouples consolidation request submission from execution.
+The Message Bus decouples consolidation request submission from execution. This process consists of two steps:
+
+1. Add consolidation requests via the `addConsolidationRequests` method.
+2. Execute previously added requests via the `executeConsolidation` method.
+
+Authorized actors (e.g., the Consolidation Migrator) can submit consolidation requests grouped by target key in batches using the `addConsolidationRequests` method:
+
+```
+// Add consolidation requests grouped by target key
+groups: [
+  {
+    sourceKeys: [...],   // many sources
+    targetKey            // single target
+  },
+  ...
+]
+```
+
+The `addConsolidationRequests` method enforces:
+
+- a batch size limit (maximum number of requests), and
+- a target validator group limit (maximum number of target validator groups per batch).
+
+It also stores batch hashes along with submission timestamps for deferred execution.
+
+After the execution delay has elapsed, any permissionless executor can process a batch via `executeConsolidation` by submitting:
+
+- the original batch (previously added via `addConsolidationRequests`)
+- the required fee
+- `ValidatorWitness` proofs for each target validator
+
+```
+// Execute consolidation requests
+groups: [
+  {
+    sourceKeys: [...],
+    validatorWitness // contains the original target key and withdrawal credentials (WC) proof
+  },
+  ...
+]
+```
+
+The `addConsolidationRequests` verifies that:
+
+- the submitted batch hash matches the stored hash of the original request
+- the required execution delay has elapsed.
+
+If all checks pass, the contract forwards the consolidation requests, withdrawal credentials proofs, and fee to the `ConsolidationGateway`. The processed batch is then removed from storage.
 
 The `ConsolidationBus` allows configuring:
 
-- batch size limit via `setBatchSize` (maximum number of requests per batch)
-- target validator group limit via `setMaxGroupsInBatch` (maximum number of target validator groups per batch)
-- execution delay via `setExecutionDelay` (time between batch submission and execution)
-
-Authorized actors can submit consolidation requests in batches via the `addConsolidationRequests` method. The contract enforces batch size and target validator group limits, and stores batch hashes along with submission timestamps for deferred processing.
-
-After the execution delay has passed, a permissionless executor can execute a batch via `executeConsolidation` by submitting the original batch that was previously added via `addConsolidationRequests`, along with the required fee and `ValidatorWitness` proofs for each target validator. The Consolidation Bus verifies that the submitted batch hash matches the stored hash value for the original consolidation and that the required execution delay has elapsed. If all checks pass, it forwards the consolidation requests, WC proofs, and fee to the Consolidation Gateway, after which the batch is deleted from the Consolidation Bus.
+- **Batch size limit** via `setBatchSize` — maximum number of requests per batch
+- **Target group limit** via `setMaxGroupsInBatch` — maximum number of validator groups per batch
+- **Execution delay** via `setExecutionDelay` — minimum time between batch submission and execution
 
 ```solidity
 /**
@@ -649,7 +705,7 @@ Using the Withdrawal Vault for this purpose would not be advisable. The Withdraw
 
 To address this, the `ConsolidationGateway` is introduced as a pausable contract (see [PausableUntil.sol](https://github.com/lidofinance/core/blob/master/contracts/0.8.9/utils/PausableUntil.sol)) designed to handle consolidation requests in a controlled and secure manner. It:
 
-- **Authorizes** only permitted callers to submit requests
+- **Authorizes** only permitted callers to submit requests (e.g., the Consolidation Bus)
 - **Enforces request limits** to prevent overload
 - **Ensures DSM deposits are not paused**
 - **Ensures Lido is not stopped and bunker mode is not active**
