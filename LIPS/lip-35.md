@@ -805,7 +805,7 @@ Following this change, two types of deposit-handling modules may exist:
 - Modules with **0x01 keys** that accept only 32 ETH predeposits
 - Modules with **0x02 keys** that accept predeposits and top-ups up to 2,048 ETH
 
-To maintain system simplicity, each module must support **only one key type** for deposits: either 0x01 or 0x02 — not both.
+To maintain system simplicity, **each module must support only one key type** for deposits: either 0x01 or 0x02 — not both.
 
 It is proposed that the deposit flow rely on validator balances rather than the number of keys, and that it support keys with both credential types: 0x01 and 0x02.
 
@@ -864,9 +864,13 @@ It is proposed that deposit flows adopt the new pull-based ETH model. These flow
 
 ### Predeposits flow description
 
-A predeposit refers to the initial 32 ETH deposit made to a validator to activate it. For withdrawal credentials type `0x01`, 32 ETH is the maximum, and the predeposit is the only deposit. For withdrawal credentials type `0x02`, 32 ETH is intended to activate the validator, with the remaining balance deposited later if applicable.
+A _predeposit_ refers to the initial 32 ETH deposit made to activate a validator.
 
-**Note**: The details for each component (Lido, Staking Router, and modules) are described in the relevant sections below. This section outlines the overall predeposits workflow steps.
+For withdrawal credentials of type `0x01`, 32 ETH is both the minimum and the maximum effective balance for activation, so the predeposit constitutes the full deposit.
+
+For withdrawal credentials of type `0x02`, the initial 32 ETH deposit is used to activate the validator, while any additional balance may be deposited later, if applicable.
+
+**Note.** A 32 ETH deposit is suggested because it is the minimum effective balance needed for validator activation. Deposits below this threshold do not activate a validator and therefore do not accrue rewards until the total deposited amount reaches at least 32 ETH.
 
 ![Predeposits flow](./assets/lip-35/predeposits_flow.png)
 
@@ -881,8 +885,6 @@ A predeposit refers to the initial 32 ETH deposit made to a validator to activat
 ### Top-ups flow description
 
 As in the initial predeposit flow, the Staking Router will deposit 32 ETH for both 0x01 and 0x02 keys. To support reaching the maximum effective balance for 0x02 keys, it is proposed to add Merkle-proof–based top-ups via a separate flow. This adds security by reducing trust assumptions and avoids complicating the validator-creation logic. Top-ups are allowed only for modules that support creation of 0x02 keys.
-
-**Note:** The details for each component (Depositor Bot, Top-up Gateway, Lido, Staking Router, and modules) are described in the relevant sections below. This section outlines the overall top-up workflow steps.
 
 ![Top-up flow](./assets/lip-35/topup_flow.png)
 
@@ -1669,13 +1671,13 @@ Constructor parameters:
 
 New non-proxy contract.
 
-| Role                             | Assignee                                     |
-| -------------------------------- | -------------------------------------------- |
-| `DEFAULT_ADMIN_ROLE`             | Agent                                        |
-| `PAUSE_ROLE`                     | CircuitBreaker, ResealManager                |
-| `RESUME_ROLE`                    | ResealManager                                |
-| `ADD_CONSOLIDATION_REQUEST_ROLE` | ConsolidationBus                             |
-| `EXIT_LIMIT_MANAGER_ROLE`        | Not assigned by default                      |
+| Role                             | Assignee                      |
+| -------------------------------- | ----------------------------- |
+| `DEFAULT_ADMIN_ROLE`             | Agent                         |
+| `PAUSE_ROLE`                     | CircuitBreaker, ResealManager |
+| `RESUME_ROLE`                    | ResealManager                 |
+| `ADD_CONSOLIDATION_REQUEST_ROLE` | ConsolidationBus              |
+| `EXIT_LIMIT_MANAGER_ROLE`        | Not assigned by default       |
 
 Constructor parameters:
 
@@ -1694,10 +1696,10 @@ Constructor parameters:
 
 `ConsolidationGateway` is registered as a pausable contract on the existing [CircuitBreaker](./lip-34.md) instance, with a dedicated pauser committee assigned to it. Pause duration and heartbeat interval are global CircuitBreaker parameters and are not set per registration.
 
-| Name         | Value                    | Description                                                       |
-| ------------ | ------------------------ | ----------------------------------------------------------------- |
-| `pausable`   | `ConsolidationGateway`   | Contract registered as pausable on CircuitBreaker                 |
-| `pauser`     | Dedicated multisig (TBD) | Multisig authorized to trigger a pause on `ConsolidationGateway`  |
+| Name       | Value                    | Description                                                      |
+| ---------- | ------------------------ | ---------------------------------------------------------------- |
+| `pausable` | `ConsolidationGateway`   | Contract registered as pausable on CircuitBreaker                |
+| `pauser`   | Dedicated multisig (TBD) | Multisig authorized to trigger a pause on `ConsolidationGateway` |
 
 ### ConsolidationBus
 
