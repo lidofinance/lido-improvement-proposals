@@ -12,7 +12,7 @@ updated: 2026-04-20
 
 ## Simple Summary
 
-Staking Router v3 upgrades Lido's core protocol for EIP-7251 (MaxEB). Validator accounting moves from per-validator counts to direct balance tracking, rewards are distributed per-module balance, and the deposit flow switches from a push model orchestrated by the Lido contract to a pull model where the Staking Router withdraws ETH from Lido as needed. A new `TopUpGateway` enables top-ups of 0x02 validators up to 2048 ETH, secured by on-chain Merkle-proof verification of validator state.
+Staking Router v3 upgrades Lido's core protocol for EIP-7251 (MaxEB). Validator accounting moves from per-validator counts to direct balance tracking, rewards are distributed per-module balance, and the deposit flow switches from a push model orchestrated by the Lido contract to a pull model where the Staking Router withdraws ETH from Lido as needed. A new `TopUpGateway` enables top-ups of `0x02` validators up to 2048 ETH, secured by on-chain Merkle-proof verification of validator state.
 
 A consolidation pipeline enables stake migration from Curated Module v1 to v2, and the validator exit flow (VEBO/VEO) becomes key-type-aware and balance-based, with sanity checks bound by total effective balance rather than validator count.
 
@@ -287,7 +287,7 @@ Most of the pre-existing sanityCheck parameters have been recalculated from the 
 
 #### [VEBO] checkMaximumOfAmountEthCalledToExitInReport
 
-This check verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type cases multiplied by their weights. Under this check, we assume the weight of a 0x02-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048.
+This check verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type cases multiplied by their weights. Under this check, we assume the weight of a `0x02`-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048.
 
 ```
 count_of_0x01_keys * maxEffectiveBalanceWeightWCType01 +
@@ -342,7 +342,7 @@ assert totalActivatedInClByModules <= activatedGweiAmountWithGap + consolidation
 
 This check has been updated to align with the introduction of the consolidation process. Now, the maximum amount of ETH exited at once cannot exceed double the sum of exited and consolidated ETH.
 
-The necessity for doubling is due to the worst-case scenario where validators participating in these processes have the minimum balance of 16 ETH. The size of 0x02-type validators is set to the minimum possible value because, otherwise, actual recorded withdrawals could falsely trigger a revert.
+The necessity for doubling is due to the worst-case scenario where validators participating in these processes have the minimum balance of 16 ETH. The size of `0x02`-type validators is set to the minimum possible value because, otherwise, actual recorded withdrawals could falsely trigger a revert.
 
 ```
 count_of_0x01_keys * 32 + count_of_0x02_keys * 32
@@ -795,19 +795,19 @@ interface IWithdrawalVault {
 
 ## Deposits
 
-To fully support 0x02 keys and enable flexible stake rebalancing across operators, it is proposed to introduce **top-up deposits**. With this enhancement, the system will support two types of deposit flows:
+To fully support `0x02` keys and enable flexible stake rebalancing across operators, it is proposed to introduce **top-up deposits**. With this enhancement, the system will support two types of deposit flows:
 
-- **Predeposits**: deposits of exactly 32 ETH to new validators for 0x01 and 0x02 types of keys
-- **Top-ups**: deposits for 0x02-type active validators intended to reach the max effective balance (2048 ETH)
+- **Predeposits**: deposits of exactly 32 ETH to new validators for `0x01` and `0x02` types of keys
+- **Top-ups**: deposits for `0x02`-type active validators intended to reach the max effective balance (2048 ETH)
 
 Following this change, two types of deposit-handling modules may exist:
 
-- Modules with **0x01 keys** that accept only 32 ETH predeposits
-- Modules with **0x02 keys** that accept predeposits and top-ups up to 2,048 ETH
+- Modules with **`0x01` keys** that accept only 32 ETH predeposits
+- Modules with **`0x02` keys** that accept predeposits and top-ups up to 2,048 ETH
 
-To maintain system simplicity, **each module must support only one key type** for deposits: either 0x01 or 0x02 — not both.
+To maintain system simplicity, **each module must support only one key type** for deposits: either `0x01` or `0x02` — not both.
 
-It is proposed that the deposit flow rely on validator balances rather than the number of keys, and that it support keys with both credential types: 0x01 and 0x02.
+It is proposed that the deposit flow rely on validator balances rather than the number of keys, and that it support keys with both credential types: `0x01` and `0x02`.
 
 ### Depositable ETH Pull Model
 
@@ -884,7 +884,7 @@ For withdrawal credentials of type `0x02`, the initial 32 ETH deposit is used to
 
 ### Top-ups flow description
 
-As in the initial predeposit flow, the Staking Router will deposit 32 ETH for both 0x01 and 0x02 keys. To support reaching the maximum effective balance for 0x02 keys, it is proposed to add Merkle-proof–based top-ups via a separate flow. This adds security by reducing trust assumptions and avoids complicating the validator-creation logic. Top-ups are allowed only for modules that support creation of 0x02 keys.
+As in the initial predeposit flow, the Staking Router will deposit 32 ETH for both `0x01` and `0x02` keys. To support reaching the maximum effective balance for `0x02` keys, it is proposed to add Merkle-proof–based top-ups via a separate flow. This adds security by reducing trust assumptions and avoids complicating the validator-creation logic. Top-ups are allowed only for modules that support creation of `0x02` keys.
 
 ![Top-up flow](./assets/lip-35/topup_flow.png)
 
@@ -900,15 +900,15 @@ As in the initial predeposit flow, the Staking Router will deposit 32 ETH for bo
 
 ### Depositor Bot
 
-For modules that support 0x02 keys, the system should maintain a sufficient number of eligible validators for top-ups so that a significant portion of the ETH in the buffer can be used immediately, without waiting until the validator becomes active.
+For modules that support `0x02` keys, the system should maintain a sufficient number of eligible validators for top-ups so that a significant portion of the ETH in the buffer can be used immediately, without waiting until the validator becomes active.
 
 The Depositor Bot is proposed to be responsible for maintaining an appropriate balance between predeposits and top-ups, with predeposits taking priority over top-ups.
 
-The Depositor Bot selects validators differently for CMv2 and the 0x02 version of the CSM module.
+The Depositor Bot selects validators differently for CMv2 and the `0x02` version of the CSM module.
 
-#### Depositor Bot workflow for 0x02 key modules
+#### Depositor Bot workflow for `0x02` key modules
 
-For modules with 0x02 keys, the Depositor Bot prioritizes predeposits over top-ups and operates as follows:
+For modules with `0x02` keys, the Depositor Bot prioritizes predeposits over top-ups and operates as follows:
 
 - Periodically check council-signed messages. If there is ETH in the buffer, proceed.
 - If there are keys in the module available for predeposit, check whether ETH can be allocated to that module. If it can, call the existing `DepositSecurityModule.depositBufferedEther`.
@@ -935,9 +935,9 @@ For **CMv2**, the Depositor Bot operates on a per-operator basis:
 5. For the selected validators, the Depositor Bot calculates pending deposit amounts.
 6. The Depositor Bot calls the `TopUpGateway` with key data (module ID, key indices, operator IDs), proofs, and validator CL data.
 
-#### Top-up key selection for the 0x02 version of CSM
+#### Top-up key selection for the `0x02` version of CSM
 
-For the **0x02 version of CSM**, the module maintains a global internal queue and exposes a **cursor** that always returns the next validator key that must be processed. Unlike CMv2, key selection is module-wide, not per-operator:
+For the **`0x02` version of CSM**, the module maintains a global internal queue and exposes a **cursor** that always returns the next validator key that must be processed. Unlike CMv2, key selection is module-wide, not per-operator:
 
 1. The Depositor Bot computes `depositAmount = min(buffered ether, module allocation)`.
 2. Based on the computed `depositAmount`, the Depositor Bot queries the module’s cursor to obtain the next keys to be topped up by calling the module’s `getKeysForTopUp` method.
@@ -946,14 +946,14 @@ For the **0x02 version of CSM**, the module maintains a global internal queue an
 4. For the selected validators, the Depositor Bot calculates pending deposit amounts.
 5. The Depositor Bot calls the `TopUpGateway` with key data (module ID, key indices, operator IDs), proofs, and validator CL data.
 
-Because the 0x02 CSM cursor **should never be blocked**, the Depositor Bot **should not skip any validators**, even if one:
+Because the `0x02` CSM cursor **should never be blocked**, the Depositor Bot **should not skip any validators**, even if one:
 
 - is slashed,
 - is marked for exit,
 - has actual + pending balance > 2046.75,
 - or fails any other eligibility condition.
 
-Instead, the module relies on **TopUpGateway** to set a **top-up limit of zero** for such validators and then advance the cursor in the 0x02 version of CSM. This design ensures continuous progress of the CSM queue.
+Instead, the module relies on **TopUpGateway** to set a **top-up limit of zero** for such validators and then advance the cursor in the `0x02` version of CSM. This design ensures continuous progress of the CSM queue.
 
 ### TopUpGateway
 
@@ -1125,7 +1125,7 @@ Any instance of an unnecessary top-up will be detected by monitoring and treated
 
 **3. Increased imbalance between validator cohorts**
 
-For modules that support 0x02 keys, the Depositor Bot should maintain a sufficient number of top-up–eligible validators so that a meaningful portion of the ETH buffer can be utilized immediately, without waiting until the validator becomes active.
+For modules that support `0x02` keys, the Depositor Bot should maintain a sufficient number of top-up–eligible validators so that a meaningful portion of the ETH buffer can be utilized immediately, without waiting until the validator becomes active.
 
 If the Depositor Bot incorrectly prioritizes top-ups over initial deposits and exhausts the current set of top-up–eligible validators, the system may temporarily have no eligible validators available and will be forced to wait for new validators to be activated.
 
@@ -1133,7 +1133,7 @@ If monitoring detects that the number of top-up–eligible keys has fallen below
 
 ### Staking Router
 
-It is proposed to update the existing `deposit` methods to support the ETH pull model and enable initial 32 ETH deposits to 0x02 withdrawal credentials. The updated `deposit` method would:
+It is proposed to update the existing `deposit` methods to support the ETH pull model and enable initial 32 ETH deposits to `0x02` withdrawal credentials. The updated `deposit` method would:
 
 1. **Calculate module allocation.** The amount of ETH that can be deposited into a module is divided by 32 (for both module types) to determine the maximum number of deposits (`maxDepositsCount`). This value is additionally capped by `maxDepositsCountPerBlock`, which can be configured individually for each module.
 2. **Obtain keys for the initial deposit.** After determining the deposit limit, the Staking Router calls the existing `IStakingModule(stakingModuleAddress).obtainDepositData(maxDepositsCount, depositCalldata)` method to fetch public keys and signatures. The `obtainDepositData` call may return up to `maxDepositsCount` keys.
@@ -1184,7 +1184,7 @@ interface IStakingRouter {
 
 #### Staking Router Configuration
 
-It is proposed to add a new `withdrawalCredentialsType` property to the module configuration in the `StakingRouter`. This property would distinguish modules that use 0x01 withdrawal credentials from modules that use 0x02 withdrawal credentials and support top-ups up to 2,048 ETH.
+It is proposed to add a new `withdrawalCredentialsType` property to the module configuration in the `StakingRouter`. This property would distinguish modules that use `0x01` withdrawal credentials from modules that use `0x02` withdrawal credentials and support top-ups up to 2,048 ETH.
 
 ```solidity
 struct StakingModule {
@@ -1211,7 +1211,7 @@ Each module's capacity is capped by two constraints: its number of depositable v
 capacity = min(shareLimit × totalValidators / BASIS_POINTS, currentAllocation + depositableCount)
 ```
 
-**Top-up deposits** follow the same priority ordering, but a 0x02 type module's capacity is measured by the remaining effective balance headroom of its active validators rather than available keys:
+**Top-up deposits** follow the same priority ordering, but a `0x02` type module's capacity is measured by the remaining effective balance headroom of its active validators rather than available keys:
 
 ```
 capacity = min(shareLimit × totalValidators / BASIS_POINTS, activeCount × maxEBType2 / maxEBType1)
@@ -1276,9 +1276,9 @@ function getDepositsAllocation(
 ) external view returns (uint256 allocated, uint256[] memory operatorIds, uint256[] memory allocations);
 ```
 
-#### 0x02 version of CSM
+#### `0x02` version of CSM
 
-In the 0x02 version of the CSM module, it is proposed to include this method to provide the Depositor Bot with the ordered list of validator keys that need to be topped up next.
+In the `0x02` version of the CSM module, it is proposed to include this method to provide the Depositor Bot with the ordered list of validator keys that need to be topped up next.
 
 ```solidity
 /// @notice Fetches up to `keysCount` validator public keys from the front of the top-up queue.
@@ -1298,20 +1298,20 @@ It is proposed to update the Validators Exit flow:
 
 ### Validators Exit Bus Oracle (VEBO)
 
-Currently, the `ValidatorsExitBusOracle.sol` contract performs a sanity check on the number of exiting validators included in a VEBO report, under the assumption that every validator uses a 0x01-type key with a maximum effective balance of 32 ETH.
+Currently, the `ValidatorsExitBusOracle.sol` contract performs a sanity check on the number of exiting validators included in a VEBO report, under the assumption that every validator uses a `0x01`-type key with a maximum effective balance of 32 ETH.
 
 After the transition to MaxEB, the validator count–based approach in VEBO is no longer sufficient: a validator’s effective balance may range from 32 ETH up to 2048 ETH, so the number of validators alone does not provide a reliable upper bound on the withdrawn amount.
 
 To ensure a reliable upper bound on the withdrawn amount, it is proposed to:
 
-- Extend the VEBO report format to include the pubkey, module ID, operator ID, and key index, allowing the key type (0x01 / 0x02) to be determined on-chain.
-- Update the sanity checker to validate the **upper-bound total effective balance** requested to exit based on the key type (0x01 with a MaxEB of 32 ETH or 0x02 with a MaxEB of 2048 ETH), rather than the raw validator count.
+- Extend the VEBO report format to include the pubkey, module ID, operator ID, and key index, allowing the key type (`0x01` / `0x02`) to be determined on-chain.
+- Update the sanity checker to validate the **upper-bound total effective balance** requested to exit based on the key type (`0x01` with a MaxEB of 32 ETH or `0x02` with a MaxEB of 2048 ETH), rather than the raw validator count.
 
 ![VEBO report format](./assets/lip-35/vebo_report_format.png)
 
 #### Report format
 
-It is proposed to introduce a second VEBO report data format, `DATA_FORMAT_LIST_WITH_KEY_INDEX`, which will include the pubkey, module ID, operator ID, and key index, allowing the key type (0x01 / 0x02) to be determined on-chain.
+It is proposed to introduce a second VEBO report data format, `DATA_FORMAT_LIST_WITH_KEY_INDEX`, which will include the pubkey, module ID, operator ID, and key index, allowing the key type (`0x01` / `0x02`) to be determined on-chain.
 
 ```
 /// Current DATA_FORMAT_LIST = 1
@@ -1325,7 +1325,7 @@ It is proposed to introduce a second VEBO report data format, `DATA_FORMAT_LIST_
 /// |  moduleId  |  nodeOpId  |  validatorIndex  |  keyIndex  | validatorPubkey |
 ```
 
-It is proposed that oracles submit exit reports using the new `DATA_FORMAT_LIST_WITH_KEY_INDEX` format, enabling the key type (0x01 / 0x02) to be determined reliably on-chain.
+It is proposed that oracles submit exit reports using the new `DATA_FORMAT_LIST_WITH_KEY_INDEX` format, enabling the key type (`0x01` / `0x02`) to be determined reliably on-chain.
 
 At the same time, existing trusted entities (i.e., Easy Track for the Curated and SDVT modules) are expected to continue operating with the current `DATA_FORMAT_LIST` format without changes. This is acceptable because Easy Track already performs an on-chain verification that the reported keys belong to the corresponding module before submitting exit requests.
 
@@ -1338,8 +1338,8 @@ The proposed update is to validate the **upper-bound total effective balance** r
 
 Under the new logic, each VEBO report will be validated as follows:
 
-- For modules with **0x01-type keys**, multiply the number of validators in the report that belong to this module by **32 ETH**.
-- For modules with **0x02-type keys**, multiply the number of validators in the report that belong to this module by **2048 ETH**.
+- For modules with **`0x01`-type keys**, multiply the number of validators in the report that belong to this module by **32 ETH**.
+- For modules with **`0x02`-type keys**, multiply the number of validators in the report that belong to this module by **2048 ETH**.
 - Sum the resulting values across all modules and compare the total against the configured **ETH-denominated sanity-check limit**.
 
 This approach establishes a conservative upper bound on withdrawal volume per report and ensures that VEBO cannot trigger an excessively large withdrawal in a single submission, thereby reducing protocol risk.
@@ -1428,7 +1428,7 @@ _The full list of predicates used by VEO to build the sorted list of exitable va
 The current sporadic stake rebalancing between modules via new deposits and withdrawals raises several challenges that are difficult to solve efficiently with existing rebalancing approaches:
 
 - Efficiently rebalance stake between modules; it took SDVT over a year and a half to reach its target share. A future possible CSM share limit increase up to 10% might require significant time.
-- Ensure that there is always enough ETH for initial 32 ETH deposits to 0x02-type keys in the CMv2 module to support stake migration from the CMv1 to the CMv2 module via consolidation.
+- Ensure that there is always enough ETH for initial 32 ETH deposits to `0x02`-type keys in the CMv2 module to support stake migration from the CMv1 to the CMv2 module via consolidation.
 
 To solve these challenges, it is proposed to add a deposit reserve mechanism to protect a portion of the protocol's buffered ether for CL deposits, regardless of withdrawal demand.
 
@@ -1436,7 +1436,7 @@ To solve these challenges, it is proposed to add a deposit reserve mechanism to 
 
 Under current conditions, cycling arbitrage and vampire attacks via withdrawals can result in submitted ether being withdrawn before it is ever deposited. This situation limits the ability to allocate stake to new modules and node operators.
 
-To ensure that there is always enough ETH for stake rebalancing and initial 32 ETH deposits to 0x02-type keys in the CMv2 module during the migration process, it is proposed to reserve a portion of the protocol's buffered ether for CL deposits, protecting it from being consumed by withdrawal demand.
+To ensure that there is always enough ETH for stake rebalancing and initial 32 ETH deposits to `0x02`-type keys in the CMv2 module during the migration process, it is proposed to reserve a portion of the protocol's buffered ether for CL deposits, protecting it from being consumed by withdrawal demand.
 
 #### Proposed solution
 
@@ -1623,8 +1623,8 @@ Constructor parameters:
 
 | Name          | Value                                   | Description                                           |
 | ------------- | --------------------------------------- | ----------------------------------------------------- |
-| `_maxEBType1` | `32000000000000000000` (32 ETH in wei)  | Max effective balance for 0x01 withdrawal credentials |
-| `_maxEBType2` | `2048000000000000000000` (2048 ETH wei) | Max effective balance for 0x02 withdrawal credentials |
+| `_maxEBType1` | `32000000000000000000` (32 ETH in wei)  | Max effective balance for `0x01` withdrawal credentials |
+| `_maxEBType2` | `2048000000000000000000` (2048 ETH wei) | Max effective balance for `0x02` withdrawal credentials |
 
 ### AccountingOracle
 
@@ -1661,8 +1661,8 @@ Constructor parameters:
 
 | Name                                | Value   | Description                                            |
 | ----------------------------------- | ------- | ------------------------------------------------------ |
-| `maxEffectiveBalanceWeightWCType01` | `32`    | Per-key weight in ETH for 0x01 keys used in VEBO check |
-| `maxEffectiveBalanceWeightWCType02` | `2048`  | Per-key weight in ETH for 0x02 keys used in VEBO check |
+| `maxEffectiveBalanceWeightWCType01` | `32`    | Per-key weight in ETH for `0x01` keys used in VEBO check |
+| `maxEffectiveBalanceWeightWCType02` | `2048`  | Per-key weight in ETH for `0x02` keys used in VEBO check |
 | `maxCLBalanceDecreaseBP`            | `360`   | Max CL balance decrease over 36-day window (BP, 3.6%)  |
 | `consolidationEthAmountPerDayLimit` | `93375` | Max ETH consolidated per day                           |
 | `exitedValidatorEthAmountLimit`     | `32`    | Per-validator ETH amount used in exit reporting        |
