@@ -1685,7 +1685,7 @@ Constructor parameters:
 | `lidoLocator`                   | LidoLocator proxy                                                    | Lido protocol service locator                                 |
 | `maxConsolidationRequestsLimit` | `2900`                                                               | Max consolidation requests accepted before rate-limit applies |
 | `consolidationsPerFrame`        | `1`                                                                  | Number of consolidations processed per frame                  |
-| `frameDurationInSec`            | `36`                                                                 | Frame duration used for limit refill (seconds)                |
+| `frameDurationInSec`            | `30`                                                                 | Frame duration used for limit refill (seconds)                |
 | `gIFirstValidatorPrev`          | `0x0000000000000000000000000000000000000000000000000096000000000028` | Generalized index for first validator before fork pivot       |
 | `gIFirstValidatorCurr`          | `0x0000000000000000000000000000000000000000000000000096000000000028` | Generalized index for first validator after fork pivot        |
 | `pivotSlot`                     | `0`                                                                  | Slot at which the active generalized index switches           |
