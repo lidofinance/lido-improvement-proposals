@@ -185,8 +185,7 @@ The scheme above depicts CM v2's smart contracts architecture and changes made c
 
 ##### `CircuitBreaker`
 
-`CircuitBreaker` is a utility contract responsible for pausing Lido protocol contracts to prevent possible exploitation through zero-day vulnerabilities.
-
+`CircuitBreaker` is a utility contract responsible for pausing Lido protocol contracts to prevent possible exploitation through zero-day vulnerabilities. See LIP-34 for more details.
 The list of sealable contracts for CSM v3 includes:
 - [`CSModule.sol`](#CSModulesol)
 - [`Accounting.sol`](#Accountingsol)
@@ -202,7 +201,6 @@ The list of sealable contracts for CM v2 includes:
 - [`Accounting.sol`](#Accountingsol)
 - [`FeeOracle.sol`](#FeeOraclesol)
 - [`Verifier.sol`](#Verifiersol)
-- [`VettedGate.sol`](#VettedGatesol) (multiple instances)
 - [`Ejector.sol`](#Ejectorsol)
 
 These contracts are paused using `CircuitBreaker` with [CMC](#CMC) being the pause committee (caller of the pause method on `CircuitBreaker` for these contracts).
