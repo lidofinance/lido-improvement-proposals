@@ -185,7 +185,7 @@ The scheme above depicts CM v2's smart contracts architecture and changes made c
 
 ##### `CircuitBreaker`
 
-`CircuitBreaker` is a utility contract responsible for pausing Lido protocol contracts to prevent possible module exploitation through zero-day vulnerabilities. Uses the [standard code](https://github.com/lidofinance/circuit-breaker) of the `CircuitBreaker` contract from Lido on Ethereum (LoE).
+`CircuitBreaker` is a utility contract responsible for pausing Lido protocol contracts to prevent possible exploitation through zero-day vulnerabilities. Uses the [standard code](https://github.com/lidofinance/circuit-breaker) of the `CircuitBreaker` contract from Lido on Ethereum (LoE).
 
 The list of sealable contracts for CSM v3 includes:
 - [`CSModule.sol`](#CSModulesol)
