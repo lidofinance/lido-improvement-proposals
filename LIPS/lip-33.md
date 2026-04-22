@@ -183,19 +183,31 @@ The scheme above depicts CM v2's smart contracts architecture and changes made c
 - Existing ET factory for [`VettedGate.sol`](#VettedGatesol) is [updated](https://github.com/lidofinance/easy-track/pull/96) to serve multiple instances of [`VettedGate.sol`](#VettedGatesol).
 - Existing ET factory for EL stealing penalty settling is [updated](https://github.com/lidofinance/easy-track/pull/96) to support a general delayed penalty.
 
-##### `GateSeal`
+##### `CircuitBreaker`
 
-`GateSeal` is a utility contract responsible for pausing critical CSM contracts on a one-time basis to prevent possible module exploitation through zero-day vulnerabilities. Uses the [standard code](https://github.com/lidofinance/gate-seals) of the `GateSeal` contract from Lido on Ethereum (LoE).
+`CircuitBreaker` is a utility contract responsible for pausing Lido protocol contracts to prevent possible module exploitation through zero-day vulnerabilities. Uses the [standard code](https://github.com/lidofinance/circuit-breaker) of the `CircuitBreaker` contract from Lido on Ethereum (LoE).
 
-The list of sealable contracts:
-- [`CSModule.sol`](#CSModulesol) or [CuratedModule.sol](#CuratedModulesol)
+The list of sealable contracts for CSM v3 includes:
+- [`CSModule.sol`](#CSModulesol)
 - [`Accounting.sol`](#Accountingsol)
 - [`FeeOracle.sol`](#FeeOraclesol)
 - [`Verifier.sol`](#Verifiersol)
 - [`VettedGate.sol`](#VettedGatesol) (multiple instances)
 - [`Ejector.sol`](#Ejectorsol)
 
-> Note: [`CuratedGate.sol`](#CuratedGatesol) instances are not added to `GateSeal` and paused by [`CMC`](#CMC) instead.
+This contracts are paused using `CircuitBreaker` with [CSMC](#CSMC) being the pause committee (caller of the pause method on `CircuitBreaker` for these contracts).
+
+The list of sealable contracts for CM v2 includes:
+- [`CuratedModule.sol`](#CuratedModulesol)
+- [`Accounting.sol`](#Accountingsol)
+- [`FeeOracle.sol`](#FeeOraclesol)
+- [`Verifier.sol`](#Verifiersol)
+- [`VettedGate.sol`](#VettedGatesol) (multiple instances)
+- [`Ejector.sol`](#Ejectorsol)
+
+This contracts are paused using `CircuitBreaker` with [CMC](#CMC) being the pause committee (caller of the pause method on `CircuitBreaker` for these contracts).
+
+> Note: [`CuratedGate.sol`](#CuratedGatesol) instances are not added to `CircuitBreaker` and paused by [`CMC`](#CMC) directly instead.
 
 #### CSM-only contracts
 
@@ -644,7 +656,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | Role                                       | Assignee                                                                                               |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | `DEFAULT_ADMIN_ROLE`                       | Aragon Agent                                                                                           |
-| `PAUSE_ROLE`                               | Gate Seal contract and DG Reseal Manager                                                               |
+| `PAUSE_ROLE`                               | `CircuitBreaker` contract and DG Reseal Manager                                                        |
 | `RESUME_ROLE`                              | DG Reseal Manager                                                                                      |
 | `STAKING_ROUTER_ROLE`                      | `StakingRouter` contract                                                                               |
 | `REPORT_GENERAL_DELAYED_PENALTY_ROLE`      | [CSMC](#CSMC)                                                                                          |
@@ -662,7 +674,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | Role                      | Assignee                                                          |
 | ------------------------- | ----------------------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE`      | Aragon Agent                                                      |
-| `PAUSE_ROLE`              | Gate Seal contract and DG Reseal Manager                          |
+| `PAUSE_ROLE`              | `CircuitBreaker` contract and DG Reseal Manager                   |
 | `RESUME_ROLE`             | DG Reseal Manager                                                 |
 | `MANAGE_BOND_CURVES_ROLE` | Not assigned by default                                           |
 | `SET_BOND_CURVE_ROLE`     | [CSMC](#CSMC) and instances of [`VettedGate.sol`](#VettedGatesol) |
@@ -681,7 +693,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | -------------------------------- | ---------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE`             | Aragon Agent                                         |
 | `SUBMIT_DATA_ROLE`               | Not assigned by default                              |
-| `PAUSE_ROLE`                     | Gate Seal contract and DG Reseal Manager             |
+| `PAUSE_ROLE`                     | `CircuitBreaker` contract and DG Reseal Manager      |
 | `RESUME_ROLE`                    | DG Reseal Manager                                    |
 | `RECOVERER_ROLE`                 | Not assigned by default                              |
 | `MANAGE_CONSENSUS_CONTRACT_ROLE` | Not assigned by default                              |
@@ -703,7 +715,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | Role                 | Assignee                                             |
 | -------------------- | ---------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE` | Aragon Agent                                         |
-| `PAUSE_ROLE`         | Gate Seal contract and DG Reseal Manager             |
+| `PAUSE_ROLE`         | `CircuitBreaker` contract and DG Reseal Manager      |
 | `RESUME_ROLE`        | DG Reseal Manager                                    |
 
 #### [`ParametersRegistry.sol`](#ParametersRegistrysol)
@@ -726,7 +738,7 @@ Each action can only be performed by a designated admin (`DEFAULT_ADMIN_ROLE`) o
 | Role                         | Assignee                                             |
 | ---------------------------- | ---------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE`         | Aragon Agent                                         |
-| `PAUSE_ROLE`                 | Gate Seal contract and DG Reseal Manager             |
+| `PAUSE_ROLE`                 | `CircuitBreaker` contract and DG Reseal Manager      |
 | `RESUME_ROLE`                | DG Reseal Manager                                    |
 | `RECOVERER_ROLE`             | Not assigned by default                              |
 
@@ -749,13 +761,13 @@ This contract does not have roles.
 
 #### [`VettedGate.sol`](#VettedGatesol)
 
-| Role                 | Assignee                                 |
-| -------------------- | ---------------------------------------- |
-| `DEFAULT_ADMIN_ROLE` | Aragon Agent                             |
-| `PAUSE_ROLE`         | Gate Seal contract and DG Reseal Manager |
-| `RESUME_ROLE`        | DG Reseal Manager                        |
-| `SET_TREE_ROLE`      | `EasyTrackEVMScriptExecutor`             |
-| `RECOVERER_ROLE`     | Not assigned by default                  |
+| Role                 | Assignee                                        |
+| -------------------- | ----------------------------------------------- |
+| `DEFAULT_ADMIN_ROLE` | Aragon Agent                                    |
+| `PAUSE_ROLE`         | `CircuitBreaker` contract and DG Reseal Manager |
+| `RESUME_ROLE`        | DG Reseal Manager                               |
+| `SET_TREE_ROLE`      | `EasyTrackEVMScriptExecutor`                    |
+| `RECOVERER_ROLE`     | Not assigned by default                         |
 
 ### Roles to actors mapping in CM
 
@@ -764,7 +776,7 @@ This contract does not have roles.
 | Role                                       | Assignee                                          |
 | ------------------------------------------ | ------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE`                       | Aragon Agent                                      |
-| `PAUSE_ROLE`                               | Gate Seal contract and DG Reseal Manager          |
+| `PAUSE_ROLE`                               | `CircuitBreaker` contract and DG Reseal Manager   |
 | `RESUME_ROLE`                              | DG Reseal Manager                                 |
 | `STAKING_ROUTER_ROLE`                      | `StakingRouter` contract                          |
 | `REPORT_GENERAL_DELAYED_PENALTY_ROLE`      | [CMC](#CMC)                                       |
@@ -778,14 +790,14 @@ This contract does not have roles.
 
 #### [`Accounting.sol`](#Accountingsol)
 
-| Role                      | Assignee                                                                    |
-| ------------------------- | --------------------------------------------------------------------------- |
-| `DEFAULT_ADMIN_ROLE`      | Aragon Agent                                                                |
-| `PAUSE_ROLE`              | Gate Seal contract and DG Reseal Manager                                    |
-| `RESUME_ROLE`             | DG Reseal Manager                                                           |
-| `MANAGE_BOND_CURVES_ROLE` | Not assigned by default                                                     |
+| Role                      | Assignee                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| `DEFAULT_ADMIN_ROLE`      | Aragon Agent                                                                       |
+| `PAUSE_ROLE`              | `CircuitBreaker` contract and DG Reseal Manager                                    |
+| `RESUME_ROLE`             | DG Reseal Manager                                                                  |
+| `MANAGE_BOND_CURVES_ROLE` | Not assigned by default                                                            |
 | `SET_BOND_CURVE_ROLE`     | Instances of [`CuratedGate.sol`](#CuratedGatesol) that use non-default bond curves |
-| `RECOVERER_ROLE`          | Not assigned by default                                                     |
+| `RECOVERER_ROLE`          | Not assigned by default                                                            |
 
 #### [`FeeDistributor.sol`](#FeeDistributorsol)
 
@@ -800,7 +812,7 @@ This contract does not have roles.
 | -------------------------------- | ---------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE`             | Aragon Agent                                         |
 | `SUBMIT_DATA_ROLE`               | Not assigned by default                              |
-| `PAUSE_ROLE`                     | Gate Seal contract and DG Reseal Manager             |
+| `PAUSE_ROLE`                     | `CircuitBreaker` contract and DG Reseal Manager      |
 | `RESUME_ROLE`                    | DG Reseal Manager                                    |
 | `RECOVERER_ROLE`                 | Not assigned by default                              |
 | `MANAGE_CONSENSUS_CONTRACT_ROLE` | Not assigned by default                              |
@@ -822,7 +834,7 @@ This contract does not have roles.
 | Role                 | Assignee                                             |
 | -------------------- | ---------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE` | Aragon Agent                                         |
-| `PAUSE_ROLE`         | Gate Seal contract and DG Reseal Manager             |
+| `PAUSE_ROLE`         | `CircuitBreaker` contract and DG Reseal Manager      |
 | `RESUME_ROLE`        | DG Reseal Manager                                    |
 
 #### [`ParametersRegistry.sol`](#ParametersRegistrysol)
@@ -845,7 +857,7 @@ This contract does not have roles.
 | Role                         | Assignee                                             |
 | ---------------------------- | ---------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE`         | Aragon Agent                                         |
-| `PAUSE_ROLE`                 | Gate Seal contract and DG Reseal Manager             |
+| `PAUSE_ROLE`                 | `CircuitBreaker` contract and DG Reseal Manager      |
 | `RESUME_ROLE`                | DG Reseal Manager                                    |
 | `RECOVERER_ROLE`             | Not assigned by default                              |
 
@@ -871,12 +883,12 @@ This contract does not have roles.
 
 #### [`MetaRegistry.sol`](#MetaRegistrysol)
 
-| Role                          | Assignee                     |
-| ----------------------------- | ---------------------------- |
-| `DEFAULT_ADMIN_ROLE`          | Aragon Agent                 |
-| `MANAGE_OPERATOR_GROUPS_ROLE` | `EasyTrackEVMScriptExecutor` |
-| `SET_OPERATOR_INFO_ROLE`      | [CMC](#CMC) and Instances of [`CuratedGate.sol`](#CuratedGatesol)                  |
-| `SET_BOND_CURVE_WEIGHT_ROLE`  | Not assigned by default      |
+| Role                          | Assignee                                                          |
+| ----------------------------- | ----------------------------------------------------------------- |
+| `DEFAULT_ADMIN_ROLE`          | Aragon Agent                                                      |
+| `MANAGE_OPERATOR_GROUPS_ROLE` | `EasyTrackEVMScriptExecutor`                                      |
+| `SET_OPERATOR_INFO_ROLE`      | [CMC](#CMC) and Instances of [`CuratedGate.sol`](#CuratedGatesol) |
+| `SET_BOND_CURVE_WEIGHT_ROLE`  | Not assigned by default                                           |
 
 ### Upgradability
 
