@@ -195,7 +195,7 @@ The list of sealable contracts for CSM v3 includes:
 - [`VettedGate.sol`](#VettedGatesol) (multiple instances)
 - [`Ejector.sol`](#Ejectorsol)
 
-This contracts are paused using `CircuitBreaker` with [CSMC](#CSMC) being the pause committee (caller of the pause method on `CircuitBreaker` for these contracts).
+These contracts are paused using `CircuitBreaker` with [CSMC](#CSMC) being the pause committee (caller of the pause method on `CircuitBreaker` for these contracts).
 
 The list of sealable contracts for CM v2 includes:
 - [`CuratedModule.sol`](#CuratedModulesol)
@@ -205,7 +205,7 @@ The list of sealable contracts for CM v2 includes:
 - [`VettedGate.sol`](#VettedGatesol) (multiple instances)
 - [`Ejector.sol`](#Ejectorsol)
 
-This contracts are paused using `CircuitBreaker` with [CMC](#CMC) being the pause committee (caller of the pause method on `CircuitBreaker` for these contracts).
+These contracts are paused using `CircuitBreaker` with [CMC](#CMC) being the pause committee (caller of the pause method on `CircuitBreaker` for these contracts).
 
 > Note: [`CuratedGate.sol`](#CuratedGatesol) instances are not added to `CircuitBreaker` and paused by [`CMC`](#CMC) directly instead.
 
