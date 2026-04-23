@@ -12,7 +12,7 @@ updated: 2026-04-20
 
 ## Simple Summary
 
-Staking Router v3 upgrades Lido's core protocol for EIP-7251 (MaxEB). Validator accounting moves from per-validator counts to direct balance tracking, rewards are distributed per-module balance, and the deposit flow switches from a push model orchestrated by the Lido contract to a pull model where the Staking Router withdraws ETH from Lido as needed. A new `TopUpGateway` enables top-ups of `0x02` validators up to 2048 ETH, secured by on-chain Merkle-proof verification of validator state.
+Staking Router v3 upgrades Lido's core protocol for [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) (MaxEB). Validator accounting moves from per-validator counts to direct balance tracking, rewards are distributed per-module balance, and the deposit flow switches from a push model orchestrated by the Lido contract to a pull model where the Staking Router withdraws ETH from Lido as needed. A new `TopUpGateway` enables top-ups of `0x02` validators up to 2048 ETH, secured by on-chain Merkle-proof verification of validator state.
 
 A consolidation pipeline enables stake migration from Curated Module v1 to v2, and the validator exit flow (VEBO/VEO) becomes key-type-aware and balance-based, with sanity checks bound by total effective balance rather than validator count.
 
@@ -36,7 +36,7 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 
 Before the Pectra upgrade, every Ethereum validator had a fixed effective balance — 32 ETH. This allowed Lido to use a simple accounting model: it was enough to count the number of validators and multiply by 32 to get the total stake.
 
-EIP-7251 (MaxEB) changed the rules. Now, a validator’s effective balance can range from 32 to 2048 ETH. A validator with 2048 ETH generates 64 times more rewards than a validator with 32 ETH, but the old system treated them equally.
+[EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) (MaxEB) changed the rules. Now, a validator’s effective balance can range from 32 to 2048 ETH. A validator with 2048 ETH generates 64 times more rewards than a validator with 32 ETH, but the old system treated them equally.
 
 As a result, the current validator-count–based accounting is incompatible with large validators in several aspects:
 
@@ -100,7 +100,7 @@ transientBalance = (depositedValidators - clValidators) × 32 ETH
 
 This construct was necessary because a deposit could “hang” between the Execution Layer and the Consensus Layer for several hours or even days. The oracle didn’t see these funds, but the protocol had to account for them in `totalPooledEther`.
 
-**Proposed:** Pectra (EIP-6110) eliminates this problem. Deposits from the Execution Layer enter the Consensus Layer pending queue in the same block:
+**Proposed:** Pectra ([EIP-6110](https://eips.ethereum.org/EIPS/eip-6110)) eliminates this problem. Deposits from the Execution Layer enter the Consensus Layer pending queue in the same block:
 
 > “Validator deposits list supplied in a block is obtained by parsing deposit contract log events emitted by each deposit transaction included in a given block.” — [EIP-6110](https://eips.ethereum.org/EIPS/eip-6110)
 
@@ -761,7 +761,7 @@ interface IConsolidationGateway {
 
 ### Withdrawal Vault
 
-A consolidation request is made by signing a transaction with the source validator’s withdrawal address. Since all Lido core validators use **WithdrawalVault** credentials, the consolidation request to the EIP-7251 system contract must be sent from the **WithdrawalVault** contract.
+A consolidation request is made by signing a transaction with the source validator’s withdrawal address. Since all Lido core validators use **WithdrawalVault** credentials, the consolidation request to the [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) system contract must be sent from the **WithdrawalVault** contract.
 
 It is proposed to add the following methods to the WithdrawalVault contract:
 
@@ -1152,11 +1152,11 @@ interface ITopUpGateway {
 
 #### Proof building rules
 
-The slot is taken from a selected beacon header, and the timestamp is taken from the execution block that stored the root of this header in the EIP-4788 contract. On-chain verification checks that this timestamp resolves, via EIP-4788, to the corresponding beacon root, and that the Merkle path includes a header node with exactly this `(slot, proposer)`.
+The slot is taken from a selected beacon header, and the timestamp is taken from the execution block that stored the root of this header in the [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788) contract. On-chain verification checks that this timestamp resolves, via EIP-4788, to the corresponding beacon root, and that the Merkle path includes a header node with exactly this `(slot, proposer)`.
 
 The slot used in the proof must not be older than 5 minutes relative to the current timestamp. This requirement enforces that proofs are generated for **recent** headers, which reduces the probability that the validator has exited between proof construction and top-up execution, while providing sufficient time for an off-chain agent to assemble the proof and the remaining inputs required for the top-up.
 
-Reorganizations are not treated as a separate risk: a proof built on a reorged branch simply fails because the EIP-4788 anchor root is no longer available and the Merkle verification reverts.
+Reorganizations are not treated as a separate risk: a proof built on a reorged branch simply fails because the [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788) anchor root is no longer available and the Merkle verification reverts.
 
 TopUpGateway enforces that the block timestamp used in the proof is newer than the timestamp of the last top-up.
 
@@ -1164,7 +1164,7 @@ Here is the corrected and improved version:
 
 To perform a top-up for a given validator, an off-chain bot must provide all [consensus-layer validator fields](https://github.com/ethereum/consensus-specs/blob/2b83d5a2/specs/phase0/beacon-chain.md?plain=1#L387-L399), except for the withdrawal credentials, which are obtained from the Staking Router.
 
-The Merkle proof for the validator must establish that the hash-tree-root of this validator container (with the expected withdrawal credentials and other fields) is a leaf of the beacon state tree whose root is the state root committed by the proved beacon header. In other words, the validator record is proven to belong to the state corresponding to the header whose root is exposed via EIP-4788 for the supplied timestamp.
+The Merkle proof for the validator must establish that the hash-tree-root of this validator container (with the expected withdrawal credentials and other fields) is a leaf of the beacon state tree whose root is the state root committed by the proved beacon header. In other words, the validator record is proven to belong to the state corresponding to the header whose root is exposed via [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788) for the supplied timestamp.
 
 #### Validator State Validation
 
@@ -1771,8 +1771,8 @@ Constructor is extended with `_consolidationGateway`; `finalizeUpgrade_v3()` bum
 | -------------------------------- | -------------------------------------------- | ---------------------------------------- |
 | `_triggerableWithdrawalsGateway` | New TriggerableWithdrawalsGateway deployment | TriggerableWithdrawalsGateway            |
 | `_consolidationGateway`          | New `ConsolidationGateway` deployment        | ConsolidationGateway                     |
-| `_withdrawalRequest`             | `0x00000961Ef480Eb55e80D19ad83579A64c007002` | EIP-7002 withdrawal request predeploy    |
-| `_consolidationRequest`          | `0x0000BBdDc7CE488642fb579F8B00f3a590007251` | EIP-7251 consolidation request predeploy |
+| `_withdrawalRequest`             | `0x00000961Ef480Eb55e80D19ad83579A64c007002` | [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) withdrawal request predeploy    |
+| `_consolidationRequest`          | `0x0000BBdDc7CE488642fb579F8B00f3a590007251` | [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) consolidation request predeploy |
 
 ### DepositSecurityModule
 
