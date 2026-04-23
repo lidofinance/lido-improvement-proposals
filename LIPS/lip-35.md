@@ -1158,18 +1158,11 @@ The slot used in the proof must not be older than 5 minutes relative to the curr
 
 Reorganizations are not treated as a separate risk: a proof built on a reorged branch simply fails because the EIP-4788 anchor root is no longer available and the Merkle verification reverts.
 
-TopUpGateway enforces that the **slot must be newer than the previously accepted slot**.
+TopUpGateway enforces that the block timestamp used in the proof is newer than the timestamp of the last top-up.
 
-To perform a top-up for a given validator, an off-chain bot must provide:
+Here is the corrected and improved version:
 
-- Consensus-layer validator fields:
-  - `pubkey`
-  - `effectiveBalance`
-  - `activationEligibilityEpoch`
-  - `activationEpoch`
-  - `slashed`
-  - `exitEpoch`
-  - `withdrawableEpoch`
+To perform a top-up for a given validator, an off-chain bot must provide all [consensus-layer validator fields](https://github.com/ethereum/consensus-specs/blob/2b83d5a2/specs/phase0/beacon-chain.md?plain=1#L387-L399), except for the withdrawal credentials, which are obtained from the Staking Router.
 
 The Merkle proof for the validator must establish that the hash-tree-root of this validator container (with the expected withdrawal credentials and other fields) is a leaf of the beacon state tree whose root is the state root committed by the proved beacon header. In other words, the validator record is proven to belong to the state corresponding to the header whose root is exposed via EIP-4788 for the supplied timestamp.
 
