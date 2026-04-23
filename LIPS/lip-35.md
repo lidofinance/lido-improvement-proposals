@@ -1215,7 +1215,7 @@ This guarantees that, under the current hysteresis thresholds, topping up a vali
 Revisiting the upper bound on `effective_balance + pending_deposits` with `TOP_UP_SAFETY_MARGIN = 1.25 ETH`, we get:
 
 ```
-effective_balance + pending_deposits ≤ MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY_MARGIN − 1 = 2045.75
+effective_balance + pending_deposits ≤ MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY_MARGIN − minTopUpGwei
 ```
 
 #### Pause
@@ -1767,10 +1767,10 @@ New implementation. Constructor signature is unchanged; the upgrade calls `final
 
 Constructor is extended with `_consolidationGateway`; `finalizeUpgrade_v3()` bumps the contract version and has no parameters.
 
-| Name                             | Value                                        | Description                              |
-| -------------------------------- | -------------------------------------------- | ---------------------------------------- |
-| `_triggerableWithdrawalsGateway` | New TriggerableWithdrawalsGateway deployment | TriggerableWithdrawalsGateway            |
-| `_consolidationGateway`          | New `ConsolidationGateway` deployment        | ConsolidationGateway                     |
+| Name                             | Value                                        | Description                                                                         |
+| -------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `_triggerableWithdrawalsGateway` | New TriggerableWithdrawalsGateway deployment | TriggerableWithdrawalsGateway                                                       |
+| `_consolidationGateway`          | New `ConsolidationGateway` deployment        | ConsolidationGateway                                                                |
 | `_withdrawalRequest`             | `0x00000961Ef480Eb55e80D19ad83579A64c007002` | [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) withdrawal request predeploy    |
 | `_consolidationRequest`          | `0x0000BBdDc7CE488642fb579F8B00f3a590007251` | [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) consolidation request predeploy |
 
