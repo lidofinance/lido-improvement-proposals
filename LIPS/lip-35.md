@@ -1621,8 +1621,8 @@ Two new immutables (`MAX_EFFECTIVE_BALANCE_WC_TYPE_01`, `MAX_EFFECTIVE_BALANCE_W
 
 Constructor parameters:
 
-| Name          | Value                                   | Description                                           |
-| ------------- | --------------------------------------- | ----------------------------------------------------- |
+| Name          | Value                                   | Description                                             |
+| ------------- | --------------------------------------- | ------------------------------------------------------- |
 | `_maxEBType1` | `32000000000000000000` (32 ETH in wei)  | Max effective balance for `0x01` withdrawal credentials |
 | `_maxEBType2` | `2048000000000000000000` (2048 ETH wei) | Max effective balance for `0x02` withdrawal credentials |
 
@@ -1659,13 +1659,13 @@ New non-proxy contract deployed at upgrade; replaces the previous sanity checker
 
 Constructor parameters:
 
-| Name                                | Value   | Description                                            |
-| ----------------------------------- | ------- | ------------------------------------------------------ |
+| Name                                | Value   | Description                                              |
+| ----------------------------------- | ------- | -------------------------------------------------------- |
 | `maxEffectiveBalanceWeightWCType01` | `32`    | Per-key weight in ETH for `0x01` keys used in VEBO check |
 | `maxEffectiveBalanceWeightWCType02` | `2048`  | Per-key weight in ETH for `0x02` keys used in VEBO check |
-| `maxCLBalanceDecreaseBP`            | `360`   | Max CL balance decrease over 36-day window (BP, 3.6%)  |
-| `consolidationEthAmountPerDayLimit` | `93375` | Max ETH consolidated per day                           |
-| `exitedValidatorEthAmountLimit`     | `32`    | Per-validator ETH amount used in exit reporting        |
+| `maxCLBalanceDecreaseBP`            | `360`   | Max CL balance decrease over 36-day window (BP, 3.6%)    |
+| `consolidationEthAmountPerDayLimit` | `93375` | Max ETH consolidated per day                             |
+| `exitedValidatorEthAmountLimit`     | `32`    | Per-validator ETH amount used in exit reporting          |
 
 ### ConsolidationGateway
 
@@ -1780,11 +1780,11 @@ Constructor parameters (implementation):
 | Name                     | Value                              | Description                                                                               |
 | ------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------- |
 | `_admin`                 | Aragon Agent (via temporary admin) | Receives `DEFAULT_ADMIN_ROLE`                                                             |
-| `_maxValidatorsPerTopUp` | `100`                              | Maximum number of validators a single `topUp` can process                                 |
+| `_maxValidatorsPerTopUp` | `32`                               | Maximum number of validators a single `topUp` can process                                 |
 | `_minBlockDistance`      | `1`                                | Minimum block distance between `topUp` calls                                              |
 | `_maxRootAgeSec`         | `600`                              | Maximum age (seconds) of the beacon root used to prove validator state                    |
 | `_targetBalanceGwei`     | `2046750000000` (2046.75 ETH)      | Validator target balance ceiling after top-up (leaves 1.25 ETH safety margin below MaxEB) |
-| `_minTopUpGwei`          | `1000000000` (1 ETH)               | Minimum top-up amount; smaller calculated top-ups are skipped                             |
+| `_minTopUpGwei`          | `2000000000` (2 ETH)               | Minimum top-up amount; smaller calculated top-ups are skipped                             |
 
 ### TriggerableWithdrawalGateway
 
