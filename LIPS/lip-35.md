@@ -888,7 +888,7 @@ As in the initial predeposit flow, the Staking Router will deposit 32 ETH for bo
 
 ![Top-up flow](./assets/lip-35/topup_flow.png)
 
-1. The Depositor Bot selects validators according to the algorithm described in the _Top-up Keys Selection_ section and calls `TopUpGateway.topUp`, providing staking module data (module ID, key indices, operator IDs), Merkle proofs, and validator consensus-layer (CL) data.
+1. The Depositor Bot selects validators according to the algorithm described in the [Depositor Bot](#depositor-bot) section and calls `TopUpGateway.topUp`, providing staking module data (module ID, key indices, operator IDs), Merkle proofs, and validator consensus-layer (CL) data.
 2. `TopUpGateway` verifies the validators’ CL data using Merkle proofs. Based on the verified CL data, it calculates the maximum allowed top-up amount for each validator. It then calls `StakingRouter.topUp`, passing the per-validator top-up limits together with the corresponding validator data (public key, module ID, operator ID, and key index).
 3. The `StakingRouter` executes the top-ups:
    - The Staking Router verifies that top-ups are allowed for the module (i.e., the module uses withdrawal credentials of type `0x02`).
@@ -924,7 +924,7 @@ For **CMv2**, the Depositor Bot operates on a per-operator basis:
 1. The Depositor Bot computes `depositAmount = min(buffered ether, module allocation)`.
 2. It calls `getDepositsAllocation(uint256 depositAmount)` on the module to determine how much to allocate to each operator from the computed `depositAmount`.
 3. Across this list of operators, the Depositor Bot chooses the oldest validators and checks that:
-   - the validator has not exceeded a **2045.75 ETH** balance (this constant is discussed in the _Top-Up Limit Calculation_ section) balance (actual + pending);
+   - the validator has not exceeded a **2045.75 ETH** balance (this constant is discussed in the [Top-Up Limit Calculation](#top-up-limit-calculation) section) balance (actual + pending);
    - the validator is active;
    - the validator is not marked for exit (`exitEpoch != FAR_FUTURE`);
    - the validator is not slashed;
@@ -1047,7 +1047,7 @@ After verifying the validator state via proofs, the `TopUpGateway` validates the
 
 If any of these checks fail, `TopUpGateway` reverts.
 
-**Note.** If `exitEpoch != FAR_FUTURE_EPOCH` (i.e., an exit has been scheduled) or the validator is slashed, the top-up limit is set to `0` (see the next section). Therefore, there is no requirement to restrict inputs to validators with an unknown exit epoch or an unslashed status.
+**Note.** If `exitEpoch != FAR_FUTURE_EPOCH` (i.e., an exit has been scheduled) or the validator is slashed, the top-up limit is set to `0` (see [Top-Up Limit Calculation](#top-up-limit-calculation)). Therefore, there is no requirement to restrict inputs to validators with an unknown exit epoch or an unslashed status.
 
 #### Top-Up Limit Calculation
 
@@ -1452,7 +1452,7 @@ The mechanism introduces two storage values in the Lido main contract:
 And affects the following functions:
 
 1. `Lido.getDepositableEther()` — returns total depositable ether (deposits reserve + unreserved).
-2. `Lido.withdrawDepositableEther()` — spends depositable buffer and decreases stored deposits reserve accordingly. See Depositable ETH Pull Model for more details.
+2. `Lido.withdrawDepositableEther()` — spends depositable buffer and decreases stored deposits reserve accordingly. See [Depositable ETH Pull Model](#depositable-eth-pull-model) for more details.
 
 A setter function is presented, governed by the DAO via `BUFFER_RESERVE_MANAGER_ROLE`:
 
@@ -1563,7 +1563,7 @@ The factory accepts the following parameters for motion creation:
     uint256 newPriorityExitShareThreshold
 ```
 
-These parameters are validated against the current parameters of the staking module to ensure that changes to both parameters are within the [limits](#Limits) set upon ET factory deployment and that the current values are provided correctly.
+These parameters are validated against the current parameters of the staking module to ensure that changes to both parameters are within the [limits](#limits) set upon ET factory deployment and that the current values are provided correctly.
 
 The `currentXXX` values are required to ensure that the motion can be enacted only if the parameters have not been changed while the motion is in progress. This guarantees that concurrent motions cannot be executed simultaneously and that effectively only one motion can be in progress at any moment.
 
