@@ -1160,8 +1160,6 @@ Reorganizations are not treated as a separate risk: a proof built on a reorged b
 
 TopUpGateway enforces that the block timestamp used in the proof is newer than the timestamp of the last top-up.
 
-Here is the corrected and improved version:
-
 To perform a top-up for a given validator, an off-chain bot must provide all [consensus-layer validator fields](https://github.com/ethereum/consensus-specs/blob/2b83d5a2/specs/phase0/beacon-chain.md?plain=1#L387-L399), except for the withdrawal credentials, which are obtained from the Staking Router.
 
 The Merkle proof for the validator must establish that the hash-tree-root of this validator container (with the expected withdrawal credentials and other fields) is a leaf of the beacon state tree whose root is the state root committed by the proved beacon header. In other words, the validator record is proven to belong to the state corresponding to the header whose root is exposed via [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788) for the supplied timestamp.
@@ -1178,7 +1176,7 @@ If any of these checks fail, `TopUpGateway` reverts.
 
 **Note.** If `exitEpoch != FAR_FUTURE_EPOCH` (i.e., an exit has been scheduled) or the validator is slashed, the top-up limit is set to `0` (see [Top-Up Limit Calculation](#top-up-limit-calculation)). Therefore, there is no requirement to restrict inputs to validators with an unknown exit epoch or an unslashed status.
 
-#### Top-Up Limit Calculation
+#### Validator Top-Up Limit Calculation
 
 Based on a validator’s current status and the amount of pending deposits, the `TopUpGateway` contract computes the maximum permitted top-up amount for each validator.
 
@@ -1218,19 +1216,22 @@ Revisiting the upper bound on `effective_balance + pending_deposits` with `TOP_U
 effective_balance + pending_deposits ≤ MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY_MARGIN − minTopUpGwei
 ```
 
-#### Pause
+#### Top-up limits
 
-If a validator is frontrun, it is not risky for top-ups, since the withdrawal credentials are verified on-chain.
+It is proposed that the overall amount of ETH that may be topped up into the protocol is limited by:
 
-Top-ups should not be executed if the protocol is in bunker mode or paused, or if the module is not active.
+- **maxTopUpPerBlock** — the maximum amount of ETH that can be topped up within a single block
+- **minTopUpDistance** — the minimum number of blocks required between `topUp` calls
 
-If it is necessary to stop predeposits/top-ups, for example during a hard fork, the Depositor Bot will be temporarily stopped.
+#### Top-up Precondition and Pause
 
-|                             | Predeposits | Top-up |
-| :-------------------------: | :---------: | :----: |
-|          Front run          |      -      |   +    |
-| Protocol paused/bunker mode |      -      |   -    |
-|      Module not active      |      -      |   -    |
+It is proposed that top-ups should not be executed if the protocol is in bunker mode or paused, or if the module is not active.
+
+If DSM paused, it is not risky for top-ups, since during top-ups the withdrawal credentials are verified on-chain.
+
+Additionally it is proposed that TopUpGateway contract **can be paused via the `CircuitBreaker`** mechanism to provide emergency control.
+
+If it becomes necessary to temporarily stop top-ups (e.g., during a hard fork), this can be achieved operationally. Since top-ups are permissioned (i.e., only the Depositor Bot is authorized), the bot can simply be stopped as a precautionary measure.
 
 #### Possible top-up issue mitigation
 
