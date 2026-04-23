@@ -428,9 +428,9 @@ To manage the list of allowed consolidation pairs (source → target operators),
 
 `allowPair` — allows consolidation from a source operator to a target operator for a specified consolidation manager address. This method will be called via an EasyTrack motion upon enactment.
 
-`disallowPair` — disallows consolidation from a source operator to a target operator. This method may be called to correct an incorrectly allowed pair, update the consolidation manager address, or stop consolidation for operational reasons.
+`disallowPair` — disallows consolidation from a source operator to a target operator. This method may be called to correct an incorrectly allowed pair, update the consolidation manager address, or stop consolidation for operational reasons. It is proposed to grant the CMC Committee (also known as CM Committee Multisig) permission to call this method.
 
-`selfDisallowPair` — allows the original submitter to revoke (disallow) a previously allowed pair. Permissionless, but restricted to the submitter of the pair. It is proposed to grant the CMC Committee (also known as CM Committee Multisig) permission to call this method.
+`selfDisallowPair` — allows the original submitter to revoke (disallow) a previously allowed pair. Permissionless, but restricted to the submitter of the pair.
 
 Note. Once a consolidation pair is disallowed, it may be allowed again by creating and enacting a new EasyTrack motion by the operator.
 
