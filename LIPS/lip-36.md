@@ -9,13 +9,13 @@ created: 2026-04-20
 
 ## Simple Summary
 
-NEST is a deterministic onchain system that creates a direct rule-based economic link between Lido DAO success and LDO. It enables permissionless conversion of an excess share of staking revenue into LDO via CoW Swap and pair it with wstETH as DAO-owned liquidity in a Curve LDO/wstETH pool. NEST uses explicit spending caps and formulas to determine available surplus. It must be explicitly funded in order to be operational. At launch, it will track staking revenue only; the architecture is designed to accommodate additional revenue sources through future governance votes. NEST can also operate in treasury-only mode if the DAO decides to skip LP provisioning and send converted LDO directly to the treasury.
+NEST is a deterministic onchain system that creates a direct rule-based economic link between Lido DAO success and LDO. It enables permissionless conversion of an excess share of staking revenue into LDO via CoW Swap and to pair it with wstETH as DAO-owned liquidity in a Curve LDO/wstETH pool. NEST uses explicit spending caps and formulas to determine available surplus. It must be explicitly funded in order to be operational. At launch, it will track staking revenue only; the architecture is designed to accommodate additional revenue sources through future governance votes. NEST can also operate in treasury-only mode if the DAO decides to skip LP provisioning and send converted LDO directly to the treasury.
 
 ## Motivation
 
 ### Background
 
-Lido DAO generates substantial protocol revenue through staking operations. LDO token holders, however, have no direct automatic link to protocol performance. The DAO participants has discussed mechanisms to address this in the forum thread referenced above. But no formal technical proposal or agreed architecture was proposed.
+Lido DAO generates substantial protocol revenue through staking operations. LDO token holders, however, have no direct automatic link to protocol performance. The DAO participants have discussed mechanisms to address this in the forum thread referenced above. But no formal technical proposal or agreed architecture was proposed.
 
 ### Problem
 
