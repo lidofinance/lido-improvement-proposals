@@ -900,51 +900,187 @@ As in the initial predeposit flow, the Staking Router will deposit 32 ETH for bo
 
 ### Depositor Bot
 
-For modules that support `0x02` keys, the system should maintain a sufficient number of eligible validators for top-ups so that a significant portion of the ETH in the buffer can be used immediately, without waiting until the validator becomes active.
+The on-chain **min-first allocation strategy** defines how stake is distributed across modules. The depositor bot can not deposit more stake into any module than allowed by the allocation strategy.
 
-The Depositor Bot is proposed to be responsible for maintaining an appropriate balance between predeposits and top-ups, with predeposits taking priority over top-ups.
+Within the allocation constraint:
 
-The Depositor Bot selects validators differently for CMv2 and the `0x02` version of the CSM module.
+- For modules supporting `0x02` keys, the bot performs two types of deposits:
+  - **Predeposits** (32 ETH seed deposits per new validator)
+  - **Top-ups** (up to 2016 ETH per active validator)
+- For modules supporting `0x01` keys, only:
+  - **Full deposits** (32 ETH deposits per new 0x01 validator)
 
-#### Depositor Bot workflow for `0x02` key modules
+For modules that support `0x02 keys`, the system should maintain a sufficient number of validators eligible for top-ups, ensuring that a significant portion of the buffered ETH can be utilized without excessive delays (i.e., without waiting for validators to become active).
 
-For modules with `0x02` keys, the Depositor Bot prioritizes predeposits over top-ups and operates as follows:
+The Depositor Bot is proposed to be responsible for maintaining an appropriate balance between predeposits and top-ups in `0x02` modules, with **predeposits prioritized over top-ups**.
 
-- Periodically check council-signed messages. If there is ETH in the buffer, proceed.
-- If there are keys in the module available for predeposit, check whether ETH can be allocated to that module. If it can, call the existing `DepositSecurityModule.depositBufferedEther`.
-- If there are no keys available for predeposit but there are validators eligible for top-ups in modules, the bot:
-  - Selects validators based on the module-specific algorithm described in the section below
-  - Builds Merkle proofs
-  - Calls `TopUpGateway.topUp` (a new contract that verifies proofs and calls `topUp` on the Staking Router) with the staking module data (module IDs, key indices, operator IDs), proofs, and validator CL data
+To determine module allocations, the Depositor Bot uses the `getDepositAllocations` method from the `StakingRouter` contract.
+
+```solidity
+interface IStakingRouter {
+    /// @notice Returns new deposits allocation after distributing `_depositAmount`.
+    /// @param _depositAmount The maximum ETH amount to allocate.
+    /// @param _isTopUp Whether the allocation is for top-ups (true) or predeposits (false).
+    /// @return totalAllocated The total amount actually allocated
+    /// @return allocated Array of allocated amounts per module
+    /// @return newAllocations Array of resulting allocation balances per module
+    function getDepositAllocations(uint256 _depositAmount, bool _isTopUp)
+        external
+        view
+        returns (
+            uint256 totalAllocated,
+            uint256[] memory allocated,
+            uint256[] memory newAllocations
+        );
+}
+```
+
+#### Example Setup
+
+Assume the system contains four modules:
+
+| Module | Type (0x01/0x02) | Balance (ETH) |
+| ------ | ---------------- | ------------- |
+| A      | 0x02             | 100,000       |
+| B      | 0x02             | 10,000        |
+| C      | 0x01             | 100,000       |
+| D      | 0x01             | 10,000        |
+
+The bot runs every 25 blocks. On each run, the bot executes a **two-stage algorithm**:
+
+1. **Stage 1** — Predeposits to modules with `0x02` keys
+2. **Stage 2** — Top-ups for `0x02` modules or full 32 ETH deposits for `0x01` modules
+
+#### **Stage 1. Predeposits to modules with `0x02` keys**
+
+At this stage, the bot attempts to perform seed deposits into modules that support `0x02` keys (A and B).
+
+- If deposits are possible, the bot:
+  - Selects the module with the **lowest balance** among those with `allocated > 0`
+  - Executes the deposits
+  - Stops execution
+
+Example:
+
+```
+// Modules sorted by balance
+// Bot chooses module B (lowest balance with allocation > 0)
+
+Module B:  <- selected
+    balance: 10_000
+    allocated: 320
+
+Module A:
+    balance: 100_000
+    allocated: 640
+```
+
+- If no allocations are available (e.g., no keys remain or all modules exceed their target share), the bot proceeds to Stage 2.
+
+Example:
+
+```
+// No allocation available — skip stage
+Module B:
+    balance: 10_320
+    allocated: 0
+
+Module A:
+    balance: 100_640
+    allocated: 0
+```
+
+#### **Stage 2. Top-ups to modules with `0x02` keys or deposits to `0x01` modules**
+
+At this stage, the bot considers **top-ups** for `0x02` modules (A and B) or **full deposits** for `0x01` modules (C and D)
+
+- If any allocations are available, the bot:
+  - Selects the module with the **lowest balance** among those with `allocated > 0`
+  - Executes:
+    - a **top-up**, if the module is `0x02`, or
+    - a **full deposit**, if the module is `0x01`
+  - Stops execution
+
+Example:
+
+```
+// Modules sorted by balance
+// Bot skips modules with allocated = 0 and selects the lowest eligible one
+
+Module D (0x01):  <- skipped (allocated = 0)
+    balance: 10_000
+    allocated: 0
+
+Module B (0x02):  <- selected
+    balance: 10_320
+    allocated: 2000
+
+Module C (0x01):
+    balance: 100_000
+    allocated: 1600
+
+Module A (0x02):
+    balance: 100_640
+    allocated: 1000
+```
+
+- If no top-ups are allowed for `0x02` modules (e.g., all validators reached MaxEB or allocation is zero), **and** no full deposit are allowed for `0x01` modules (e.g., no available keys or all modules exceed their target share),
+  the bot exits.
+
+Example:
+
+```
+// No allocation available — bot exits
+Module D:
+    balance: 10_000
+    allocated: 0
+
+Module B:
+    balance: 12_320
+    allocated: 0
+
+Module A:
+    balance: 101_640
+    allocated: 0
+
+Module C:
+    balance: 101_600
+    allocated: 0
+```
+
+#### Depositor Bot top-up flow for `0x02` key modules
+
+When the Depositor Bot needs to top up validators in 0x02 modules, it performs the following steps:
+
+- Selects validators based on the module-specific algorithm described in the section below
+- Builds Merkle proofs
+- Calls `TopUpGateway.topUp` (a new contract that verifies proofs and calls `topUp` on the Staking Router) with the staking module data (module IDs, key indices, operator IDs), proofs, and validator CL data
 
 #### Top-up key selection for CMv2
 
-For **CMv2**, the Depositor Bot operates on a per-operator basis:
+For **CMv2**, the Depositor Bot operates on a per-operator basis and select keys based on following algorithm:
 
-1. The Depositor Bot computes `depositAmount = min(buffered ether, module allocation)`.
-2. It calls `getDepositsAllocation(uint256 depositAmount)` on the module to determine how much to allocate to each operator from the computed `depositAmount`.
-3. Across this list of operators, the Depositor Bot chooses the oldest validators and checks that:
+1. Based on the allocated amount received from the Staking Router’s `getDepositAllocations` function, the Depositor Bot calls `getDepositsAllocation(uint256 depositAmount)` on the module to determine how much stake should be allocated to each operator.
+2. Across this list of operators, the Depositor Bot chooses the oldest validators and checks that:
    - the validator has not exceeded a **2045.75 ETH** balance (this constant is discussed in the [Top-Up Limit Calculation](#top-up-limit-calculation) section) balance (actual + pending);
    - the validator is active;
-   - the validator is not marked for exit (`exitEpoch != FAR_FUTURE`);
+   - the validator has not initiated exit on CL (`exitEpoch != FAR_FUTURE`);
    - the validator is not slashed;
-   - the validator is not involved in migration;
    - the validator is not a consolidation target (when source validator is Lido WC);
-4. For the selected validators, the Depositor Bot builds Merkle proofs:
-   - full validator data;
-5. For the selected validators, the Depositor Bot calculates pending deposit amounts.
-6. The Depositor Bot calls the `TopUpGateway` with key data (module ID, key indices, operator IDs), proofs, and validator CL data.
+3. For the selected validators, the Depositor Bot builds Merkle proofs:
+   - Proof of the `Validator` container on CL;
+4. For the selected validators, the Depositor Bot calculates pending deposit amounts.
+5. The Depositor Bot calls the `TopUpGateway` with key data (module ID, key indices, operator IDs), proofs, and validator CL data.
 
-#### Top-up key selection for the `0x02` version of CSM
+#### Top-up key selection for the future `0x02` version of CSM
 
 For the **`0x02` version of CSM**, the module maintains a global internal queue and exposes a **cursor** that always returns the next validator key that must be processed. Unlike CMv2, key selection is module-wide, not per-operator:
 
-1. The Depositor Bot computes `depositAmount = min(buffered ether, module allocation)`.
-2. Based on the computed `depositAmount`, the Depositor Bot queries the module’s cursor to obtain the next keys to be topped up by calling the module’s `getKeysForTopUp` method.
-3. For the selected validators, the Depositor Bot builds Merkle proofs:
-   - full validator data;
-4. For the selected validators, the Depositor Bot calculates pending deposit amounts.
-5. The Depositor Bot calls the `TopUpGateway` with key data (module ID, key indices, operator IDs), proofs, and validator CL data.
+1. Based on the allocated amount received from the Staking Router’s `getDepositAllocations` function, the Depositor Bot queries the module cursor via `getKeysForTopUp` to retrieve the next keys to be topped up.
+2. For the selected validators, the Depositor Bot builds Merkle proofs:
+   - Proof of the `Validator` container on CL
+3. For the selected validators, the Depositor Bot calculates pending deposit amounts.
+4. The Depositor Bot calls the `TopUpGateway` with key data (module ID, key indices, operator IDs), proofs, and validator CL data.
 
 Because the `0x02` CSM cursor **should never be blocked**, the Depositor Bot **should not skip any validators**, even if one:
 
