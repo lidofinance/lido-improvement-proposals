@@ -1268,11 +1268,11 @@ Any occurrence of an excessive top-up will be detected by existing monitoring an
 
 It is proposed to update the existing `deposit` methods to support the ETH pull model and enable initial 32 ETH deposits to `0x02` withdrawal credentials. The updated `deposit` method would:
 
-1. **Calculate module allocation.** The amount of ETH that can be deposited into a module is divided by 32 (for both module types) to determine the maximum number of deposits (`maxDepositsCount`). This value is additionally capped by `maxDepositsCountPerBlock`, which can be configured individually for each module.
-2. **Obtain keys for the initial deposit.** After determining the deposit limit, the Staking Router calls the existing `IStakingModule(stakingModuleAddress).obtainDepositData(maxDepositsCount, depositCalldata)` method to fetch public keys and signatures. The `obtainDepositData` call may return up to `maxDepositsCount` keys.
+1. **Calculate module allocation.** The amount of ETH that can be deposited into a module is divided by 32 (for both module types) to determine the maximum number of 32 ETH deposits (`maxDepositsCount`). This value is additionally capped by `maxDepositsCountPerBlock`, which can be configured individually for each module.
+2. **Obtain keys for the 32 ETH deposit.** After determining the deposit limit, the Staking Router calls the existing `IStakingModule(stakingModuleAddress).obtainDepositData(maxDepositsCount, depositCalldata)` method to fetch public keys and signatures. The `obtainDepositData` call may return up to `maxDepositsCount` keys.
 3. **Pull the required ETH from Lido.** The Staking Router pulls from Lido the total amount of ETH required to execute the deposits for the keys obtained from the module. The required amount is calculated as: `number of obtained keys × 32 ETH`.
 4. **Perform 32 ETH deposits.** The Staking Router performs a 32 ETH deposit for each key, using the appropriate withdrawal credentials based on `withdrawalCredentialsType`:
-   - `0x02` + withdrawal credentials contract
+   - `0x02` + withdrawal credentials contract address
    - `0x01` + withdrawal credentials contract address
 5. **Sanity checks.** After all keys have been deposited, the Staking Router performs a sanity check to ensure that the entire amount of ETH requested from Lido has been deposited.
 
