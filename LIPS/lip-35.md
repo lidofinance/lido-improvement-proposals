@@ -1477,7 +1477,7 @@ Under the new logic, each VEBO report will be validated as follows:
 
 This approach establishes a conservative upper bound on withdrawal volume per report and ensures that VEBO cannot trigger an excessively large withdrawal in a single submission, thereby reducing protocol risk.
 
-### Validators Exit Oracle (VEO)
+### Off-chain Validators Exit Oracle (VEO)
 
 It is proposed to update the Validators Exit Oracle (VEO) off-chain logic to correctly support:
 
@@ -1517,7 +1517,7 @@ It is expected that VEBO would inspect the `PendingConsolidation` queue to diffe
 
 The process of migrating stake from the CMv1 module to the CMv2 module may occur unevenly: some operators migrate their stake earlier than others.
 
-In the current implementation, when validators are exited from the CMv1 module, the Validator Exit Oracle (VEO) uses a fair distribution algorithm: exits are requested from operators with the largest stake.
+In the current implementation, when validators are exited from the CMv1 module, the Validators Exit Oracle (VEO) uses a fair distribution algorithm: exits are requested from operators with the largest stake.
 
 Given the uneven migration, it is necessary to correctly account for the aggregate operator balances across the CMv1 and CMv2 modules in order to properly determine from which operators stake exits should be initiated.
 
