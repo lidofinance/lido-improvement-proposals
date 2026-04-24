@@ -1531,10 +1531,10 @@ At the **module level**, VEO continues to rely on the existing exit share limit.
 
 At the **operator level**, withdrawals depend on the stake allocation strategy used by the module. Currently, two types of withdrawal strategies are in use:
 
-- **Operator-weight–based distribution** (CMv2)
-- **Even distribution** (CMv1, CSM, SDVT)
+- **Operator-weight–based withdrawals** (CMv2)
+- **Largest operator withdrawals** (CMv1, CSM, SDVT)
 
-The existing even-distribution strategy does not require any additional data. However, to support operator-weight–based withdrawals, it is proposed to add a `getOperatorWeights` method to the module interface. This method returns operator weights from the CMv2 on-chain allocation strategy.
+The existing largest operator withdrawal strategy does not require any additional data. However, to support operator-weight–based withdrawals, it is proposed to add a `getOperatorWeights` method to the module interface. This method returns operator weights from the CMv2 on-chain allocation strategy.
 
 ```solidity
 interface ITargetAllocation {
@@ -1573,7 +1573,7 @@ To ensure that there is always enough ETH for stake rebalancing and initial 32 E
 
 #### Proposed solution
 
-1. Allow the DAO or a delegated entity to set a deposits reserve target (`depositsReserveTarget`) — the amount of buffered ether to protect for CL deposits.
+1. Allow the DAO or a delegated entity to set a deposits reserve target (`depositsReserveTarget`) — the amount of buffered ether to protect for CL deposits between accountinng oracle reports.
 2. On each oracle report, the effective deposits reserve is synced (restored) to the configured target, up to the available buffered ether.
 3. The deposits reserve is filled with the highest priority: buffered ether is first allocated to the deposits reserve, then to covering withdrawal requests, and only after that the remainder becomes available for additional CL deposits.
 
