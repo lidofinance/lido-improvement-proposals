@@ -1255,6 +1255,12 @@ For modules that support `0x02` keys, the Depositor Bot should maintain a suffic
 
 If the Depositor Bot incorrectly prioritizes top-ups over initial deposits and exhausts the current set of top-up–eligible validators, the system may temporarily have no eligible validators available and will be forced to wait for new validators to be activated.
 
+**4. Incorrect top-up distribution**
+
+Top-ups might be distributed evenly across partially funded validators, which could negatively impact the protocol APR.
+
+This risk is mitigated by the depositor bot logic: the depositor bot always prioritizes topping up the oldest validators. Additionally, consolidation is not expected to introduce issues, as node operators are assumed to consolidate validators up to the MaxEB threshold.
+
 **Top-up Monitoring**
 Any occurrence of an excessive top-up will be detected by existing monitoring and treated as an incident: the authorized top-up actors (e.g., the Depositor Bot) will be paused and promptly adjusted. Due to the automatic skimming mechanism, the impact of such events is expected to be minor.
 
