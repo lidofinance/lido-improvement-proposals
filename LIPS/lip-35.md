@@ -1245,13 +1245,9 @@ To keep the system practical and avoid prohibitive proof sizes, the proposed des
 
 If pending deposits exist in the queue but are not supplied to the TopUpGateway, a validator may temporarily receive more ETH than necessary. Any excess will eventually be skimmed to the validator’s withdrawal credentials.
 
-Any occurrence of an excessive top-up will be detected by existing monitoring and treated as an incident: the authorized top-up actors (e.g., the Depositor Bot) will be paused and promptly adjusted. Due to the automatic skimming mechanism, the impact of such events is expected to be minor.
-
 **2. Unnecessary top-ups to soon-to-be-consolidated validators**
 
 The authorized Depositor Bot is responsible for ensuring that a validator is not involved in consolidation — either as a source or a target. In particular, it must verify that the validator is not referenced in `pending_consolidations` as a target, and that no related consolidation requests are currently being processed by the Lido consolidation workflow (waiting in the `ConsolidationBus` contract) or are waiting in the EL consolidation queue.
-
-Any instance of an unnecessary top-up will be detected by monitoring and treated as an incident: the authorized top-up actors (e.g., the Depositor Bot) will be adjusted. Due to the automatic skimming mechanism, the impact of such events is expected to be minor.
 
 **3. Increased imbalance between validator cohorts**
 
@@ -1259,7 +1255,8 @@ For modules that support `0x02` keys, the Depositor Bot should maintain a suffic
 
 If the Depositor Bot incorrectly prioritizes top-ups over initial deposits and exhausts the current set of top-up–eligible validators, the system may temporarily have no eligible validators available and will be forced to wait for new validators to be activated.
 
-If monitoring detects that the number of top-up–eligible keys has fallen below the required threshold, an alert will be triggered and the Depositor Bot will be promptly adjusted. The impact of such events is expected to be minor.
+**Top-up Monitoring**
+Any occurrence of an excessive top-up will be detected by existing monitoring and treated as an incident: the authorized top-up actors (e.g., the Depositor Bot) will be paused and promptly adjusted. Due to the automatic skimming mechanism, the impact of such events is expected to be minor.
 
 ### Staking Router
 
