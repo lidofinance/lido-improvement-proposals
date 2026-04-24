@@ -1440,7 +1440,7 @@ To ensure a reliable upper bound on the withdrawn amount, it is proposed to:
 - Extend the VEBO report format to include the pubkey, module ID, operator ID, and key index, allowing the key type (`0x01` / `0x02`) to be determined on-chain.
 - Update the sanity checker to validate the **upper-bound total effective balance** requested to exit based on the key type (`0x01` with a MaxEB of 32 ETH or `0x02` with a MaxEB of 2048 ETH), rather than the raw validator count.
 
-![VEBO report format](./assets/lip-35/vebo_report_format.png)
+![VEBO flow](./assets/lip-35/vebo_flow.png)
 
 #### Report format
 
