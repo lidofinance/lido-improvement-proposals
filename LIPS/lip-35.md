@@ -1937,7 +1937,7 @@ Two new factories are proposed to be registered; EasyTrack admin roles would rem
 | `UpdateStakingModuleShareLimits` | `StakingRouter.updateModuleShares` |
 | `AllowConsolidationPair`         | `ConsolidationMigrator.allowPair`  |
 
-## Useful Links
+## References
 
 - [LIP-33. Community Staking Module v3 and Curated Module v2](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md)
 - [Hoodi Curated Module v2 Migration - Node Operator Overview](https://enchanted-direction-844.notion.site/Hoodi-Curated-Module-v2-Migration-Node-Operator-Overview-PUBLIC-880bf633d0c982ea9dc58158d876d9e3?source=copy_link)
