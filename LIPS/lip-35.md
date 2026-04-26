@@ -1626,7 +1626,7 @@ In the current implementation, when validators are exited from the CMv1 module, 
 
 Given the uneven migration, it is necessary to correctly account for the aggregate operator balances across the CMv1 and CMv2 modules in order to properly determine from which operators stake exits should be initiated.
 
-The [Meta Registry](https://hackmd.io/@lido/cm-v2-spec#Meta-Operators-Registry) stores information about the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module. As a result, when selecting validators to exit from the CMv1 module, the VEO will be able to take into account the amount of stake already migrated by operators to the CMv2 module.
+The [Meta Registry](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md#meta-operators-registry) stores information about the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module. As a result, when selecting validators to exit from the CMv1 module, the VEO will be able to take into account the amount of stake already migrated by operators to the CMv2 module.
 
 #### Operator weight in the CSMv2 module
 
