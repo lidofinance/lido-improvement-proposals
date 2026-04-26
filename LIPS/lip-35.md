@@ -17,6 +17,7 @@ updated: 2026-04-20
   - [Simple Summary](#simple-summary)
   - [Motivation](#motivation)
 - [Specification](#specification)
+  - [Glossary](#glossary)
   - [Accounting](#accounting)
     - [The 32 ETH Problem](#the-32-eth-problem)
     - [New Accounting Model](#new-accounting-model)
@@ -130,6 +131,24 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 **Deposit reserve for reliable stake rebalancing.** Historically, stake rebalancing between modules through new deposits and withdrawals has been slow and unreliable — SDVT took over 1.5 years to reach its target share. A deposit reserve mechanism guarantees ETH availability for migration deposits and new module onboarding, regardless of withdrawal demand.
 
 # Specification
+
+## Glossary
+
+- **MaxEB** — Maximum Effective Balance. Introduced by [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251), it raises a validator's effective balance ceiling from 32 ETH up to 2048 ETH.
+- **WC** — Withdrawal Credentials. The 32-byte field on a validator that determines where its stake exits to and which key type it uses. All Lido core validators use credentials pointing to the `WithdrawalVault` contract.
+- **`0x01` / `0x02` keys** — validator key types, distinguished by withdrawal credentials prefix. `0x01` keys are capped at 32 ETH effective balance; `0x02` keys support MaxEB up to 2048 ETH and allow top-ups and consolidations.
+- **Predeposit** — the initial 32 ETH deposit that activates a validator. Required for both `0x01` and `0x02` keys.
+- **Top-up** — an additional deposit to an already-activated `0x02` validator, raising its balance toward the 2048 ETH cap.
+- **Consolidation** — an [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) operation that merges a source validator's balance into a target `0x02` validator.
+- **CMv1 / CMv2** — Curated Module v1 (the existing currated module) and Curated Module v2 (the new сurated module receiving consolidated stake).
+- **CSM** — Community Staking Module, Lido's permissionless staking module.
+- **SDVT** — Simple DVT module, the staking module that runs distributed validators.
+- **Deposit Reserve** — a portion of Lido's buffered ether protected from withdrawal demand and reserved for CL deposits, ensuring stake rebalancing and migration deposits are not blocked.
+- **AO** — Accounting Oracle. The oracle that reports validator balances, rewards, and other accounting data to the protocol.
+- **VEBO** — Validators Exit Bus Oracle. The oracle that publishes validator exit requests.
+- **VEO** — Validators Exit Oracle. The off-chain logic that selects which validators to exit; updated here for MaxEB, deposit reserve, and consolidation awareness.
+- **DSM** — Deposit Security Module. The contract that gates Lido initial 32 ETH deposit that activates a validator and can be paused by Council guardians.
+- **TWG** — TriggerableWithdrawalGateway. The contract that submits [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) triggerable withdrawal requests on behalf of the protocol.
 
 ## Accounting
 
