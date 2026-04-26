@@ -64,10 +64,10 @@ updated: 2026-04-20
     - [TopUpGateway](#topupgateway)
       - [Proof building rules](#proof-building-rules)
       - [Validator State Validation](#validator-state-validation)
+      - [Validator Pending Balance](#validator-pending-balance)
       - [Validator Top-Up Limit Calculation](#validator-top-up-limit-calculation)
       - [Top-up limits](#top-up-limits)
       - [Top-up Precondition and Pause](#top-up-precondition-and-pause)
-      - [Possible top-up issue mitigation](#possible-top-up-issue-mitigation)
     - [Staking Router](#staking-router-1)
       - [Staking Router Configuration](#staking-router-configuration)
       - [Request limits](#request-limits)
@@ -110,6 +110,10 @@ updated: 2026-04-20
     - [TopUpGateway](#topupgateway-1)
     - [TriggerableWithdrawalGateway](#triggerablewithdrawalgateway)
     - [EasyTrack](#easytrack)
+  - [Security Considerations](#security-considerations)
+    - [On-chain proofs as the trust anchor for top-ups and consolidations](#on-chain-proofs-as-the-trust-anchor-for-top-ups-and-consolidations)
+    - [Authorized Depositor Bot for Top-Ups](#authorized-depositor-bot-for-top-ups)
+    - [Deposit reserve and withdrawal demand](#deposit-reserve-and-withdrawal-demand)
   - [References](#references)
 
 ## Simple Summary
@@ -1223,6 +1227,8 @@ The contract then forwards these per-validator top-up limits — together with o
 
 To prevent duplicate keys and incorrect calculation of the top-up amount, TopUpGateway will check that `validatorIndices` does not contain duplicates.
 
+It is proposed that the **`topUp` method be restricted by role**, and that this **role be granted to the Depositor Bot**. Role-based restriction allows protection against potential [over-deposits](#validator-pending-balance) and reduces the [risk](#security-considerations) of imbalances between validators.
+
 ```solidity
 struct TopUpData {
   uint256 moduleId;
@@ -1298,6 +1304,14 @@ If any of these checks fail, `TopUpGateway` reverts.
 
 **Note.** If `exitEpoch != FAR_FUTURE_EPOCH` (i.e., an exit has been scheduled) or the validator is slashed, the top-up limit is set to `0` (see [Top-Up Limit Calculation](#top-up-limit-calculation)). Therefore, there is no requirement to restrict inputs to validators with an unknown exit epoch or an unslashed status.
 
+#### Validator Pending Balance
+
+To keep the system practical and avoid prohibitive proof sizes, the proposed design does not require the TopUpGateway to verify pending deposits via proofs.
+
+Since top-ups are intended to be a permissioned operation, the `TopUpGateway` relies on an authorized Depositor Bot to provide the correct pending balance.
+
+If pending deposits exist in the queue but are not supplied to the TopUpGateway, a validator may temporarily receive more ETH than necessary. Any excess will eventually be skimmed to the validator’s withdrawal credentials.
+
 #### Validator Top-Up Limit Calculation
 
 Based on a validator’s current status and the amount of pending deposits, the `TopUpGateway` contract computes the maximum permitted top-up amount for each validator.
@@ -1354,37 +1368,6 @@ If DSM paused, it is not risky for top-ups, since during top-ups the withdrawal 
 Additionally it is proposed that TopUpGateway contract **can be paused via the `CircuitBreaker`** mechanism to provide emergency control.
 
 If it becomes necessary to temporarily stop top-ups (e.g., during a hard fork), this can be achieved operationally. Since top-ups are permissioned (i.e., only the Depositor Bot is authorized), the bot can simply be stopped as a precautionary measure.
-
-#### Possible top-up issue mitigation
-
-It is proposed that the `topUp` method be restricted by role, and that this role be granted to the Depositor Bot.
-
-Role-based restriction allows protection against potential over-deposits and reduces the risk of imbalances between validators.
-
-**1. Incorrect handling of pending deposits and potential over-deposits**
-
-To keep the system practical and avoid prohibitive proof sizes, the proposed design does not require the TopUpGateway to verify pending deposits via proofs. Instead, it relies on an authorized Depositor Bot to provide this data.
-
-If pending deposits exist in the queue but are not supplied to the TopUpGateway, a validator may temporarily receive more ETH than necessary. Any excess will eventually be skimmed to the validator’s withdrawal credentials.
-
-**2. Unnecessary top-ups to soon-to-be-consolidated validators**
-
-The authorized Depositor Bot is responsible for ensuring that a validator is not involved in consolidation — either as a source or a target. In particular, it must verify that the validator is not referenced in `pending_consolidations` as a target, and that no related consolidation requests are currently being processed by the Lido consolidation workflow (waiting in the `ConsolidationBus` contract) or are waiting in the EL consolidation queue.
-
-**3. Increased imbalance between validator cohorts**
-
-For modules that support `0x02` keys, the Depositor Bot should maintain a sufficient number of top-up–eligible validators so that a meaningful portion of the ETH buffer can be utilized immediately, without waiting until the validator becomes active.
-
-If the Depositor Bot incorrectly prioritizes top-ups over initial deposits and exhausts the current set of top-up–eligible validators, the system may temporarily have no eligible validators available and will be forced to wait for new validators to be activated.
-
-**4. Incorrect top-up distribution**
-
-Top-ups might be distributed evenly across partially funded validators, which could negatively impact the protocol APR.
-
-This risk is mitigated by the depositor bot logic: the depositor bot always prioritizes topping up the oldest validators. Additionally, consolidation is not expected to introduce issues, as node operators are assumed to consolidate validators up to the MaxEB threshold.
-
-**Top-up Monitoring**
-Any occurrence of an excessive top-up will be detected by existing monitoring and treated as an incident: the authorized top-up actors (e.g., the Depositor Bot) will be paused and promptly adjusted. Due to the automatic skimming mechanism, the impact of such events is expected to be minor.
 
 ### Staking Router
 
@@ -2058,6 +2041,40 @@ Two new factories are proposed to be registered; EasyTrack admin roles would rem
 | -------------------------------- | ---------------------------------- |
 | `UpdateStakingModuleShareLimits` | `StakingRouter.updateModuleShares` |
 | `AllowConsolidationPair`         | `ConsolidationMigrator.allowPair`  |
+
+## Security Considerations
+
+### On-chain proofs as the trust anchor for top-ups and consolidations
+
+Both new flows that move ETH between the protocol and validators — **top-ups** via `TopUpGateway` and **consolidations** via `ConsolidationGateway` — anchor their security on Merkle proofs of consensus-layer state verified against [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788) beacon roots, rather than on trust in the calling actor.
+
+For consolidations, the `ConsolidationGateway` verifies the **target** validator's withdrawal credentials via on-chain CL proofs (see [Consolidation Gateway](#consolidation-gateway)), so consolidation cannot redirect stake to a validator outside the Lido WC set. The **source** withdrawal credentials are guaranteed by the EIP-7251 system contract itself, since the consolidation request is signed by the `WithdrawalVault` contract, which is the canonical withdrawal address for all Lido core validators.
+
+For top-ups, the `TopUpGateway` verifies the target validator's withdrawal credentials via on-chain CL proofs (see [Validator State Validation](#validator-state-validation)), so a top-up cannot be routed to a non-Lido validator — even in the event a front-run during the predeposit was not caught by the DSM. The per-validator top-up limit is additionally forced to zero for slashed, exiting, or already-exited validators.
+
+### Authorized Depositor Bot for Top-Ups
+
+The `topUp` method is gated by the `TOP_UP_ROLE`, which is granted exclusively to the Lido Depositor Bot. This permissioning complements on-chain proof verification: the bot provides inputs that are not feasible to verify on-chain and applies validator selection logic that does not affect protocol safety.
+
+**Risks if the bot malfunctions or is compromised:**
+
+- **Over-deposits due to unreported pending deposits.** [Pending deposits](#validator-pending-balance) are not verified on-chain—the bot supplies them off-chain. If queued deposits are omitted, a validator may temporarily exceed its `MaxEB`.
+- **Top-ups to soon-to-be consolidated validators.** The bot should not top up validators that are referenced as targets in `pending_consolidations`, as this may cause their balance to temporarily exceed `MaxEB`.
+- **Imbalance between validator cohorts.** The bot should maintain a sufficient pool of top-up–eligible validators so that buffered ETH can be utilized without waiting for new validator activations. Over-prioritizing top-ups over initial deposits can deplete this pool and stall buffer utilization.
+- **Suboptimal top-up distribution.** Evenly distributing top-ups across partially funded validators may reduce APR.
+
+**Mitigations**
+
+Excessive or anomalous top-ups are detected by existing monitoring and trigger an incident response, during which the authorized actor can be paused. Combined with the ability to pause the TopUpGateway, the per-block top-up cap (`maxTopUpPerBlock`), the `minTopUpDistance` constraint, and automatic skimming (excess is automatically skimmed to the validator’s WC), these measures bound the worst-case impact of bot misbehavior to a recoverable inefficiency rather than a loss of protocol funds.
+
+### Deposit reserve and withdrawal demand
+
+The deposit reserve protects a portion of buffered ether for CL deposits, reserve sizing is a governance trade-off:
+
+- A reserve that is too **small** does not meaningfully help with stake rebalancing during periods of high withdrawal demand.
+- A reserve that is too **large** delays withdrawal request finalization, since reserved ETH is filled with the highest priority and is not available to satisfy unfinalized stETH (see [Buffered Ether Allocation](#buffered-ether-allocation)).
+
+The reserve target is configurable by `BUFFER_RESERVE_MANAGER_ROLE` so it can be tuned over time.
 
 ## References
 
