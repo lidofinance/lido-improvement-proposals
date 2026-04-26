@@ -1885,15 +1885,15 @@ Constructor is extended with `_consolidationGateway`; `finalizeUpgrade_v3()` bum
 
 ### DepositSecurityModule
 
-New non-proxy contract deployed at upgrade; its address is written to `LidoLocator`. Ownership is transferred to Agent; guardians and quorum are re-imported from the previous DSM.
+New non-proxy contract deployed at upgrade; its address is written to `LidoLocator`. Ownership is transferred to Aragon Agent; guardians and quorum are re-imported from the previous DSM.
 
 ### OracleReportSanityChecker
 
 New non-proxy contract deployed at upgrade; replaces the previous sanity checker in `LidoLocator`.
 
-| Role                 | Assignee |
-| -------------------- | -------- |
-| `DEFAULT_ADMIN_ROLE` | Agent    |
+| Role                 | Assignee     |
+| -------------------- | ------------ |
+| `DEFAULT_ADMIN_ROLE` | Aragon Agent |
 
 Constructor parameters:
 
@@ -1911,7 +1911,7 @@ New non-proxy contract.
 
 | Role                             | Assignee                      |
 | -------------------------------- | ----------------------------- |
-| `DEFAULT_ADMIN_ROLE`             | Agent                         |
+| `DEFAULT_ADMIN_ROLE`             | Aragon Agent                  |
 | `PAUSE_ROLE`                     | CircuitBreaker, ResealManager |
 | `RESUME_ROLE`                    | ResealManager                 |
 | `ADD_CONSOLIDATION_REQUEST_ROLE` | ConsolidationBus              |
@@ -1945,11 +1945,11 @@ New contract behind `OssifiableProxy`.
 
 | Role                 | Assignee              |
 | -------------------- | --------------------- |
-| Proxy admin          | Agent                 |
-| `DEFAULT_ADMIN_ROLE` | Agent                 |
+| Proxy admin          | Aragon Agent          |
+| `DEFAULT_ADMIN_ROLE` | Aragon Agent          |
 | `PUBLISH_ROLE`       | ConsolidationMigrator |
-| `REMOVE_ROLE`        | Agent                 |
-| `MANAGE_ROLE`        | Agent                 |
+| `REMOVE_ROLE`        | Aragon Agent          |
+| `MANAGE_ROLE`        | Aragon Agent          |
 
 Constructor parameters (implementation):
 
@@ -1972,8 +1972,8 @@ New contract behind `OssifiableProxy`. Source/target module IDs are immutable co
 
 | Role                 | Assignee                    |
 | -------------------- | --------------------------- |
-| Proxy admin          | Agent                       |
-| `DEFAULT_ADMIN_ROLE` | Agent                       |
+| Proxy admin          | Aragon Agent                |
+| `DEFAULT_ADMIN_ROLE` | Aragon Agent                |
 | `ALLOW_PAIR_ROLE`    | EasyTrack EVMScriptExecutor |
 | `DISALLOW_PAIR_ROLE` | CMC Committee               |
 
@@ -1998,8 +1998,8 @@ New contract behind `OssifiableProxy`.
 
 | Role                 | Assignee                |
 | -------------------- | ----------------------- |
-| Proxy admin          | Agent                   |
-| `DEFAULT_ADMIN_ROLE` | Agent                   |
+| Proxy admin          | Aragon Agent            |
+| `DEFAULT_ADMIN_ROLE` | Aragon Agent            |
 | `TOP_UP_ROLE`        | Lido Depositor Bot      |
 | `MANAGE_LIMITS_ROLE` | Not assigned by default |
 
