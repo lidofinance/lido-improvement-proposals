@@ -2,13 +2,114 @@
 lip: 35
 title: Staking Router v3
 status: Proposed
-author: Maksim Kuraian, KRogLA, Alexander Kolesnikov, Anna Mukharam
+author: Maksim Kuraian, KRogLA, Alexander Kolesnikov, Anna Mukharram
 discussions-to: TBD
 created: 2026-04-03
 updated: 2026-04-20
 ---
 
 # LIP-35. Staking Router v3
+
+## Table of Contents
+
+- [LIP-35. Staking Router v3](#lip-35-staking-router-v3)
+  - [Table of Contents](#table-of-contents)
+  - [Simple Summary](#simple-summary)
+  - [Motivation](#motivation)
+- [Specification](#specification)
+  - [Accounting](#accounting)
+    - [The 32 ETH Problem](#the-32-eth-problem)
+    - [New Accounting Model](#new-accounting-model)
+      - [Accounting oracle report changes](#accounting-oracle-report-changes)
+      - [CL Validators Balance Calculation Algorithm](#cl-validators-balance-calculation-algorithm)
+      - [Pending Deposits Calculation Algorithm](#pending-deposits-calculation-algorithm)
+    - [From Transient to Pending](#from-transient-to-pending)
+    - [Deposit Tracking](#deposit-tracking)
+    - [Rewards Calculation](#rewards-calculation)
+      - [Rewards Distribution](#rewards-distribution)
+    - [Migration](#migration)
+      - [Lido Migration](#lido-migration)
+      - [StakingRouter Migration](#stakingrouter-migration)
+      - [Data Integrity](#data-integrity)
+    - [Sanity Checks](#sanity-checks)
+      - [VEBO: Maximum exit ETH per report](#vebo-maximum-exit-eth-per-report)
+      - [AO: CL balances consistency](#ao-cl-balances-consistency)
+      - [AO: CL balance decrease](#ao-cl-balance-decrease)
+      - [AO: Balance increase per day](#ao-balance-increase-per-day)
+      - [AO: Exited validators per module](#ao-exited-validators-per-module)
+    - [Legacy API](#legacy-api)
+  - [Consolidation](#consolidation)
+    - [Consolidation EasyTrack](#consolidation-easytrack)
+    - [Consolidation Migrator](#consolidation-migrator)
+      - [Module Interaction](#module-interaction)
+    - [Consolidation Message Bus](#consolidation-message-bus)
+      - [Execution delay](#execution-delay)
+      - [Executor Bot](#executor-bot)
+    - [Consolidation Gateway](#consolidation-gateway)
+    - [Withdrawal Vault](#withdrawal-vault)
+  - [Deposits](#deposits)
+    - [Depositable ETH Pull Model](#depositable-eth-pull-model)
+      - [Lido](#lido)
+      - [Staking Router](#staking-router)
+    - [Predeposits flow description](#predeposits-flow-description)
+    - [Top-ups flow description](#top-ups-flow-description)
+    - [Depositor Bot](#depositor-bot)
+      - [Example Setup](#example-setup)
+      - [Stage 1. Predeposits to modules with `0x02` keys](#stage-1-predeposits-to-modules-with-0x02-keys)
+      - [Stage 2. Top-ups to modules with `0x02` keys or deposits to `0x01` modules](#stage-2-top-ups-to-modules-with-0x02-keys-or-deposits-to-0x01-modules)
+      - [Depositor Bot top-up flow for `0x02` key modules](#depositor-bot-top-up-flow-for-0x02-key-modules)
+      - [Top-up key selection for CMv2](#top-up-key-selection-for-cmv2)
+      - [Top-up key selection for the future `0x02` version of CSM](#top-up-key-selection-for-the-future-0x02-version-of-csm)
+    - [TopUpGateway](#topupgateway)
+      - [Proof building rules](#proof-building-rules)
+      - [Validator State Validation](#validator-state-validation)
+      - [Validator Top-Up Limit Calculation](#validator-top-up-limit-calculation)
+      - [Top-up limits](#top-up-limits)
+      - [Top-up Precondition and Pause](#top-up-precondition-and-pause)
+      - [Possible top-up issue mitigation](#possible-top-up-issue-mitigation)
+    - [Staking Router](#staking-router-1)
+      - [Staking Router Configuration](#staking-router-configuration)
+      - [Request limits](#request-limits)
+      - [Module stake allocation](#module-stake-allocation)
+    - [Staking Modules](#staking-modules)
+      - [CMv2](#cmv2)
+      - [`0x02` version of CSM](#0x02-version-of-csm)
+  - [Validators Exits](#validators-exits)
+    - [Validators Exit Bus Oracle (VEBO)](#validators-exit-bus-oracle-vebo)
+      - [Report format](#report-format)
+      - [Sanity checker](#sanity-checker)
+    - [Off-chain Validators Exit Oracle (VEO)](#off-chain-validators-exit-oracle-veo)
+      - [MaxEB](#maxeb)
+      - [Deposit reserve](#deposit-reserve)
+      - [Consolidation](#consolidation-1)
+      - [CMv2 Meta Registry and CMv1 Operator Balances](#cmv2-meta-registry-and-cmv1-operator-balances)
+      - [Operator weight in the CSMv2 module](#operator-weight-in-the-csmv2-module)
+  - [Stake Rebalancing](#stake-rebalancing)
+    - [Deposit Reserve](#deposit-reserve-1)
+      - [Proposed solution](#proposed-solution)
+      - [Buffered Ether Allocation](#buffered-ether-allocation)
+  - [Module Shares Easy Track](#module-shares-easy-track)
+    - [Limits](#limits)
+    - [Algorithm](#algorithm)
+    - [Motion creation](#motion-creation)
+      - [Motion enacting](#motion-enacting)
+    - [Required changes to StakingRouter](#required-changes-to-stakingrouter)
+  - [Proposed params and roles](#proposed-params-and-roles)
+    - [Lido](#lido-1)
+    - [LidoLocator](#lidolocator)
+    - [StakingRouter](#stakingrouter)
+    - [AccountingOracle](#accountingoracle)
+    - [WithdrawalVault](#withdrawalvault)
+    - [DepositSecurityModule](#depositsecuritymodule)
+    - [OracleReportSanityChecker](#oraclereportsanitychecker)
+    - [ConsolidationGateway](#consolidationgateway)
+    - [ConsolidationGateway CircuitBreaker registration](#consolidationgateway-circuitbreaker-registration)
+    - [ConsolidationBus](#consolidationbus)
+    - [ConsolidationMigrator](#consolidationmigrator)
+    - [TopUpGateway](#topupgateway-1)
+    - [TriggerableWithdrawalGateway](#triggerablewithdrawalgateway)
+    - [EasyTrack](#easytrack)
+  - [References](#references)
 
 ## Simple Summary
 
@@ -285,9 +386,9 @@ Most of the pre-existing sanityCheck parameters have been recalculated from the 
 2. **consolidationEthAmountPerDayLimit (91,800 ETH)**
    This was calculated based on the current state of the network, including deposit queue and a buffer for potential DAO changes over a two-month period (37.3M + 3.2M + 3M).
 
-#### [VEBO] checkMaximumOfAmountEthCalledToExitInReport
+#### VEBO: Maximum exit ETH per report
 
-This check verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type cases multiplied by their weights. Under this check, we assume the weight of a `0x02`-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048.
+`checkMaximumOfAmountEthCalledToExitInReport` verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type cases multiplied by their weights. Under this check, we assume the weight of a `0x02`-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048.
 
 ```
 count_of_0x01_keys * maxEffectiveBalanceWeightWCType01 +
@@ -295,22 +396,24 @@ count_of_0x01_keys * maxEffectiveBalanceWeightWCType01 +
 <= maxBalanceExitRequestedPerReportInEth
 ```
 
-#### [AO] checkCLBalancesConsistency
+#### AO: CL balances consistency
 
-Basic data verification
+`checkCLBalancesConsistency` performs basic data verification
 
 ```
 sum(validatorBalancesGweiByStakingModule) == clValidatorsBalanceGwei
 ```
 
-#### [AO] checkCLBalanceDecrease
+#### AO: CL balance decrease
 
-Changed to be compatible with Pectra hard-fork.  
+`checkCLBalanceDecrease` was changed to be compatible with Pectra hard-fork.  
 New sanity check allows CLValidatorBalance to be decreased by 3.6% in a 36-day window. Such a value (3.6%) represents the maximum balance decrease due to attestation penalties, initial slashing penalty, and correlation penalty while less than 1.08% of the network balance is slashed, more than a total of 11 million ETH is staked, and the network is not in inactivity leak mode.
 
 [Here you can find particular algorithm and calculations](https://docs.google.com/document/d/1MK9XMU-xVdw0XQG9cxtR0rxusuBr1CI4DuGNxNXgswI/edit?tab=t.0)
 
-#### [AO] calculateBalanceIncreasePerDay
+#### AO: Balance increase per day
+
+`calculateBalanceIncreasePerDay` performs:
 
 - Verifying the flow of pending/inactive ETH in the queue (accounting for new deposits).
 - Verifying changes in the total active balance migrated from the pending queue
@@ -338,9 +441,9 @@ for i, stBalance in enumerate(validatorBalancesGweiByStakingModule(current)):
 assert totalActivatedInClByModules <= activatedGweiAmountWithGap + consolidationEthAmountPerDayLimit
 ```
 
-#### [AO] checkNumExitedValidatorsByStakingModule
+#### AO: Exited validators per module
 
-This check has been updated to align with the introduction of the consolidation process. Now, the maximum amount of ETH exited at once cannot exceed double the sum of exited and consolidated ETH.
+`checkNumExitedValidatorsByStakingModule` has been updated to align with the introduction of the consolidation process. Now, the maximum amount of ETH exited at once cannot exceed double the sum of exited and consolidated ETH.
 
 The necessity for doubling is due to the worst-case scenario where validators participating in these processes have the minimum balance of 16 ETH. The size of `0x02`-type validators is set to the minimum possible value because, otherwise, actual recorded withdrawals could falsely trigger a revert.
 
@@ -951,7 +1054,7 @@ The bot runs every 25 blocks. On each run, the bot executes a **two-stage algori
 1. **Stage 1** — Predeposits to modules with `0x02` keys
 2. **Stage 2** — Top-ups for `0x02` modules or full 32 ETH deposits for `0x01` modules
 
-#### **Stage 1. Predeposits to modules with `0x02` keys**
+#### Stage 1. Predeposits to modules with `0x02` keys
 
 At this stage, the bot attempts to perform seed deposits into modules that support `0x02` keys (A and B).
 
@@ -990,7 +1093,7 @@ Module A:
     allocated: 0
 ```
 
-#### **Stage 2. Top-ups to modules with `0x02` keys or deposits to `0x01` modules**
+#### Stage 2. Top-ups to modules with `0x02` keys or deposits to `0x01` modules
 
 At this stage, the bot considers **top-ups** for `0x02` modules (A and B) or **full deposits** for `0x01` modules (C and D)
 
