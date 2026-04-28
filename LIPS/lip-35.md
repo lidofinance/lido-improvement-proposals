@@ -66,7 +66,7 @@ updated: 2026-04-20
       - [Validator State Validation](#validator-state-validation)
       - [Validator Pending Balance](#validator-pending-balance)
       - [Validator Top-Up Limit Calculation](#validator-top-up-limit-calculation)
-      - [Top-up limits](#top-up-limits)
+      - [Top-Up Limits](#top-up-limits)
       - [Top-up Precondition and Pause](#top-up-precondition-and-pause)
     - [Staking Router](#staking-router-1)
       - [Staking Router Configuration](#staking-router-configuration)
@@ -1352,12 +1352,14 @@ Revisiting the upper bound on `effective_balance + pending_deposits` with `TOP_U
 effective_balance + pending_deposits ≤ MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY_MARGIN − minTopUpGwei
 ```
 
-#### Top-up limits
+#### Top-Up Limits
 
-It is proposed that the overall amount of ETH that may be topped up into the protocol is limited by:
+It is proposed to limit the overall amount of ETH that may be topped up into the modules using the following parameters:
 
-- **maxTopUpPerBlock** — the maximum amount of ETH that can be topped up within a single block
-- **minTopUpDistance** — the minimum number of blocks required between `topUp` calls
+- **maxTopUpPerBlock** — the maximum amount of ETH that can be topped up within a single block.
+- **minTopUpDistance** — the minimum number of blocks required between `topUp` calls.
+
+This design assumes that **minTopUpDistance** and **maxTopUpPerBlock** are common values for all modules, meaning they define protocol-wide limits rather than per-module top-up limits.
 
 #### Top-up Precondition and Pause
 
