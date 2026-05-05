@@ -5,6 +5,7 @@ status: Proposed
 author: Vasiliy Shapovalov, Vitaly Galaichuk, Jen Kopytina, Alexander Belokon, adcv
 discussions-to: https://research.lido.fi/t/liquid-buybacks-nest-execution-with-ldo-wsteth-liquidity/10894
 created: 2026-04-20
+updated: 2026-05-05
 ---
 
 ## Simple Summary
@@ -15,7 +16,7 @@ NEST is a deterministic onchain system that creates a direct rule-based economic
 
 ### Background
 
-Lido DAO generates substantial protocol revenue through staking operations. LDO token holders, however, have no direct automatic link to protocol performance. The DAO participants have discussed mechanisms to address this in the forum thread referenced above. But no formal technical proposal or agreed architecture was proposed.
+Lido DAO generates substantial protocol revenue through staking operations. LDO token holders, however, have no direct automatic link to protocol performance. The DAO participants have discussed mechanisms to address this in the [forum thread](https://research.lido.fi/t/liquid-buybacks-nest-execution-with-ldo-wsteth-liquidity/10894). But no formal technical proposal or agreed architecture was proposed.
 
 ### Problem
 
@@ -28,7 +29,7 @@ Additionally, on-chain LDO liquidity depth is shallow. Without a systematic prov
 
 ### Solution
 
-NEST encodes a governance commitment: when protocol surplus conditions are met, a constrained share of excess staking revenue is automatically converted into LDO and, in LP mode (the initial configuration proposed by this LIP), paired with wstETH and deployed as DAO-owned liquidity. The mechanism is designed to be financially safe, permissionless in normal operation, low-maintenance, and fully controllable by the DAO.
+NEST encodes a governance commitment: when protocol surplus conditions are met, a constrained share of excess staking revenue is automatically converted into LDO and, in LP mode (the initial configuration proposed by this LIP), paired with wstETH and deployed as DAO-owned liquidity. The mechanism is designed to be bounded by spending caps and governance controls, permissionless in normal operation, low-maintenance, and fully controllable by the Lido DAO.
 
 ## Specification
 
@@ -38,10 +39,10 @@ NEST is implemented as two cooperating but independently operable subsystems —
 
 The system operates in two governance-controlled modes:
 
-1. **LP mode** — acquired LDO is paired with wstETH and deposited into a Curve LDO/wstETH TwoCrypto pool; LP tokens are retained by the LiquidityProvisioner as DAO-owned liquidity.
+1. **LP mode** — acquired LDO is paired with wstETH and deposited into a Curve LDO/wstETH TwoCrypto-NG pool; LP tokens are retained by the LiquidityProvisioner as DAO-owned liquidity.
 2. **Treasury-only mode** — acquired LDO is delivered directly to the Aragon Agent treasury.
 
-The active mode is set via the `liquidityProvisioner` address on the NESTController: a non-zero address enables LP mode; `address(0)` enables treasury-only mode. Switching between modes requires a full DAO vote.
+The active mode is set via the `liquidityProvisioner` address on the NESTController: a non-zero address enables LP mode; `address(0)` enables treasury-only mode, requires Stonks v2 instance with the receiver set to AGENT. Switching between modes requires a full DAO vote.
 
 This LIP proposes deploying NEST in **LP mode as the initial operating configuration**. Treasury-only mode is available as a governance-controlled fallback that could be enabled by a subsequent DAO vote without redeploying the core contracts.
 
@@ -69,6 +70,14 @@ Captures staking revenue from protocol rebases. Integrates with Lido's `TokenRat
 
 After each rebase, the source computes the DAO treasury's share of staking revenue by back-deriving it from the stETH/wstETH rate delta, total internal share count, and treasury fee parameters from the StakingRouter. The result is converted to USD via the OracleRouter and stored along with the block timestamp.
 
+$$
+\text{revenueStEth} = \frac{\Delta\text{rate} \times \text{internalShares} \times \text{treasuryFee}}{\text{TOKEN\_RATE\_SCALE} \times (\text{basePrecision} - \text{modulesFee} - \text{treasuryFee})}
+$$
+
+$$
+\text{revenueUSD} = \frac{\text{revenueStEth} \times \text{stEthUsdPrice}}{\text{PRICE\_SCALE}}
+$$
+
 If the rate does not increase, the source records zero revenue without updating the rate baseline. After a slashing event, the rate baseline remains at its pre-slash level and revenue stays zero until the protocol fully recovers past the previous high-water mark, ensuring a buyback pause proportional to slash severity.
 
 Access to `pushTokenRate` is restricted to `REPORTER_ROLE` holders (granted to `TokenRateNotifier` at deployment).
@@ -83,7 +92,9 @@ Receives settled LDO directly from CoW Swap and wstETH from the NESTController. 
 
 #### `Stonks v2`
 
-Updated to support a configurable settlement receiver address. A new `receiver` field is added to the constructor's `InitParams` struct. If set to `address(0)`, it defaults to `AGENT`, preserving backward compatibility for non-NEST deployments. The stored receiver is passed through to each Order during initialization.
+Stonks v2 Specification can be found [here](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw). The NEST implementation uses Stonks v2 as the CoW Swap integration layer for order creation and settlement. The NESTController interacts with Stonks v2 to create orders with the appropriate parameters and to manage order lifecycle events. On deployment we will deploy two dedicated Stonks instances for LP and treasury-only modes, with the receiver set according to the mode's requirements.
+
+The existing contracts will be updated to support a configurable settlement receiver address. A new `receiver` field is added to the constructor's `InitParams` struct. If set to `address(0)`, it defaults to `AGENT`, preserving backward compatibility for non-NEST deployments. The stored receiver is passed through to each Order during initialization.
 
 #### `Order`
 
@@ -130,7 +141,7 @@ Execution requires all of the following:
 
 1. `lastDailyAllocationUSD > 0` implies today's surplus is positive.
 2. `unrealizedBuybacksUSD ≥ 0` before today's allocation update — the protocol has not already spent more than it has earned.
-3. Oracle quotability.
+3. Oracle quotability and staleness checks.
 4. `ethPriceUSD > ethPriceFloorUSD` — inactive when floor is `0`.
 
 Budget per trigger: `min(dailyCapUSD, lastDailyAllocationUSD)`, then clamped by annual cap and stETH balance. In LP mode, this constrained budget is split equally: one half is sold for LDO via Stonks, the other half is wrapped to wstETH and transferred to the LiquidityProvisioner. In treasury-only mode, the full budget is swapped for LDO.
@@ -169,7 +180,7 @@ Two-layer protection scheme:
 Each trigger in LP mode wraps and transfers wstETH equal to the sell half. Partial or unfilled orders leave excess wstETH in the provisioner with no LDO counterpart. There are two resolution paths:
 
 - **`retryFromStonks()`** recovers stETH from an expired Order to Stonks and creates a new order. Shares ETH price floor and oracle quotability gates with `triggerExecution()` but bypasses budget gates since stETH was already committed.
-- **`unwrapExcessWstEth()`** unwraps excess wstETH to stETH and returns it to the NESTController after a cooldown. Uses a clamp target accounting for all sell-side stETH still in the pipeline. After transfer, `accountForReturnedExcess()` on the controller adjusts both `annualSpendAccumulatorUSD` and `cumulativeBuybacksUSD` to prevent double-counting.
+- **`unwrapExcessWstEth()`** unwraps excess wstETH to stETH and returns it to the NESTController after a cooldown (one order duration in seconds after the last order timestamp). Uses a clamp target accounting for all sell-side stETH still in the pipeline. After transfer, `accountForReturnedExcess()` on the controller adjusts both `annualSpendAccumulatorUSD` and `cumulativeBuybacksUSD` to prevent double-counting.
 
 #### LP Token Management
 
@@ -200,21 +211,22 @@ CoW Protocol requires a matching off-chain order payload submitted to its API be
 
 ### Parameters
 
-| Category            | Parameter                         | Description                                                                                                                                                                                                                 |
-| ------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Gate Thresholds** | `ethPriceFloorUSD`                | ETH price eligibility condition. `0` disables the gate.                                                                                                                                                                     |
-| **Revenue**         | `dailyRevenueThresholdUSD`        | Daily revenue floor for surplus computation                                                                                                                                                                                 |
-|                     | `surplusShareBps`                 | Share of daily surplus allocated to NEST per trigger (basis points). In LP mode, this allocation is split equally between the LDO purchase leg and the wstETH pairing leg.                                                  |
-| **Spending Cap**    | `dailyCapUSD`                     | USD limit per trigger. Must be strictly less than `annualCapUSD`.                                                                                                                                                           |
-| **Annual Cap**      | `annualCapUSD`                    | USD limit on spend committed within a fixed 365-day period that resets when elapsed. Returned stETH from expired or unfilled orders is credited back via `accountForReturnedExcess()`, partially restoring annual headroom. |
-| **Order Sizing**    | `minOrderSizeUSD`                 | Minimum viable budget after all gates constrain it                                                                                                                                                                          |
-| **Price Controls**  | `orderPriceProtectionBps`         | Discount on estimated trade output to absorb price movement between submission and on-chain inclusion                                                                                                                       |
-| **Pool Guards**     | `poolSlippageToleranceBps`        | Slippage guard on Curve deposits (MEV protection)                                                                                                                                                                           |
-|                     | `poolPriceDivergenceToleranceBps` | Divergence guard against pool skew                                                                                                                                                                                          |
-| **Revenue Sources** | `revenueSources`                  | Array of active revenue source addresses                                                                                                                                                                                    |
-| **Provisioner**     | `liquidityProvisioner`            | LiquidityProvisioner address. `address(0)` = treasury-only mode.                                                                                                                                                            |
+| Category                                     | Parameter                         | Description                                                                                                                                                                                                                 |
+| -------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Gate Thresholds**                          | `ethPriceFloorUSD`                | ETH price eligibility condition. `0` disables the gate.                                                                                                                                                                     |
+| **Revenue**                                  | `dailyRevenueThresholdUSD`        | Daily revenue floor for surplus computation                                                                                                                                                                                 |
+|                                              | `surplusShareBps`                 | Share of daily surplus allocated to NEST per trigger (basis points). In LP mode, this allocation is split equally between the LDO purchase leg and the wstETH pairing leg.                                                  |
+| **Spending Cap**                             | `dailyCapUSD`                     | USD limit per trigger. Must be strictly less than `annualCapUSD`.                                                                                                                                                           |
+| **Annual Cap**                               | `annualCapUSD`                    | USD limit on spend committed within a fixed 365-day period that resets when elapsed. Returned stETH from expired or unfilled orders is credited back via `accountForReturnedExcess()`, partially restoring annual headroom. |
+| **Order Sizing**                             | `minOrderSizeUSD`                 | Minimum viable budget after all gates constrain it                                                                                                                                                                          |
+| **Price Controls**                           | `orderPriceProtectionBps`         | Discount on estimated trade output to absorb price movement between submission and on-chain inclusion                                                                                                                       |
+| **Pool Guards**                              | `poolSlippageToleranceBps`        | Slippage guard on Curve deposits (MEV protection)                                                                                                                                                                           |
+|                                              | `poolPriceDivergenceToleranceBps` | Divergence guard against pool skew                                                                                                                                                                                          |
+| **Revenue Sources**                          | `revenueSources`                  | Array of active revenue source addresses                                                                                                                                                                                    |
+| **Provisioner**                              | `liquidityProvisioner`            | LiquidityProvisioner address. `address(0)` = treasury-only mode.                                                                                                                                                            |
+| **Staleness Window** (on the RevenueSources) | `stalenessWindow`                 | Maximum allowed age of revenue source data before it is considered stale.                                                                                                                                                   |
 
-All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with validation on write. Invalid configuration reverts and preserves the previous valid state.
+All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with validation on write. Like the rest of DAO treasury operations, this is not under Dual Governance. Invalid configuration reverts and preserves the previous valid state.
 
 ### Proposed Initial Values
 
@@ -226,6 +238,7 @@ All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with va
 | `dailyCapUSD`              | `$50,000`                       | Primary active safety limiter                                                                                                         |
 | `annualCapUSD`             | `$10,000,000`                   | Annual ceiling                                                                                                                        |
 | `poolSlippageToleranceBps` | `200` (2%)                      | Curve deposit MEV guard                                                                                                               |
+| `stalenessWindow`          | `1 day`                         | Revenue data older than this is rejected                                                                                              |
 
 ### Roles and Authority
 
@@ -278,8 +291,6 @@ The daily cap is the primary active safety guardrail. Historically, very few day
 
 No upfront LDO seeding from the Aragon Agent treasury is required. Seeding the pool from treasury while simultaneously buying LDO from the market is logically contradictory: the two operations work against each other, with treasury supply injection partially offsetting the market buy. There is no mechanical benefit to pre-seeding.
 
-Additionally, a smaller pool is more resistant to value extraction. A smaller pool has a steeper bonding curve, so price gaps created by buyback activity close faster, leaving less time for arbitrageurs to capture the spread. Starting at zero and growing organically through buyback activity is both the simpler and the more arbitrage-resistant launch posture.
-
 ### Alternatives Considered
 
 | Alternative                          | Reason Rejected                                                                         |
@@ -312,7 +323,7 @@ Price feeds (ETH/USD, stETH/USD via two-hop, LDO/ETH) are sourced from Chainlink
 
 After a slashing event, the revenue rate baseline stays at its pre-slash level. Staking revenue returns zero until the protocol fully recovers, creating a natural buyback pause proportional to slash severity. Governance can reset accounting if accumulated deficit becomes indefinitely blocking.
 
-### Asset Custody
+### No asset custody
 
 All purchased assets remain DAO-owned throughout the execution path. stETH flows only through the controlled pipeline: Aragon Agent → NESTController → Stonks → Order → LiquidityProvisioner (LP mode) or Aragon Agent (treasury-only mode). No unauthorized exit path exists for sell-side stETH.
 
@@ -320,12 +331,19 @@ All purchased assets remain DAO-owned throughout the execution path. stETH flows
 
 Five independent pause domains allow targeted response without halting the full system. The Emergency Committee can pause without a full DAO vote. Asset recovery functions are always available and not subject to pause. At a $50k daily cap, the maximum exposure over a 6-day governance response window is ~$300k.
 
+### Missing Lido AccountingOracle reports
+
+If an AccountingOracle report is delayed or skipped, no rebase fires and StakingRevenueSource is not updated. Once it ages past STALENESS_WINDOW_SECONDS, triggerExecution reverts with RevenueSourceStale, halting accounting and order creation until a fresh report arrives. The next pushTokenRate normalizes the elapsed-period revenue back to a daily rate, so a multi-day gap produces a single proportionally-scaled allocation rather than a spike. No buybacks occur during the gap and the system resumes automatically.
+
 ---
 
 ## References
 
 - Forum discussion: [Liquid Buybacks: NEST Execution with LDO/wstETH Liquidity](https://research.lido.fi/t/liquid-buybacks-nest-execution-with-ldo-wsteth-liquidity/10894)
-- [Stonks v2](https://github.com/lidofinance/stonks)
+- [Stonks Repository](https://github.com/lidofinance/stonks)
+- [Stonks v2 working branch](https://github.com/lidofinance/stonks/tree/feature/dao-781-develop-stonks-v2-poc)
+- [Stonks v2 Specification](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw)
+- [NEST Pull Request](https://github.com/lidofinance/stonks/pull/28)
 - [CoW Protocol documentation](https://docs.cow.fi/)
-- [Curve TwoCrypto](https://docs.curve.fi/)
-- [TokenRateNotifier](https://github.com/lidofinance/lido-dao)
+- [Curve TwoCrypto](https://github.com/curvefi/twocrypto-ng)
+- [TokenRateNotifier](https://github.com/lidofinance/core/blob/master/contracts/0.8.9/TokenRateNotifier.sol)
