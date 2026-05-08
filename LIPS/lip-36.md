@@ -170,7 +170,7 @@ Excess tokens on the larger side remain in the provisioner for the next `addLiqu
 
 #### Pool Deployment
 
-Deployment parameters, including initial price, A/gamma coefficients, fee structure, and oracle settings, will be published on the forum one week before deployment. Curve pools have no admin or pause controls post-deployment and are immutable once live. Emergency controls are scoped to the NEST contracts (see Emergency Controls).
+Deployment parameters, including initial price, A/gamma coefficients, fee structure, and oracle settings, will be published on the forum two weeks before deployment. Curve pools have no admin or pause controls post-deployment and are immutable once live. Emergency controls are scoped to the NEST contracts (see Emergency Controls).
 
 #### Pool Bootstrap
 
