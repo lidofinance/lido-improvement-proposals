@@ -168,6 +168,14 @@ The LiquidityProvisioner receives settled LDO from CoW Swap and wstETH from the 
 
 Excess tokens on the larger side remain in the provisioner for the next `addLiquidity()` cycle. The Curve LDO/wstETH pool starts with zero balance and scales naturally as orders settle — no upfront seeding is required.
 
+#### Pool Deployment
+
+Deployment parameters, including initial price, A/gamma coefficients, fee structure, and oracle settings, will be published on the forum one week before deployment. Curve pools have no admin or pause controls post-deployment and are immutable once live. Emergency controls are scoped to the NEST contracts (see Emergency Controls).
+
+#### Pool Bootstrap
+
+The pool launches with zero liquidity. Applying the divergence check before the pool has reached sufficient depth would block addLiquidity() at launch; the check is bypassed during bootstrap and engages once the pool crosses a defined depth threshold. The threshold value will be published on the forum two weeks before the on-chain vote.
+
 #### Pool Skew Protection
 
 Two-layer protection scheme:
@@ -290,6 +298,10 @@ The daily cap is the primary active safety guardrail. Historically, very few day
 ### Zero-seed Pool Launch
 
 No upfront LDO seeding from the Aragon Agent treasury is required. Seeding the pool from treasury while simultaneously buying LDO from the market is logically contradictory: the two operations work against each other, with treasury supply injection partially offsetting the market buy. There is no mechanical benefit to pre-seeding.
+
+### Pool Selection
+
+Curve v2 (TwoCrypto-NG) was selected because it requires no active management after deployment, compatible with a DAO-operated permissionless system, and its configurable curve shape provides better efficiency than constant-product alternatives for the LDO/wstETH price range.
 
 ### Alternatives Considered
 
