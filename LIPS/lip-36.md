@@ -70,13 +70,13 @@ Captures staking revenue from protocol rebases. Integrates with Lido's `TokenRat
 
 After each rebase, the source computes the DAO treasury's share of staking revenue by back-deriving it from the stETH/wstETH rate delta, total internal share count, and treasury fee parameters from the StakingRouter. The result is converted to USD via the OracleRouter and stored along with the block timestamp.
 
-$$
+```math
 \text{revenueStEth} = \frac{\Delta\text{rate} \times \text{internalShares} \times \text{treasuryFee}}{\text{TOKEN\_RATE\_SCALE} \times (\text{basePrecision} - \text{modulesFee} - \text{treasuryFee})}
-$$
+```
 
-$$
+```math
 \text{revenueUSD} = \frac{\text{revenueStEth} \times \text{stEthUsdPrice}}{\text{PRICE\_SCALE}}
-$$
+```
 
 If the rate does not increase, the source records zero revenue without updating the rate baseline. After a slashing event, the rate baseline remains at its pre-slash level and revenue stays zero until the protocol fully recovers past the previous high-water mark, ensuring a buyback pause proportional to slash severity.
 
