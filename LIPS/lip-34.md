@@ -1,9 +1,9 @@
 ---
 lip: 34
 title: CircuitBreaker — Programmable panic layer
-status: Draft
+status: Proposed
 author: Azat Serikov
-discussions-to: TBD
+discussions-to: https://research.lido.fi/t/circuitbreaker-programmable-panic-layer/11400
 created: 2026-04-07
 ---
 
