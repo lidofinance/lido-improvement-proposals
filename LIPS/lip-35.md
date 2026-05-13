@@ -130,7 +130,7 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 
 **A new, `0x02`-ready, accounting model.** Although already supported by the stVaults architecture, this is a fundamental shift for Lido Core. Currently, the Lido protocol handles critical aspects of validator accounting — deposits, rewards, withdrawals — through a unit-based approach where 1 validator equals 32 ETH. A balance-based accounting model is essential for supporting large validators and consolidations because it allows the protocol to treat validators as flexible balances rather than fixed units, enabling seamless consolidation and validator top-ups. For this to happen, a significant rework of several key components of the on-chain protocol is required.
 
-**Stake migration from CMv1 to CMv2.** The consolidation process would provide a secure and transparent way to quickly migrate stake from the old Curated Module v1 to the new Curated Module v2.
+**Stake migration from CMv1 to CMv2.** The consolidation process would provide a secure and transparent way to quickly migrate stake from the old Curated Module v1 to the new Curated Module v2 with minimal stake inefficiency.
 
 **Deposit reserve for reliable stake rebalancing.** Historically, stake rebalancing between modules through new deposits and withdrawals has been slow and unreliable — SDVT took over 1.5 years to reach its target share. A deposit reserve mechanism guarantees ETH availability for migration deposits and new module onboarding, regardless of withdrawal demand.
 
@@ -138,13 +138,13 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 
 ## Glossary
 
-- **MaxEB** — Maximum Effective Balance. Introduced by [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251), it raises a validator's effective balance ceiling from 32 ETH up to 2048 ETH.
+- **MaxEB** — Maximum Effective Balance. Introduced by [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251), it raises a validator's effective balance ceiling from 32 ETH up to 2048 ETH for validators with `0x02` withdrawal credentials.
 - **WC** — Withdrawal Credentials. The 32-byte field on a validator that determines where its stake exits to and which key type it uses. All Lido core validators use credentials pointing to the `WithdrawalVault` contract.
-- **`0x01` / `0x02` keys** — validator key types, distinguished by withdrawal credentials prefix. `0x01` keys are capped at 32 ETH effective balance; `0x02` keys support MaxEB up to 2048 ETH and allow top-ups and consolidations.
-- **Predeposit** — the initial 32 ETH deposit that activates a validator. Required for both `0x01` and `0x02` keys.
+- **`0x01` / `0x02` keys** — validator key types, distinguished by withdrawal credentials prefix. `0x01` keys are capped at 32 ETH effective balance; `0x02` keys support effective balance up to 2048 ETH (MaxEB) and allow top-ups and consolidations.
+- **Predeposit** — the minimal deposit (32 ETH) required to activate a validator. Required for both `0x01` and `0x02` keys.
 - **Top-up** — an additional deposit to an already-activated `0x02` validator, raising its balance toward the 2048 ETH cap.
 - **Consolidation** — an [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) operation that merges a source validator's balance into a target `0x02` validator.
-- **CMv1 / CMv2** — Curated Module v1 (the existing currated module) and Curated Module v2 (the new сurated module receiving consolidated stake).
+- **CMv1 / CMv2** — Curated Module v1 (the existing curated module with 0x01 withdrawal credentials) and Curated Module v2 (the new curated module with 0x02 withdrawal credentials).
 - **CSM** — Community Staking Module, Lido's permissionless staking module.
 - **SDVT** — Simple DVT module, the staking module that runs distributed validators.
 - **Deposit Reserve** — a portion of Lido's buffered ether protected from withdrawal demand and reserved for CL deposits, ensuring stake rebalancing and migration deposits are not blocked.
