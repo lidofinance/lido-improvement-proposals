@@ -151,7 +151,7 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 - **AO** — Accounting Oracle. The oracle that reports validator balances, rewards, and other accounting data to the protocol.
 - **VEBO** — Validators Exit Bus Oracle. The oracle that publishes validator exit requests.
 - **VEO** — Validators Exit Oracle. The off-chain logic that selects which validators to exit; updated here for MaxEB, deposit reserve, and consolidation awareness.
-- **DSM** — Deposit Security Module. The contract that gates Lido initial 32 ETH deposit that activates a validator and can be paused by Council guardians.
+- **DSM** — Deposit Security Module. The contract and a distributed off-chain service that gates Lido initial 32 ETH deposit that activates a validator and can be paused by Council guardians.
 - **TWG** — TriggerableWithdrawalGateway. The contract that submits [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) triggerable withdrawal requests on behalf of the protocol.
 
 ## Accounting
@@ -166,7 +166,7 @@ As a result, the current validator-count–based accounting is incompatible with
 
 - **Rewards calculation** — the protocol doesn’t know how much ETH is actually working on the Consensus Layer
 - **Stake distribution** — allocation between modules is based on validator count, not actual balance
-- **Tracking totalPooledEther** — the key metric for stETH rate calculation becomes inaccurate
+- **Tracking `totalPooledEther`** — the key metric for stETH rate calculation becomes inaccurate
 
 The solution is to transition from counting validators to direct balance accounting.
 
@@ -222,7 +222,7 @@ totalClBalance = clValidatorsBalance + clPendingBalance
 transientBalance = (depositedValidators - clValidators) × 32 ETH
 ```
 
-This construct was necessary because a deposit could “hang” between the Execution Layer and the Consensus Layer for several hours or even days. The oracle didn’t see these funds, but the protocol had to account for them in `totalPooledEther`.
+This construct was necessary because a deposit could “temporary disappear” between the Execution Layer and the Consensus Layer for several hours or even days. The oracle didn’t see these funds, but the protocol had to account for them in `totalPooledEther`.
 
 **Proposed:** Pectra ([EIP-6110](https://eips.ethereum.org/EIPS/eip-6110)) eliminates this problem. Deposits from the Execution Layer enter the Consensus Layer pending queue in the same block:
 
@@ -232,7 +232,7 @@ The oracle always sees the complete picture: active validators in `clValidatorsB
 
 ### Deposit Tracking
 
-All deposits made after the accounting report reference slot were not included in the accounting report and therefore must be accounted for separately.
+Each accounting report only covers deposits made up to its reference slot. Any deposits made after that slot are not yet in the report, so the protocol should track them on its own until the next report picks them up.
 
 **Currently**, deposits are tracked through validator counters. When ETH moves from the buffer to the Deposit Contract:
 
@@ -279,7 +279,7 @@ interface ILido {
   /// @return clValidatorsBalanceAtLastReport Sum of validator's active balances in wei
   /// @return clPendingBalanceAtLastReport Sum of validator's pending deposits in wei
   /// @return depositedSinceLastReport Deposits made since last oracle report reference slot
-  /// @return depositedForCurrentReport Deposits made between the last oracle report reference slot  and the current frame's reference slot
+  /// @return depositedForCurrentReport Deposits made between the last oracle report reference slot and the current frame's reference slot
   function getBalanceStats()
     external
     view
@@ -421,7 +421,7 @@ count_of_0x01_keys * maxEffectiveBalanceWeightWCType01 +
 
 #### AO: CL balances consistency
 
-`checkCLBalancesConsistency` performs basic data verification
+`checkCLBalancesConsistency` performs basic data verification.
 
 ```
 sum(validatorBalancesGweiByStakingModule) == clValidatorsBalanceGwei
@@ -536,7 +536,7 @@ targetOperatorId
 groups: [
   {
     sourceKeyIndices: [...], // many sources
-    targetKeyIndex.          // single target
+    targetKeyIndex           // single target
   },
   ...
 ]
@@ -730,7 +730,7 @@ groups: [
 ]
 ```
 
-The `addConsolidationRequests` verifies that:
+The `executeConsolidation` verifies that:
 
 - the submitted batch hash matches the stored hash of the original request
 - the required execution delay has elapsed.
@@ -825,7 +825,7 @@ A new Consolidation Executor bot is expected to be designed to monitor the Conso
 
 ### Consolidation Gateway
 
-It is proposed to introduce a single entry point for processing consolidation requests. This entry point would be responsible for verifying target validators’ withdrawal credentials, checking consolidation preconditions, enforcing consolidation limits, and enabling the consolidation flow to be paused independently in the event of an emergency.
+It is proposed to introduce a single smart contract entry point for processing consolidation requests. This entry point would be responsible for verifying target validators’ withdrawal credentials, checking consolidation preconditions, enforcing consolidation limits, and enabling the consolidation flow to be paused independently in the event of an emergency.
 
 Using the Withdrawal Vault for this purpose would not be advisable. The Withdrawal Vault manages multiple independent concerns, including protocol withdrawals and triggerable exit requests. Treating it as a pausable unit would prevent selectively pausing consolidation requests while continuing to accept triggerable withdrawal requests, which is operationally undesirable.
 
@@ -1150,7 +1150,7 @@ Module A (0x02):
     allocated: 1000
 ```
 
-- If no top-ups are allowed for `0x02` modules (e.g., all validators reached MaxEB or allocation is zero), **and** no full deposit are allowed for `0x01` modules (e.g., no available keys or all modules exceed their target share),
+- If no top-ups are allowed for `0x02` modules (e.g., all validators reached MaxEB or allocation is zero), **and** no full deposits are allowed for `0x01` modules (e.g., no available keys or all modules exceed their target share),
   the bot exits.
 
 Example:
@@ -1184,11 +1184,11 @@ When the Depositor Bot needs to top up validators in 0x02 modules, it performs t
 
 #### Top-up key selection for CMv2
 
-For **CMv2**, the Depositor Bot operates on a per-operator basis and select keys based on following algorithm:
+For **CMv2**, the Depositor Bot operates on a per-operator basis and selects keys based on following algorithm:
 
 1. Based on the allocated amount received from the Staking Router’s `getDepositAllocations` function, the Depositor Bot calls `getDepositsAllocation(uint256 depositAmount)` on the module to determine how much stake should be allocated to each operator.
 2. Across this list of operators, the Depositor Bot chooses the oldest validators and checks that:
-   - the validator has not exceeded a **2045.75 ETH** balance (this constant is discussed in the [Top-Up Limit Calculation](#top-up-limit-calculation) section) balance (actual + pending);
+   - the validator has not exceeded a **2045.75 ETH** (this constant is discussed in the [Top-Up Limit Calculation](#top-up-limit-calculation) section) balance (actual + pending);
    - the validator is active;
    - the validator has not initiated exit on CL (`exitEpoch != FAR_FUTURE`);
    - the validator is not slashed;
@@ -1212,7 +1212,7 @@ Because the `0x02` CSM cursor **should never be blocked**, the Depositor Bot **s
 
 - is slashed,
 - is marked for exit,
-- has actual + pending balance > 2046.75,
+- has `actual + pending` balance great then max effective balance (2048 ETH),
 - or fails any other eligibility condition.
 
 Instead, the module relies on **TopUpGateway** to set a **top-up limit of zero** for such validators and then advance the cursor in the `0x02` version of CSM. This design ensures continuous progress of the CSM queue.
@@ -1282,7 +1282,9 @@ interface ITopUpGateway {
 
 The slot is taken from a selected beacon header, and the timestamp is taken from the execution block that stored the root of this header in the [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788) contract. On-chain verification checks that this timestamp resolves, via EIP-4788, to the corresponding beacon root, and that the Merkle path includes a header node with exactly this `(slot, proposer)`.
 
-The slot used in the proof must not be older than 5 minutes relative to the current timestamp. This requirement enforces that proofs are generated for **recent** headers, which reduces the probability that the validator has exited between proof construction and top-up execution, while providing sufficient time for an off-chain agent to assemble the proof and the remaining inputs required for the top-up.
+The slot used in the proof must not be older than the `_maxRootAgeSec` parameter, which defines the maximum allowed age, in seconds, of the beacon root used to prove the validator, relative to the current timestamp.
+
+This requirement ensures that proofs are generated against recent headers, reducing the probability that the validator exits between proof construction and top-up execution, while still giving the off-chain agent enough time to assemble the proof and the remaining inputs required for the top-up.
 
 Reorganizations are not treated as a separate risk: a proof built on a reorged branch simply fails because the [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788) anchor root is no longer available and the Merkle verification reverts.
 
