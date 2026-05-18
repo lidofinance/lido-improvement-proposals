@@ -1324,20 +1324,22 @@ If a validator is slashed, marked for exit, or has already exited, the allowed t
 Top-up limit = 0
 ```
 
-If the validator is eligible for deposits, the top-up limit is calculated as:
+If the validator is eligible for deposits, the top-up limit is the gap between the validator's current committed balance and a configured ceiling:
 
 ```
-Top-up limit = targetBalanceGwei − effective_balance − pendingBalanceGwei
+raw_top_up = targetBalanceGwei − effective_balance − pendingBalanceGwei
 
-Where targetBalanceGwei is a configurable parameter (initialized to MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY_MARGIN = 2046.75 ETH).
+Top-up limit = raw_top_up,
+               if raw_top_up value is at least minTopUpGwei
 
-Since Top-up limit ≥ minTopUpGwei, we have:
-
-targetBalanceGwei − (effective_balance + pendingBalanceGwei) ≥ minTopUpGwei
-⟺ effective_balance + pendingBalanceGwei ≤ targetBalanceGwei − minTopUpGwei
-
-If effective_balance + pendingBalanceGwei > targetBalanceGwei − minTopUpGwei, then Top-up limit = 0.
+Top-up limit = 0,
+               if raw_top_up value is less than minTopUpGwei
 ```
+
+Two configurable parameters control the calculation:
+
+- **targetBalanceGwei** — the validator balance ceiling after top-up. Initialized to `MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY_MARGIN = 2046.75 ETH`.
+- **minTopUpGwei** — the minimum per-validator top-up amount. Initialized to **2 ETH**. If the calculated top-up falls below this threshold, the limit is set to **0**.
 
 For simplicity, it was suggested to use `effective_balance` instead of `active_balance` in the top-up limit calculation. A validator’s `active_balance` may differ from its `effective_balance` by no more than the hysteresis thresholds defined in the consensus layer:
 
