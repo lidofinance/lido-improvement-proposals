@@ -108,6 +108,7 @@ updated: 2026-04-20
     - [ConsolidationBus](#consolidationbus)
     - [ConsolidationMigrator](#consolidationmigrator)
     - [TopUpGateway](#topupgateway-1)
+    - [TopUpGateway CircuitBreaker registration](#topupgateway-circuitbreaker-registration)
     - [TriggerableWithdrawalGateway](#triggerablewithdrawalgateway)
     - [EasyTrack](#easytrack)
   - [Security Considerations](#security-considerations)
@@ -2002,12 +2003,14 @@ Constructor parameters (implementation):
 
 New contract behind `OssifiableProxy`.
 
-| Role                 | Assignee                |
-| -------------------- | ----------------------- |
-| Proxy admin          | Aragon Agent            |
-| `DEFAULT_ADMIN_ROLE` | Aragon Agent            |
-| `TOP_UP_ROLE`        | Lido Depositor Bot      |
-| `MANAGE_LIMITS_ROLE` | Not assigned by default |
+| Role                 | Assignee                      |
+| -------------------- | ----------------------------- |
+| Proxy admin          | Aragon Agent                  |
+| `DEFAULT_ADMIN_ROLE` | Aragon Agent                  |
+| `PAUSE_ROLE`         | CircuitBreaker, ResealManager |
+| `RESUME_ROLE`        | ResealManager                 |
+| `TOP_UP_ROLE`        | Lido Depositor Bot            |
+| `MANAGE_LIMITS_ROLE` | Not assigned by default       |
 
 Constructor parameters (implementation):
 
@@ -2029,6 +2032,15 @@ Constructor parameters (implementation):
 | `_maxRootAgeSec`         | `600`                              | Maximum age (seconds) of the beacon root used to prove validator state                    |
 | `_targetBalanceGwei`     | `2046750000000` (2046.75 ETH)      | Validator target balance ceiling after top-up (leaves 1.25 ETH safety margin below MaxEB) |
 | `_minTopUpGwei`          | `2000000000` (2 ETH)               | Minimum top-up amount; smaller calculated top-ups are skipped                             |
+
+### TopUpGateway CircuitBreaker registration
+
+`TopUpGateway` is registered as a pausable contract on the existing [CircuitBreaker](./lip-34.md) instance, with a dedicated pauser committee assigned to it. Pause duration and heartbeat interval are global CircuitBreaker parameters and are not set per registration.
+
+| Name       | Value              | Description                                                            |
+| ---------- | ------------------ | ---------------------------------------------------------------------- |
+| `pausable` | `TopUpGateway`     | Contract registered as pausable on CircuitBreaker                      |
+| `pauser`   | Gate Seal contract | Gate Seal committee authorized to trigger a pause on `TopUpGateway`    |
 
 ### TriggerableWithdrawalGateway
 
