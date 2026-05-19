@@ -1684,7 +1684,7 @@ To ensure that there is always enough ETH for stake rebalancing and initial 32 E
 
 #### Proposed solution
 
-1. Allow the DAO or a delegated entity to set a deposits reserve target (`depositsReserveTarget`) — the amount of buffered ether to protect for CL deposits between accountinng oracle reports.
+1. Allow the DAO or a delegated entity to set a deposits reserve target (`depositsReserveTarget`) — the amount of buffered ether to protect for CL deposits between accounting oracle reports.
 2. On each oracle report, the effective deposits reserve is synced (restored) to the configured target, up to the available buffered ether.
 3. The deposits reserve is filled with the highest priority: buffered ether is first allocated to the deposits reserve, then to covering withdrawal requests, and only after that the remainder becomes available for additional CL deposits.
 
@@ -1859,9 +1859,9 @@ New implementation. Two new addresses (`consolidationGateway`, `topUpGateway`) a
 
 Two new immutables (`MAX_EFFECTIVE_BALANCE_WC_TYPE_01`, `MAX_EFFECTIVE_BALANCE_WC_TYPE_02`) are added. Per-module state migration and OpenZeppelin AccessControl role re-import are performed in `finalizeUpgrade_v4()` (no parameters).
 
-| Role                               | Assignee                 |
-| ---------------------------------- | ------------------------ |
-| `STAKING_MODULE_SHARE_MANAGE_ROLE` | Module Shares Easy Track |
+| Role                               | Assignee                     |
+| ---------------------------------- | ---------------------------- |
+| `STAKING_MODULE_SHARE_MANAGE_ROLE` | `EasyTrackEVMScriptExecutor` |
 
 Constructor parameters:
 
@@ -1943,7 +1943,7 @@ Constructor parameters:
 | Name       | Value                    | Description                                                      |
 | ---------- | ------------------------ | ---------------------------------------------------------------- |
 | `pausable` | `ConsolidationGateway`   | Contract registered as pausable on CircuitBreaker                |
-| `pauser`   | Dedicated multisig (TBD) | Multisig authorized to trigger a pause on `ConsolidationGateway` |
+| `pauser`   | Gate Seal contract | Gate Seal committee authorized to trigger a pause on `ConsolidationGateway` |
 
 ### ConsolidationBus
 
