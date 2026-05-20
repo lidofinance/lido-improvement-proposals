@@ -1189,7 +1189,7 @@ For **CMv2**, the Depositor Bot operates on a per-operator basis and selects key
 
 1. Based on the allocated amount received from the Staking Router’s `getDepositAllocations` function, the Depositor Bot calls `getDepositsAllocation(uint256 depositAmount)` on the module to determine how much stake should be allocated to each operator.
 2. Across this list of operators, the Depositor Bot chooses the oldest validators and checks that:
-   - the validator has not exceeded a **2045.75 ETH** (this constant is discussed in the [Top-Up Limit Calculation](#top-up-limit-calculation) section) balance (actual + pending);
+   - the validator has not exceeded the upper bound for top-ups (`effective_balance + pending_deposits ≤ MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY_MARGIN − minTopUpGwei`; see the [Top-Up Limit Calculation](#top-up-limit-calculation) section);
    - the validator is active;
    - the validator has not initiated exit on CL (`exitEpoch != FAR_FUTURE`);
    - the validator is not slashed;
