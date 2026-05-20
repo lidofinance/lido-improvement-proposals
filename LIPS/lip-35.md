@@ -79,7 +79,7 @@ updated: 2026-04-20
     - [Validators Exit Bus Oracle (VEBO)](#validators-exit-bus-oracle-vebo)
       - [Report format](#report-format)
       - [Sanity checker](#sanity-checker)
-    - [Off-chain Validators Exit Oracle (VEO)](#off-chain-validators-exit-oracle-veo)
+    - [Off-chain Validators Exit Oracle](#off-chain-validators-exit-oracle)
       - [MaxEB](#maxeb)
       - [Deposit reserve](#deposit-reserve)
       - [Consolidation](#consolidation-1)
@@ -121,7 +121,7 @@ updated: 2026-04-20
 
 Staking Router v3 upgrades Lido's core protocol for [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) (MaxEB). Validator accounting moves from per-validator counts to direct balance tracking, rewards are distributed per-module balance, and the deposit flow switches from a push model orchestrated by the Lido contract to a pull model where the Staking Router withdraws ETH from Lido as needed. A new `TopUpGateway` enables top-ups of `0x02` validators up to 2048 ETH, secured by on-chain Merkle-proof verification of validator state.
 
-A consolidation pipeline enables stake migration from Curated Module v1 to v2, and the validator exit flow (VEBO/VEO) becomes key-type-aware and balance-based, with sanity checks bound by total effective balance rather than validator count.
+A consolidation pipeline enables stake migration from Curated Module v1 to v2, and the validator exit flow becomes key-type-aware and balance-based, with sanity checks bound by total effective balance rather than validator count.
 
 A deposit reserve protects a portion of buffered ether for CL deposits, preventing withdrawal demand from consuming ETH needed for stake rebalancing and initial deposits during the CMv1 to CMv2 migration.
 
@@ -151,7 +151,6 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 - **Deposit Reserve** — a portion of Lido's buffered ether protected from withdrawal demand and reserved for CL deposits, ensuring stake rebalancing and migration deposits are not blocked.
 - **AO** — Accounting Oracle. The oracle that reports validator balances, rewards, and other accounting data to the protocol.
 - **VEBO** — Validators Exit Bus Oracle. The oracle that publishes validator exit requests.
-- **VEO** — Validators Exit Oracle. The off-chain logic that selects which validators to exit; updated here for MaxEB, deposit reserve, and consolidation awareness.
 - **DSM** — Deposit Security Module. The contract and a distributed off-chain service that gates Lido initial 32 ETH deposit that activates a validator and can be paused by Council guardians.
 - **TWG** — TriggerableWithdrawalGateway. The contract that submits [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) triggerable withdrawal requests on behalf of the protocol.
 
@@ -1538,8 +1537,8 @@ function getKeysForTopUp(uint256 keysCount) external view returns (bytes[] memor
 
 It is proposed to update the Validators Exit flow:
 
-- **On-chain (VEBO):** Update the exit report format and sanity checks to support MaxEB by validating exits using an upper-bound total effective balance (key-type aware) instead of validator-count limits.
-- **Off-chain (VEO):** Update the exit selection logic to support MaxEB balance-based prioritization, deposit reserve buffer effects, consolidation-aware exits, and operator-weight–based withdrawals in CMv2.
+- **On-chain:** Update the exit report format and sanity checks to support MaxEB by validating exits using an upper-bound total effective balance (key-type aware) instead of validator-count limits.
+- **Off-chain:** Update the exit selection logic to support MaxEB balance-based prioritization, deposit reserve buffer effects, consolidation-aware exits, and operator-weight–based withdrawals in CMv2.
 
 ### Validators Exit Bus Oracle (VEBO)
 
@@ -1589,9 +1588,9 @@ Under the new logic, each VEBO report will be validated as follows:
 
 This approach establishes a conservative upper bound on withdrawal volume per report and ensures that VEBO cannot trigger an excessively large withdrawal in a single submission, thereby reducing protocol risk.
 
-### Off-chain Validators Exit Oracle (VEO)
+### Off-chain Validators Exit Oracle
 
-It is proposed to update the Validators Exit Oracle (VEO) off-chain logic to correctly support:
+It is proposed to update the Validators Exit Oracle off-chain logic to correctly support:
 
 - MaxEB
 - Consolidation
@@ -1602,26 +1601,26 @@ It is proposed to update the Validators Exit Oracle (VEO) off-chain logic to cor
 
 The Validators Exit Oracle currently uses the number of validators per operator as one of the primary metrics for determining exit priority.
 
-To align with MaxEB, VEO should base exit priority on each operator’s total validator balance rather than validator counts.
+To align with MaxEB, Validators Exit Oracle should base exit priority on each operator’s total validator balance rather than validator counts.
 
 Without this change, an operator with many low-balance validators could be incorrectly prioritized for exit ahead of an operator with fewer but significantly higher-balance validators.
 
 #### Deposit reserve
 
-When VEO decides how many validators need to be exited, it also looks at the amount of ETH in the buffer.
+When Validators Exit Oracle decides how many validators need to be exited, it also looks at the amount of ETH in the buffer.
 
-Currently, VEO assumes that all of this amount can be used to fulfill Withdrawal Requests and therefore reduces the number of validator exits, assuming that the buffer ETH will cover part of the requests.
+Currently, Validators Exit Oracle assumes that all of this amount can be used to fulfill Withdrawal Requests and therefore reduces the number of validator exits, assuming that the buffer ETH will cover part of the requests.
 
 However, if deposit reserve is introduced, part of the buffer may be used for deposits that bypass withdrawals.
 
-Therefore, VEO should take deposit reserve into account when calculating the amount of ETH that needs to be withdrawn.
+Therefore, Validators Exit Oracle should take deposit reserve into account when calculating the amount of ETH that needs to be withdrawn.
 
 #### Consolidation
 
 During stake migration from CMv1 to CMv2, and in other cases after the migration is finished:
 
-- Source consolidation validators **should not** be selected for exit by VEO; otherwise, exit requests would be wasted on validators that are already about to be consolidated.
-- Target validators **can** be selected by VEO, but VEO should take into account the balances of their associated consolidation source validators, since those balances will be consolidated into the target validator.
+- Source consolidation validators **should not** be selected for exit by Validators Exit Oracle; otherwise, exit requests would be wasted on validators that are already about to be consolidated.
+- Target validators **can** be selected by Validators Exit Oracle, but it should take into account the balances of their associated consolidation source validators, since those balances will be consolidated into the target validator.
 
 It is expected that VEBO would inspect the `PendingConsolidation` queue to differentiate exit requests from consolidation requests when calculating the required ETH withdrawal amount.
 
@@ -1629,17 +1628,17 @@ It is expected that VEBO would inspect the `PendingConsolidation` queue to diffe
 
 The process of migrating stake from the CMv1 module to the CMv2 module may occur unevenly: some operators migrate their stake earlier than others.
 
-In the current implementation, when validators are exited from the CMv1 module, the Validators Exit Oracle (VEO) uses a fair distribution algorithm: exits are requested from operators with the largest stake.
+In the current implementation, when validators are exited from the CMv1 module, the Validators Exit Oracle uses a fair distribution algorithm: exits are requested from operators with the largest stake.
 
 Given the uneven migration, it is necessary to correctly account for the aggregate operator balances across the CMv1 and CMv2 modules in order to properly determine from which operators stake exits should be initiated.
 
-The [Meta Registry](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md#meta-operators-registry) stores information about the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module. As a result, when selecting validators to exit from the CMv1 module, the VEO will be able to take into account the amount of stake already migrated by operators to the CMv2 module.
+The [Meta Registry](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md#meta-operators-registry) stores information about the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module. As a result, when selecting validators to exit from the CMv1 module, the Validators Exit Oracle will be able to take into account the amount of stake already migrated by operators to the CMv2 module.
 
 #### Operator weight in the CSMv2 module
 
-For withdrawals, VEO must be able to determine from which modules and from which operators stake should be withdrawn.
+For withdrawals, Validators Exit Oracle must be able to determine from which modules and from which operators stake should be withdrawn.
 
-At the **module level**, VEO continues to rely on the existing exit share limit.
+At the **module level**, Validators Exit Oracle continues to rely on the existing exit share limit.
 
 At the **operator level**, withdrawals depend on the stake allocation strategy used by the module. Currently, two types of withdrawal strategies are in use:
 
@@ -1654,11 +1653,11 @@ interface ITargetAllocation {
 }
 ```
 
-To determine which validators to request for exit, VEO builds a sorted list of exitable validators based on the predicates described in the table below. It then selects entries from this list until the withdrawal queue (WQ) demand is covered by the exiting validators and future rewards, or until the per-report limit is reached.
+To determine which validators to request for exit, Validators Exit Oracle builds a sorted list of exitable validators based on the predicates described in the table below. It then selects entries from this list until the withdrawal queue (WQ) demand is covered by the exiting validators and future rewards, or until the per-report limit is reached.
 
-Within the new operator-weight–based distribution strategy for the CMv2 module, the fourth predicate in VEO’s exit-prioritization algorithm will be updated.
+Within the new operator-weight–based distribution strategy for the CMv2 module, the fourth predicate in the Validators Exit Oracle’s exit-prioritization algorithm will be updated.
 
-_The full list of predicates used by VEO to build the sorted list of exitable validators:_
+_The full list of predicates used by Validators Exit Oracle to build the sorted list of exitable validators:_
 
 | Module                                      | Node Operator                                                                 | Validator              |
 | ------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------- |
