@@ -406,7 +406,7 @@ Most of the pre-existing sanityCheck parameters have been recalculated from the 
 1. **exitedEthAmountPerDayLimit (57,600 ETH)**
    This has been converted to ETH without changes to the underlying logic, but it now accounts for the specific calculation where the minimum possible validator balance is 16 ETH.
 
-2. **consolidationEthAmountPerDayLimit (91,800 ETH)**
+2. **consolidationEthAmountPerDayLimit (93,375 ETH)**
    This was calculated based on the current state of the network, including deposit queue and a buffer for potential DAO changes over a two-month period (37.3M + 3.2M + 3M).
 
 #### VEBO: Maximum exit ETH per report
