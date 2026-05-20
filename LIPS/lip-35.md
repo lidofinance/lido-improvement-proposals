@@ -1390,7 +1390,7 @@ It is proposed to update the existing `deposit` methods to support the ETH pull 
 To support the new top-up flow, it is proposed to add a new `topUp` method to perform validator top-ups. The `topUp` method will:
 
 1. **Check module eligibility for top-ups.** Verifies that the module supports top-ups (i.e., it uses withdrawal credentials of type `0x02`). If the module is not eligible, the call reverts.
-2. **Calculate module allocation.** Determines the maximum total amount of ETH that can be allocated to the module according to the MinFirst allocation strategy.
+2. **Calculate module allocation.** Determines the maximum total amount of ETH that can be allocated to the module according to the MinFirst allocation strategy. To compute each module's current stake, the Staking Router queries `0x02` modules directly via `getTotalModuleStake()`, while for `0x01` modules the value `(depositedValidators − exitedValidators) × 32 ETH` is used based on on-chain accounting. The allocation is expressed in 32 ETH units, so the amount allocated to the module is always a multiple of 32 ETH.
 3. **Obtain top-up amounts.** Calls `allocateDeposits` on the staking module, passing the module’s maximum deposit amount along with key indices, operator IDs, public keys, and per-key top-up limits. The `allocateDeposits` method returns the computed top-up amounts for the supplied public keys.
 4. **Validate the returned total top-up amount.**
    - Verifies that each returned top-up amount does not exceed the corresponding per-key top-up limit.
@@ -1463,16 +1463,16 @@ capacity = min(shareLimit × totalValidators / BASIS_POINTS, activeCount × maxE
 
 The allocation strategy operates in `maxEBType1` (32 ETH) units, so the amount allocated to each module is always a multiple of 32 ETH.
 
-For legacy modules, the current allocation is:
+For `0x01` modules, the Staking Router derives the current allocation from on-chain accounting as the number of active validators (each holding 32 ETH):
 
 ```
 currentAllocation = depositedValidators - max(moduleReportedExited, stakingRouterTrackedExited)
 ```
 
-For new modules, the total stake is obtained via `getTotalModuleStake` and converted into 32 ETH units:
+For `0x02` modules, the Staking Router queries the module directly via `getTotalModuleStake()` to obtain the actual total ETH staked in the module, then converts it into 32 ETH units (rounded up):
 
 ```
-currentAllocation = ceil(totalModuleStake / maxEBType1)
+currentAllocation = ceil(getTotalModuleStake() / maxEBType1)
 ```
 
 ### Staking Modules
