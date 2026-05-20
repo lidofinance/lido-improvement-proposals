@@ -1361,10 +1361,10 @@ effective_balance + pending_deposits ≤ MAX_EFFECTIVE_BALANCE − TOP_UP_SAFETY
 
 It is proposed to limit the overall amount of ETH that may be topped up into the modules using the following parameters:
 
-- **maxTopUpPerBlock** — the maximum amount of ETH that can be topped up within a single block.
-- **minTopUpDistance** — the minimum number of blocks required between `topUp` calls.
+- **maxTopUpPerBlockGwei** — the maximum amount of ETH that can be topped up within a single block.
+- **minTopUpBlockDistance** — the minimum number of blocks required between `topUp` calls.
 
-This design assumes that **minTopUpDistance** and **maxTopUpPerBlock** are common values for all modules, meaning they define protocol-wide limits rather than per-module top-up limits.
+This design assumes that **minTopUpBlockDistance** and **maxTopUpPerBlockGwei** are common values for all modules, meaning they define protocol-wide limits rather than per-module top-up limits.
 
 #### Top-up Precondition and Pause
 
@@ -2028,10 +2028,11 @@ Constructor parameters (implementation):
 | ------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------- |
 | `_admin`                 | Aragon Agent (via temporary admin) | Receives `DEFAULT_ADMIN_ROLE`                                                             |
 | `_maxValidatorsPerTopUp` | `32`                               | Maximum number of validators a single `topUp` can process                                 |
-| `_minBlockDistance`      | `1`                                | Minimum block distance between `topUp` calls                                              |
+| `_minTopUpBlockDistance`      | `75`                                | Minimum block distance between `topUp` calls                                              |
 | `_maxRootAgeSec`         | `600`                              | Maximum age (seconds) of the beacon root used to prove validator state                    |
 | `_targetBalanceGwei`     | `2046750000000` (2046.75 ETH)      | Validator target balance ceiling after top-up (leaves 1.25 ETH safety margin below MaxEB) |
 | `_minTopUpGwei`          | `2000000000` (2 ETH)               | Minimum top-up amount; smaller calculated top-ups are skipped                             |
+| `_maxTopUpPerBlockGwei`  | `3200000000000` (3200 ETH)         | Maximum total ETH that can be topped up in a single block                                 |
 
 ### TopUpGateway CircuitBreaker registration
 
@@ -2083,7 +2084,7 @@ The `topUp` method is gated by the `TOP_UP_ROLE`, which is granted exclusively t
 
 **Mitigations**
 
-Excessive or anomalous top-ups are detected by existing monitoring and trigger an incident response, during which the authorized actor can be paused. Combined with the ability to pause the TopUpGateway, the per-block top-up cap (`maxTopUpPerBlock`), the `minTopUpDistance` constraint, and automatic skimming (excess is automatically skimmed to the validator’s WC), these measures bound the worst-case impact of bot misbehavior to a recoverable inefficiency rather than a loss of protocol funds.
+Excessive or anomalous top-ups are detected by existing monitoring and trigger an incident response, during which the authorized actor can be paused. Combined with the ability to pause the TopUpGateway, the per-block top-up cap (`maxTopUpPerBlockGwei`), the `minTopUpBlockDistance` constraint, and automatic skimming (excess is automatically skimmed to the validator’s WC), these measures bound the worst-case impact of bot misbehavior to a recoverable inefficiency rather than a loss of protocol funds.
 
 ### Deposit reserve and withdrawal demand
 
