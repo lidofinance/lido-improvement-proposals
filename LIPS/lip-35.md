@@ -411,7 +411,7 @@ Most of the pre-existing sanityCheck parameters have been recalculated from the 
 
 #### VEBO: Maximum exit ETH per report
 
-`checkMaximumOfAmountEthCalledToExitInReport` verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type cases multiplied by their weights. Under this check, we assume the weight of a `0x02`-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048.
+`checkMaximumOfAmountEthCalledToExitInReport` verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type cases multiplied by their weights. Under this check, we assume the weight of a `0x02`-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048, while the `maxEffectiveBalanceWeightWCType01` is fixed at 32 ETH.
 
 ```
 count_of_0x01_keys * maxEffectiveBalanceWeightWCType01 +
