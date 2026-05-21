@@ -1249,7 +1249,7 @@ After verifying the validator state via proofs, the `TopUpGateway` validates the
 
 If any of these checks fail, `TopUpGateway` reverts.
 
-**Note.** If `exitEpoch != FAR_FUTURE_EPOCH` (i.e., an exit has been scheduled) or the validator is slashed, the top-up limit is set to `0` (see [Top-Up Limit Calculation](#top-up-limit-calculation)). Therefore, there is no requirement to restrict inputs to validators with an unknown exit epoch or an unslashed status.
+**Note.** If `exitEpoch != FAR_FUTURE_EPOCH` (i.e., an exit has been scheduled or the validator is slashed), the top-up limit is set to `0` (see [Top-Up Limit Calculation](#top-up-limit-calculation)). Therefore, there is no requirement to restrict inputs to validators with an unknown exit epoch or an unslashed status.
 
 #### Validator Pending Balance
 
