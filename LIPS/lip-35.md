@@ -101,6 +101,7 @@ updated: 2026-04-20
     - [LidoLocator](#lidolocator)
     - [StakingRouter](#stakingrouter)
     - [AccountingOracle](#accountingoracle)
+    - [ValidatorsExitBusOracle](#validatorsexitbusoracle)
     - [WithdrawalVault](#withdrawalvault)
     - [DepositSecurityModule](#depositsecuritymodule)
     - [OracleReportSanityChecker](#oraclereportsanitychecker)
@@ -1791,6 +1792,18 @@ Below is a list of roles, configuration values, and deployment parameters propos
 
 New implementation; state migration is performed via `finalizeUpgrade_v4()` which reads from storage and takes no arguments. The Lido app implementation has no parameters that change between versions.
 
+A new role `BUFFER_RESERVE_MANAGER_ROLE` is created on Lido and granted to the Aragon Agent during the upgrade.
+
+| Role                          | Assignee     |
+| ----------------------------- | ------------ |
+| `BUFFER_RESERVE_MANAGER_ROLE` | Aragon Agent |
+
+The deposits reserve target governs how much buffered ETH is held back from withdrawal finalization for CL deposits.
+
+| Name                        | Value                                       | Description                                            |
+| --------------------------- | ------------------------------------------- | ------------------------------------------------------ |
+| `lidoDepositsReserveTarget` | `1000000000000000000000` (1000 ETH in wei) | Deposits reserve target  |
+
 ### LidoLocator
 
 New implementation. Two new addresses (`consolidationGateway`, `topUpGateway`) are added to the locator config;
@@ -1821,7 +1834,19 @@ New implementation. Constructor signature is unchanged; the upgrade calls `final
 
 | Name               | Value                                | Description                             |
 | ------------------ | ------------------------------------ | --------------------------------------- |
-| `consensusVersion` | `5` (passed to `finalizeUpgrade_v5`) | New consensus version bumped on upgrade |
+| `consensusVersion` | `6` (passed to `finalizeUpgrade_v5`) | New consensus version bumped on upgrade |
+
+### ValidatorsExitBusOracle
+
+New implementation. The upgrade calls `finalizeUpgrade_v3(maxValidatorsPerReport, maxExitBalanceEth, balancePerFrameEth, frameDurationInSec, consensusVersion)` to bump the consensus version and seed the exit-rate limit state.
+
+| Name                     | Value     | Description                                                      |
+| ------------------------ | --------- | ---------------------------------------------------------------- |
+| `maxValidatorsPerReport` | `600`     | Maximum number of validator exit requests per oracle report      |
+| `maxExitBalanceEth`      | `358400`  | Maximum cumulative ETH of validators referenced in exit requests |
+| `balancePerFrameEth`     | `32`      | ETH amount restored to the exit-balance bucket per frame         |
+| `frameDurationInSec`     | `48`      | Duration of each refill frame, in seconds                        |
+| `consensusVersion`       | `5`       | New consensus version bumped on upgrade                          |
 
 ### WithdrawalVault
 
@@ -1846,15 +1871,19 @@ New non-proxy contract deployed at upgrade; replaces the previous sanity checker
 | -------------------- | ------------ |
 | `DEFAULT_ADMIN_ROLE` | Aragon Agent |
 
-Constructor parameters:
+Constructor parameters (new / changed limits passed in the `_limits` struct):
 
-| Name                                | Value   | Description                                              |
-| ----------------------------------- | ------- | -------------------------------------------------------- |
-| `maxEffectiveBalanceWeightWCType01` | `32`    | Per-key weight in ETH for `0x01` keys used in VEBO check |
-| `maxEffectiveBalanceWeightWCType02` | `2048`  | Per-key weight in ETH for `0x02` keys used in VEBO check |
-| `maxCLBalanceDecreaseBP`            | `360`   | Max CL balance decrease over 36-day window (BP, 3.6%)    |
-| `consolidationEthAmountPerDayLimit` | `93375` | Max ETH consolidated per day                             |
-| `exitedValidatorEthAmountLimit`     | `32`    | Per-validator ETH amount used in exit reporting          |
+| Name                                  | Value    | Description                                                           |
+| ------------------------------------- | -------- | --------------------------------------------------------------------- |
+| `maxEffectiveBalanceWeightWCType01`   | `32`     | Per-key weight in ETH for `0x01` keys used in VEBO check              |
+| `maxEffectiveBalanceWeightWCType02`   | `2048`   | Per-key weight in ETH for `0x02` keys used in VEBO check              |
+| `maxCLBalanceDecreaseBP`              | `360`    | Max CL balance decrease over 36-day window (BP, 3.6%)                 |
+| `consolidationEthAmountPerDayLimit`   | `93375`  | Max ETH consolidated per day                                          |
+| `exitedValidatorEthAmountLimit`       | `32`     | Per-validator ETH amount used in exit reporting                       |
+| `externalPendingBalanceCapEth`        | `300`    | Extra external pending balance cap for bounded side deposits / top-ups |
+| `exitedEthAmountPerDayLimit`          | `57600`  | Max ETH amount of validators that may exit per day                    |
+| `appearedEthAmountPerDayLimit`        | `57600`  | Max ETH amount of validators that may appear per day                  |
+| `maxBalanceExitRequestedPerReportInEth` | `19200` | Max ETH amount of validators referenced in exits within one report   |
 
 ### ConsolidationGateway
 
@@ -1990,11 +2019,18 @@ Constructor parameters (implementation):
 ### TriggerableWithdrawalGateway
 
 Parameter upgrade for `TriggerableWithdrawalGateway`:
-| Name | Value | Description |
-| ----------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `maxExitRequestsLimit` | 250 | Maximum number of triggerable exit requests in the limit bucket |
-| `exitsPerFrame` | 1 | Number of exit requests restored to the bucket per frame |
-| `frameDurationInSec` | 240 | Duration of each refill frame, in seconds |
+
+| Name                   | Value | Description                                                     |
+| ---------------------- | ----- | --------------------------------------------------------------- |
+| `maxExitRequestsLimit` | 250   | Maximum number of triggerable exit requests in the limit bucket |
+| `exitsPerFrame`        | 1     | Number of exit requests restored to the bucket per frame        |
+| `frameDurationInSec`   | 240   | Duration of each refill frame, in seconds                       |
+
+The upgrade also grants `TW_EXIT_LIMIT_MANAGER_ROLE` on `TriggerableWithdrawalsGateway` to the Aragon Agent (so the Agent can call `setExitRequestLimit` during the upgrade and afterward).
+
+| Role                         | Assignee     |
+| ---------------------------- | ------------ |
+| `TW_EXIT_LIMIT_MANAGER_ROLE` | Aragon Agent |
 
 ### EasyTrack
 
