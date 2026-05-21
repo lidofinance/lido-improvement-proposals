@@ -33,11 +33,12 @@ updated: 2026-04-20
       - [StakingRouter Migration](#stakingrouter-migration)
       - [Data Integrity](#data-integrity)
     - [Sanity Checks](#sanity-checks)
-      - [VEBO: Maximum exit ETH per report](#vebo-maximum-exit-eth-per-report)
-      - [AO: CL balances consistency](#ao-cl-balances-consistency)
-      - [AO: CL balance decrease](#ao-cl-balance-decrease)
-      - [AO: Balance increase per day](#ao-balance-increase-per-day)
-      - [AO: Exited validators per module](#ao-exited-validators-per-module)
+      - [AO CL Balance Decrease](#ao-cl-balance-decrease)
+        - [First 36 Days Problem](#first-36-days-problem)
+      - [AO CL Balances Consistency](#ao-cl-balances-consistency)
+      - [AO Balance Increase Per Day](#ao-balance-increase-per-day)
+      - [AO Exited Validators by Staking Module](#ao-exited-validators-by-staking-module)
+      - [VEBO Maximum Eth Amount To Exit](#vebo-maximum-eth-amount-to-exit)
     - [Legacy API](#legacy-api)
   - [Consolidation](#consolidation)
     - [Consolidation EasyTrack](#consolidation-easytrack)
@@ -399,87 +400,31 @@ The first report after migration is correct by construction:
 
 The list of checks has been updated following the **Pectra hard-fork** and the subsequent expansion of parameters passed to the Validator Exit Bus Oracle (VEBO) and Accounting Oracles (AO).
 
-[Here you can find full description of changes](https://docs.google.com/document/d/1YAWLxZk90dkcwCeQkv8xSeWYfVNKGCJmicZpPn-aGR0/edit?tab=t.0)
+[Here you can find full description of changes](https://hackmd.io/@lido/HJ0AC5D0Ze)
 
-Most of the pre-existing sanityCheck parameters have been recalculated from the number of validators to the amount of ETH. The most significant changes were made to the following parameters:
+#### AO CL Balance Decrease
 
-1. **exitedEthAmountPerDayLimit (57,600 ETH)**
-   This has been converted to ETH without changes to the underlying logic, but it now accounts for the specific calculation where the minimum possible validator balance is 16 ETH.
+This check prevents an unexpectedly large drop in CL validator balance. It compares the actual balance decrease over up to 36 days with the maximum decrease that could happen naturally from penalties and slashing. The current allowed decrease is capped at about **3.6%** of CL validator balance over the checked period. 
 
-2. **consolidationEthAmountPerDayLimit (93,375 ETH)**
-   This was calculated based on the current state of the network, including deposit queue and a buffer for potential DAO changes over a two-month period (37.3M + 3.2M + 3M).
+##### First 36 Days Problem
 
-#### VEBO: Maximum exit ETH per report
+After a new staking router release, the oracle may not yet have a full 36 days of historical data. In that case, the check uses all available data and gradually expands the window day by day until it reaches 36 days. This still limits how much negative rebase can be hidden over time. 
 
-`checkMaximumOfAmountEthCalledToExitInReport` verifies the maximum amount of ETH that can be sent within a single VEBO report based on the count of different type cases multiplied by their weights. Under this check, we assume the weight of a `0x02`-type validator falls within the range of 32 to 2048 ETH and can be adjusted based on risk tolerance. Taking all conditions into account, the current value for `maxEffectiveBalanceWeightWCType02` is set to 2048, while the `maxEffectiveBalanceWeightWCType01` is fixed at 32 ETH.
+#### AO CL Balances Consistency
 
-```
-count_of_0x01_keys * maxEffectiveBalanceWeightWCType01 +
-+ count_of_0x02_keys * maxEffectiveBalanceWeightWCType02
-<= maxBalanceExitRequestedPerReportInEth
-```
+This is a basic consistency check. It verifies that the sum of validator balances across all staking modules equals the total CL validators balance reported by the oracle. 
 
-#### AO: CL balances consistency
+#### AO Balance Increase Per Day
 
-`checkCLBalancesConsistency` performs basic data verification.
+This check validates daily balance growth. It ensures that pending ETH, newly activated ETH, validator balance increases, and per-module balance changes stay within expected daily limits, including safety caps for APR and gifts. 
 
-```
-sum(validatorBalancesGweiByStakingModule) == clValidatorsBalanceGwei
-```
+#### AO Exited Validators by Staking Module
 
-#### AO: CL balance decrease
+This check limits how many validators can be reported as exited per staking module. It was updated to account for consolidation, using a conservative worst-case assumption where validators may have only **16 ETH** balance. This prevents valid withdrawals from being incorrectly rejected. 
 
-`checkCLBalanceDecrease` was changed to be compatible with Pectra hard-fork.  
-New sanity check allows CLValidatorBalance to be decreased by 3.6% in a 36-day window. Such a value (3.6%) represents the maximum balance decrease due to attestation penalties, initial slashing penalty, and correlation penalty while less than 1.08% of the network balance is slashed, more than a total of 11 million ETH is staked, and the network is not in inactivity leak mode.
+#### VEBO Maximum Eth Amount To Exit
 
-[Here you can find particular algorithm and calculations](https://docs.google.com/document/d/1MK9XMU-xVdw0XQG9cxtR0rxusuBr1CI4DuGNxNXgswI/edit?tab=t.0)
-
-#### AO: Balance increase per day
-
-`calculateBalanceIncreasePerDay` performs:
-
-- Verifying the flow of pending/inactive ETH in the queue (accounting for new deposits).
-- Verifying changes in the total active balance migrated from the pending queue
-- Verifying balance changes on a per-module basis.
-
-```python=
-aprAndGiftSafetyCap = clValidatorsBalanceGweiPre*annualBalanceIncreaseBPLimit/365
-
-assert clPendingBalanceGweiCurrent <= clPendingBalanceGweiPre + stakeDeposits(t(prev->curr))
-
-activatedGweiAmount = clPendingBalanceGweiPre + stakeDeposits(t(prev->curr)) - clPendingBalanceGweiCurrent
-assert activatedGweiAmount <= appearedEthAmountPerDayLimit
-
-activatedGweiAmountWithGap = activatedGweiAmount + aprAndGiftSafetyCap
-
-if clValidatorsBalanceGweiCurrent > clValidatorsBalanceGweiPre:
-    assert clValidatorsBalanceGweiCurrent - clValidatorsBalanceGweiPre <= activatedGweiAmountWithGap
-
-totalActivatedInClByModules = 0
-for i, stBalance in enumerate(validatorBalancesGweiByStakingModule(current)):
-    _moduleIncrease = stBalance - validatorBalancesGweiByStakingModule(prev)[i]
-    if _moduleIncrease > 0:
-        totalActivatedInClByModules += _moduleIncrease
-
-assert totalActivatedInClByModules <= activatedGweiAmountWithGap + consolidationEthAmountPerDayLimit
-```
-
-#### AO: Exited validators per module
-
-`checkNumExitedValidatorsByStakingModule` has been updated to align with the introduction of the consolidation process. Now, the maximum amount of ETH exited at once cannot exceed double the sum of exited and consolidated ETH.
-
-The necessity for doubling is due to the worst-case scenario where validators participating in these processes have the minimum balance of 16 ETH. The size of `0x02`-type validators is set to the minimum possible value because, otherwise, actual recorded withdrawals could falsely trigger a revert.
-
-```
-count_of_0x01_keys * 32 + count_of_0x02_keys * 32
-<=
-(exitedEthAmountPerDayLimit + consolidationEthAmountPerDayLimit)*2
-
-OR
-
-(count_of_0x01_keys + count_of_0x02_keys) * 16
-<= exitedEthAmountPerDayLimit + consolidationEthAmountPerDayLimit
-```
+This check limits how much ETH can be requested to exit in a single VEBO report. It calculates the total exit amount using the number of validators of each type and their maximum balance.
 
 ### Legacy API
 
