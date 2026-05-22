@@ -2,10 +2,10 @@
 lip: 35
 title: Staking Router v3
 status: Proposed
-author: Maksim Kuraian, KRogLA, Alexander Kolesnikov, Anna Mukharram
-discussions-to: TBD
-created: 2026-04-03
-updated: 2026-04-20
+author: Maksim Kuraian (@mkurayan) , KRogLA (@KRogLA), Alexander Kolesnikov (@eddort), Anna Mukharram (@Amuhar)
+discussions-to: To be updated before merge
+created: 2026-05-22
+updated: 2026-05-22
 ---
 
 # LIP-35. Staking Router v3
