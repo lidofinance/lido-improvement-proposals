@@ -143,15 +143,17 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 
 ## Glossary
 
-- **MaxEB** — Maximum Effective Balance. Introduced by [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251), it raises a validator's effective balance ceiling from 32 ETH up to 2048 ETH for validators with `0x02` withdrawal credentials.
+- **EL** — Execution Layer. The Ethereum layer that processes transactions, executes smart contracts, and maintains Ethereum’s account and contract state.
+- **CL** — Consensus Layer. The Ethereum layer that runs proof-of-stake, coordinates validators, chooses the canonical chain, and provides finality.
+- **MaxEB** — Maximum Effective Balance. Raised by [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) from 32 ETH up to 2048 ETH for validators with `0x02` withdrawal credentials.
 - **WC** — Withdrawal Credentials. The 32-byte field on a validator that determines where its stake exits to and which key type it uses. All Lido core validators use credentials pointing to the `WithdrawalVault` contract.
 - **`0x01` / `0x02` keys** — validator key types, distinguished by withdrawal credentials prefix. `0x01` keys are capped at 32 ETH effective balance; `0x02` keys support effective balance up to 2048 ETH (MaxEB) and allow top-ups and consolidations.
 - **Predeposit** — the minimal deposit (32 ETH) required to activate a validator. Required for both `0x01` and `0x02` keys.
 - **Top-up** — an additional deposit to an already-activated `0x02` validator, raising its balance toward the 2048 ETH cap.
 - **Consolidation** — an [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) operation that merges a source validator's balance into a target `0x02` validator.
-- **CMv1 / CMv2** — Curated Module v1 (the existing curated module with 0x01 withdrawal credentials) and Curated Module v2 (the new curated module with 0x02 withdrawal credentials).
+- **CMv1 / CMv2** — Curated Module v1 (the existing curated module with 0x01 withdrawal credentials, also known as Node Operators registry, or simply Curated Module) and Curated Module v2 (the new curated module supporting 0x02 withdrawal credentials only).
 - **CSM** — Community Staking Module, Lido's permissionless staking module.
-- **SDVT** — Simple DVT module, the staking module that runs distributed validators.
+- **SDVT** — Simple DVT module, the staking module that runs distributed validators. Uses the same code base as CMv1.
 - **Deposit Reserve** — a portion of Lido's buffered ether protected from withdrawal demand and reserved for CL deposits, ensuring stake rebalancing and migration deposits are not blocked.
 - **AO** — Accounting Oracle. The oracle that reports validator balances, rewards, and other accounting data to the protocol.
 - **VEBO** — Validators Exit Bus Oracle. The oracle that publishes validator exit requests.
@@ -162,9 +164,9 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 
 ### The 32 ETH Problem
 
-Before the Pectra upgrade, every Ethereum validator had a fixed effective balance — 32 ETH. This allowed Lido to use a simple accounting model: it was enough to count the number of validators and multiply by 32 to get the total stake.
+Before the [Pectra](https://eips.ethereum.org/EIPS/eip-7600) upgrade, every Ethereum validator had a fixed maximum effective balance of 32 ETH. This allowed Lido to use a simple accounting model: it was enough to count the number of validators and multiply by 32 to get the total stake.
 
-[EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) (MaxEB) changed the rules. Now, a validator’s effective balance can range from 32 to 2048 ETH. A validator with 2048 ETH generates 64 times more rewards than a validator with 32 ETH, but the old system treated them equally.
+[EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) introduced the new type of validator withdrawal credentials - `0x02` with `MaxEB = 2048 ETH`. For these validators, an effective balance can range from 32 to 2048 ETH. A validator with 2048 ETH generates 64 times more rewards than a validator with 32 ETH, but the old accounting system in the Lido protocol treated them equally.
 
 As a result, the current validator-count–based accounting is incompatible with large validators in several aspects:
 
@@ -196,7 +198,7 @@ Total protocol balance on the CL:
 totalClBalance = clValidatorsBalance + clPendingBalance
 ```
 
-> Note: For the `clValidatorsBalanceGwei` and `clPendingBalanceGwei` calculations, the oracle uses KAPI. When querying KAPI, the oracle verifies that the returned data corresponds to a slot greater than `refSlot`, ensuring that the response includes the most up-to-date state.
+> Note: For the `clValidatorsBalanceGwei` and `clPendingBalanceGwei` calculations, the oracle uses [Keys API](https://github.com/lidofinance/lido-keys-api). When querying Keys API, the oracle verifies that the returned data corresponds to a slot greater than `refSlot`, ensuring that the response includes the most up-to-date state.
 
 #### CL Validators Balance Calculation Algorithm
 
@@ -212,7 +214,7 @@ totalClBalance = clValidatorsBalance + clPendingBalance
 1. **Data retrieval:** get pending deposits and the active validator set from the Consensus Layer, Lido keys from the Keys API, and Lido withdrawal credentials from the Lido contracts.
 2. **Consistency check:** the number of Lido keys returned by the Keys API must be at least equal to the count of deposited validators reported by the Staking Router. If fewer keys are returned, revert.
 3. **Find Lido keys awaiting activation:** compare Lido keys against the CL validator set — keys not yet present on the CL are considered _pending_ (deposited on the Execution Layer, not yet activated on the Consensus Layer).
-4. **Attribute deposits to pending keys:** walk pending deposits in queue order; for each deposit targeting a Lido pending key:
+4. **Attribute deposits to pending keys:** walk over pending deposits in queue order; for each deposit targeting a Lido pending key:
    - Deposits with an invalid BLS signature are skipped.
    - The first BLS-valid deposit for a key determines the key’s status: if it points to Lido withdrawal credentials, the key is accepted and the deposit is kept; otherwise the key is considered front-run and all of its deposits are discarded.
    - Subsequent deposits to an already-accepted key are added to that key's group.
@@ -228,11 +230,11 @@ transientBalance = (depositedValidators - clValidators) × 32 ETH
 
 This construct was necessary because a deposit could “temporary disappear” between the Execution Layer and the Consensus Layer for several hours or even days. The oracle didn’t see these funds, but the protocol had to account for them in `totalPooledEther`.
 
-**Proposed:** Pectra ([EIP-6110](https://eips.ethereum.org/EIPS/eip-6110)) eliminates this problem. Deposits from the Execution Layer enter the Consensus Layer pending queue in the same block:
+**Proposed:** [EIP-6110](https://eips.ethereum.org/EIPS/eip-6110), introduced in Pectra Hard Fork,  eliminates this problem. Deposits from the Execution Layer enter the Consensus Layer pending queue in the same block:
 
 > “Validator deposits list supplied in a block is obtained by parsing deposit contract log events emitted by each deposit transaction included in a given block.” — [EIP-6110](https://eips.ethereum.org/EIPS/eip-6110)
 
-The oracle always sees the complete picture: active validators in `clValidatorsBalance`, pending deposits in `clPendingBalance`. Transient balance is no longer needed — this simplifies the system and eliminates a potential source of discrepancies between the actual CL state and protocol data.
+The oracle always sees the complete picture: active validators in `clValidatorsBalance`, pending deposits in `clPendingBalance`. Transient balance is no longer needed — this simplifies the system and eliminates a potential source of discrepancies between the actual CL state and protocol data on EL.
 
 ### Deposit Tracking
 
