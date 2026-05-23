@@ -127,6 +127,8 @@ A consolidation pipeline enables stake migration from Curated Module v1 to v2, a
 
 A deposit reserve protects a portion of buffered ether for CL deposits, preventing withdrawal demand from consuming ETH needed for stake rebalancing and initial deposits during the CMv1 to CMv2 migration.
 
+A dedicated Easy Track factory streamlines module share management within pre-defined bounds.
+
 ## Motivation
 
 Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between modules via consolidation operations, support new deposits into large validators, naturally streamlining the network, and lay the groundwork for smarter, leaner validator management overall.
