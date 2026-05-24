@@ -53,8 +53,8 @@ updated: 2026-05-22
     - [Depositable ETH Pull Model](#depositable-eth-pull-model)
       - [Lido](#lido)
       - [Staking Router](#staking-router)
-    - [Predeposits flow description](#predeposits-flow-description)
-    - [Top-ups flow description](#top-ups-flow-description)
+    - [Predeposit flow](#predeposit-flow)
+    - [Top-up flow](#top-up-flow)
     - [Depositor Bot](#depositor-bot)
       - [Example Setup](#example-setup)
       - [Stage 1. Predeposits to modules with `0x02` keys](#stage-1-predeposits-to-modules-with-0x02-keys)
@@ -405,7 +405,7 @@ The first report after migration is correct by construction:
 
 The list of checks has been updated following the **Pectra hard-fork** and the subsequent expansion of parameters passed to the Validator Exit Bus Oracle (VEBO) and Accounting Oracles (AO).
 
-[Here you can find full description of changes](https://hackmd.io/@lido/HJ0AC5D0Ze)
+[Here you can find full description of changes](https://hackmd.io/@lido/HJ0AC5D0Ze).
 
 #### AO CL Balance Decrease
 
@@ -451,7 +451,7 @@ Operators will use EasyTrack to specify a **source/target operator pair** (CMv1 
 
 Once consolidation is allowed, the operator submits key indices to the Consolidation Migrator contract, which verifies that the keys are in use (deposited). The Consolidation Migrator, via dedicated modules, retrieves the corresponding pubkeys from the provided key indices. The consolidation requests are then sent to the Consolidation Bus, which stores the hash of the pubkey batch received from the Migrator.
 
-After the required execution delay has passed, a permissionless executor submits the same batch along with target validator withdrawal credentials (WC) proofs and the required fee. The Consolidation Bus verifies that the submitted batch hash matches the stored value. If it does, the Bus forwards the consolidation request, WC proofs, and fee to the Consolidation Gateway.
+After the required [execution delay](#execution-delay) has passed, a permissionless executor submits the same batch along with target validator withdrawal credentials (WC) proofs and the required fee. The Consolidation Bus verifies that the submitted batch hash matches the stored value. If it does, the Bus forwards the consolidation request, WC proofs, and fee to the Consolidation Gateway.
 
 The Consolidation Gateway verifies the target validators’ WC proofs, checks consolidation limits, and ensures that deposits in the Deposit Security Module (DSM) are not paused, that Lido is running, and that bunker mode is disabled.
 
@@ -506,7 +506,7 @@ To manage the list of allowed consolidation pairs (source → target operators),
 
 `disallowPair` — disallows consolidation from a source operator to a target operator. This method may be called to correct an incorrectly allowed pair, update the consolidation manager address, or stop consolidation for operational reasons. It is proposed to grant the CMC Committee (also known as CM Committee Multisig) permission to call this method.
 
-`selfDisallowPair` — allows the original submitter to revoke (disallow) a previously allowed pair. Permissionless, but restricted to the submitter of the pair.
+`selfDisallowPair` — allows the consolidation manager to revoke (disallow) a previously allowed pair that this manager is responsible for.
 
 Note. Once a consolidation pair is disallowed, it may be allowed again by creating and enacting a new EasyTrack motion by the operator.
 
@@ -771,7 +771,7 @@ This execution delay ensures that honest Council members have sufficient time to
 
 It is proposed that anyone can permissionlessly execute a consolidation batch by calling `executeConsolidation` method with the same batch which was originally added by authorized actors via `addConsolidationRequests`, along with the required fee and `ValidatorWitness` proofs for each target validator.
 
-A new Consolidation Executor bot is expected to be designed to monitor the Consolidation Bus and execute consolidation request batches sequentially, in the order in which they were initially submitted to the Consolidation Message Bus contract.
+A new Consolidation Executor bot is expected to be designed to monitor the Consolidation Bus and execute batches of consolidation requests originally submitted to the Consolidation Message Bus contract once the execution delay has elapsed.
 
 ### Consolidation Gateway
 
@@ -938,7 +938,7 @@ interface IStakingRouter {
 
 It is proposed that deposit flows adopt the new pull-based ETH model. These flows are covered in detail in the following Deposits sections.
 
-### Predeposits flow description
+### Predeposit flow
 
 A _predeposit_ refers to the initial 32 ETH deposit made to activate a validator.
 
@@ -958,13 +958,13 @@ For withdrawal credentials of type `0x02`, the initial 32 ETH deposit is used to
    - Pulls from Lido the total amount of ETH required to execute deposits for the received keys.
    - Submits a 32 ETH deposit for each key.
 
-### Top-ups flow description
+### Top-up flow
 
 As in the initial predeposit flow, the Staking Router will deposit 32 ETH for both `0x01` and `0x02` keys. To support reaching the maximum effective balance for `0x02` keys, it is proposed to add Merkle-proof–based top-ups via a separate flow. This adds security by reducing trust assumptions and avoids complicating the validator-creation logic. Top-ups are allowed only for modules that support creation of `0x02` keys.
 
 ![Top-up flow](./assets/lip-35/topup_flow.png)
 
-1. The Depositor Bot selects validators according to the algorithm described in the [Depositor Bot](#depositor-bot) section and calls `TopUpGateway.topUp`, providing staking module data (module ID, key indices, operator IDs), Merkle proofs, and validator consensus-layer (CL) data.
+1. The Depositor Bot selects validators according to the algorithm described in the [Depositor Bot](#depositor-bot) section and calls `TopUpGateway.topUp`, providing staking module data (module ID, key indices, operator IDs), and Merkle proofs of validator consensus-layer (CL) data.
 2. `TopUpGateway` verifies the validators’ CL data using Merkle proofs. Based on the verified CL data, it calculates the maximum allowed top-up amount for each validator. It then calls `StakingRouter.topUp`, passing the per-validator top-up limits together with the corresponding validator data (public key, module ID, operator ID, and key index).
 3. The `StakingRouter` executes the top-ups:
    - The Staking Router verifies that top-ups are allowed for the module (i.e., the module uses withdrawal credentials of type `0x02`).
@@ -976,7 +976,7 @@ As in the initial predeposit flow, the Staking Router will deposit 32 ETH for bo
 
 ### Depositor Bot
 
-The on-chain **min-first allocation strategy** defines how stake is distributed across modules. The depositor bot can not deposit more stake into any module than allowed by the allocation strategy.
+The on-chain [min-first allocation strategy](https://docs.lido.fi/contracts/staking-router/#allocation-algorithm) defines how stake is distributed across modules. The depositor bot can not deposit more stake into any module than allowed by the allocation strategy.
 
 Within the allocation constraint:
 
