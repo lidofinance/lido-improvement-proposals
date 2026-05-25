@@ -1901,7 +1901,7 @@ New implementation. Two new addresses (`consolidationGateway`, `topUpGateway`) a
 
 ### StakingRouter
 
-Two new immutables (`MAX_EFFECTIVE_BALANCE_WC_TYPE_01`, `MAX_EFFECTIVE_BALANCE_WC_TYPE_02`) are added. Per-module state migration and OpenZeppelin AccessControl role re-import are performed in `finalizeUpgrade_v4()` (no parameters).
+Two new immutables (`MAX_EFFECTIVE_BALANCE_WC_TYPE_01`, `MAX_EFFECTIVE_BALANCE_WC_TYPE_02`) are added. Per-module state migration and OpenZeppelin AccessControl role re-import are performed in `finalizeUpgrade_v4(_maxTopUpPerBlockGwei)`, which also seeds the global per-block top-up cap.
 
 | Role                               | Assignee                     |
 | ---------------------------------- | ---------------------------- |
@@ -1913,6 +1913,12 @@ Constructor parameters:
 | ------------- | --------------------------------------- | ------------------------------------------------------- |
 | `_maxEBType1` | `32000000000000000000` (32 ETH in wei)  | Max effective balance for `0x01` withdrawal credentials |
 | `_maxEBType2` | `2048000000000000000000` (2048 ETH wei) | Max effective balance for `0x02` withdrawal credentials |
+
+`finalizeUpgrade_v4(...)` parameters:
+
+| Name                    | Value                      | Description                                              |
+| ----------------------- | -------------------------- | -------------------------------------------------------- |
+| `_maxTopUpPerBlockGwei` | `3200000000000` (3200 ETH) | Maximum total ETH that can be topped up in a single block |
 
 ### AccountingOracle
 
@@ -2091,7 +2097,6 @@ Constructor parameters (implementation):
 | `_maxRootAgeSec`         | `600`                              | Maximum age (seconds) of the beacon root used to prove validator state                    |
 | `_targetBalanceGwei`     | `2046750000000` (2046.75 ETH)      | Validator target balance ceiling after top-up (leaves 1.25 ETH safety margin below MaxEB) |
 | `_minTopUpGwei`          | `2000000000` (2 ETH)               | Minimum top-up amount; smaller calculated top-ups are skipped                             |
-| `_maxTopUpPerBlockGwei`  | `3200000000000` (3200 ETH)         | Maximum total ETH that can be topped up in a single block                                 |
 
 ### TopUpGateway CircuitBreaker registration
 
