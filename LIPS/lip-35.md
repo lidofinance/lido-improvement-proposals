@@ -81,11 +81,9 @@ updated: 2026-05-22
       - [Report format](#report-format)
       - [Sanity checker](#sanity-checker)
     - [Off-chain Validators Exit Oracle](#off-chain-validators-exit-oracle)
-      - [MaxEB](#maxeb)
       - [Deposit reserve](#deposit-reserve)
       - [Consolidation](#consolidation-1)
-      - [CMv2 Meta Registry and CMv1 Operator Balances](#cmv2-meta-registry-and-cmv1-operator-balances)
-      - [Operator weight in the CSMv2 module](#operator-weight-in-the-csmv2-module)
+      - [Operator weight in the CMv2 module](#operator-weight-in-the-cmv2-module)
   - [Stake Rebalancing](#stake-rebalancing)
     - [Deposit Reserve](#deposit-reserve-1)
       - [Proposed solution](#proposed-solution)
@@ -198,12 +196,12 @@ Total protocol balance on the CL:
 totalClBalance = clValidatorsBalance + clPendingBalance
 ```
 
-> Note: For the `clValidatorsBalanceGwei` and `clPendingBalanceGwei` calculations, the oracle uses [Keys API](https://github.com/lidofinance/lido-keys-api). When querying Keys API, the oracle verifies that the returned data corresponds to a slot greater than `refSlot`, ensuring that the response includes the most up-to-date state.
+> Note: For the `clValidatorsBalanceGwei` and `clPendingBalanceGwei` calculations, the oracle uses [Keys API](https://github.com/lidofinance/lido-keys-api). When querying Keys API, the oracle verifies that the returned data corresponds to an EL block number greater than or equal to the reference block, ensuring that the response includes the most up-to-date state.
 
 #### CL Validators Balance Calculation Algorithm
 
 1. **Data retrieval:** get the active validator set (with balances) from the Consensus Layer, and the list of Lido keys from the Keys API.
-2. **Consistency check:** the number of Lido keys returned by the Keys API must be at least equal to the count of deposited validators reported by the Staking Router. If fewer keys are returned, revert.
+2. **Consistency check:** the number of Lido keys returned by the Keys API must be at least equal to the count of deposited validators reported by the Lido contract (`depositedValidators`). If fewer keys are returned, revert.
 3. **Match keys to validators:** for every Lido key, look it up in the CL validator set:
    - If the key is present on the CL, it belongs to an active Lido validator and is included in the report.
    - If the key is not yet on the CL, it is pending (deposited on the Execution Layer, not yet activated on the Consensus Layer) and is skipped here — its balance is handled separately by the pending-balance calculation.
@@ -211,14 +209,18 @@ totalClBalance = clValidatorsBalance + clPendingBalance
 
 #### Pending Deposits Calculation Algorithm
 
+The pending balance covers every pending CL deposit attributable to a Lido key, whether the target is a key awaiting activation (a new validator) or an already-active validator (a top-up).
+
 1. **Data retrieval:** get pending deposits and the active validator set from the Consensus Layer, Lido keys from the Keys API, and Lido withdrawal credentials from the Lido contracts.
-2. **Consistency check:** the number of Lido keys returned by the Keys API must be at least equal to the count of deposited validators reported by the Staking Router. If fewer keys are returned, revert.
+2. **Consistency check:** the number of Lido keys returned by the Keys API must be at least equal to the count of deposited validators reported by the Lido contract (`depositedValidators`). If fewer keys are returned, revert.
 3. **Find Lido keys awaiting activation:** compare Lido keys against the CL validator set — keys not yet present on the CL are considered _pending_ (deposited on the Execution Layer, not yet activated on the Consensus Layer).
-4. **Attribute deposits to pending keys:** walk over pending deposits in queue order; for each deposit targeting a Lido pending key:
-   - Deposits with an invalid BLS signature are skipped.
-   - The first BLS-valid deposit for a key determines the key’s status: if it points to Lido withdrawal credentials, the key is accepted and the deposit is kept; otherwise the key is considered front-run and all of its deposits are discarded.
-   - Subsequent deposits to an already-accepted key are added to that key's group.
-5. **Sum balances:** `clPendingBalance` is the sum of deposit amounts across all deposits attributed to accepted pending Lido keys.
+4. **Attribute pending deposits to Lido keys:** walk over pending deposits in queue order and locate each deposit's target Lido key:
+   - If the pubkey matches an **active Lido validator** (already on CL), credit the deposit as a top-up. No BLS-signature or front-run check is needed because the validator's withdrawal credentials are already immutable on the CL.
+   - If the pubkey matches a **pending Lido key** (not yet on CL):
+     - Skip deposits with an invalid BLS signature.
+     - The first BLS-valid deposit for the key determines its status: if it points to Lido withdrawal credentials, the key is accepted and the deposit is kept; otherwise the key is considered front-run and all of its deposits are discarded.
+     - Subsequent deposits to an already-accepted pending key are added to that key's group.
+5. **Sum balances:** `clPendingBalance` is the sum of all deposit amounts attributed in step 4 (both pending-key activations and active-validator top-ups).
 
 ### From Transient to Pending
 
@@ -1569,8 +1571,8 @@ function getKeysForTopUp(uint256 keysCount) external view returns (bytes[] memor
 
 It is proposed to update the Validators Exit flow:
 
-- **On-chain:** Update the exit report format and sanity checks to support MaxEB by validating exits using an upper-bound total effective balance (key-type aware) instead of validator-count limits.
-- **Off-chain:** Update the exit selection logic to support MaxEB balance-based prioritization, deposit reserve buffer effects, consolidation-aware exits, and operator-weight–based withdrawals in CMv2.
+- **On-chain:** Update the exit report format and sanity checks to support `0x02` keys by validating exits using an upper-bound total effective balance (key-type aware) instead of validator-count limits.
+- **Off-chain:** Update the exit selection logic to support deposit reserve buffer effects, consolidation-aware exits, balance-based and operator-weight–based withdrawals.
 
 ### Validators Exit Bus Oracle (VEBO)
 
@@ -1624,18 +1626,9 @@ This approach establishes a conservative upper bound on withdrawal volume per re
 
 It is proposed to update the Validators Exit Oracle off-chain logic to correctly support:
 
-- `0x02` validator type
-- Consolidation
 - Deposit reserve
-- Operator weight in the CSMv2 module
-
-#### MaxEB
-
-The Validators Exit Oracle currently uses the number of validators per operator as one of the primary metrics for determining exit priority.
-
-To align with MaxEB, Validators Exit Oracle should base exit priority on each operator’s total validator balance rather than validator counts.
-
-Without this change, an operator with many low-balance validators could be incorrectly prioritized for exit ahead of an operator with fewer but significantly higher-balance validators.
+- Consolidation
+- Operator weight in the CMv2 module
 
 #### Deposit reserve
 
@@ -1656,28 +1649,15 @@ During stake migration from CMv1 to CMv2, and in other cases after the migration
 
 It is expected that VEBO would inspect the `PendingConsolidation` queue to differentiate exit requests from consolidation requests when calculating the required ETH withdrawal amount.
 
-#### CMv2 Meta Registry and CMv1 Operator Balances
-
-The process of migrating stake from the CMv1 module to the CMv2 module may occur unevenly: some operators migrate their stake earlier than others.
-
-In the current implementation, when validators are exited from the CMv1 module, the Validators Exit Oracle uses a fair distribution algorithm: exits are requested from operators with the largest stake.
-
-Given the uneven migration, it is necessary to correctly account for the aggregate operator balances across the CMv1 and CMv2 modules in order to properly determine from which operators stake exits should be initiated.
-
-The [Meta Registry](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md#meta-operators-registry) stores information about the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module. As a result, when selecting validators to exit from the CMv1 module, the Validators Exit Oracle will be able to take into account the amount of stake already migrated by operators to the CMv2 module.
-
-#### Operator weight in the CSMv2 module
+#### Operator weight in the CMv2 module
 
 For withdrawals, Validators Exit Oracle must be able to determine from which modules and from which operators stake should be withdrawn.
 
 At the **module level**, Validators Exit Oracle continues to rely on the existing exit share limit.
 
-At the **operator level**, withdrawals depend on the stake allocation strategy used by the module. Currently, two types of withdrawal strategies are in use:
+At the **operator level**, the oracle uses a single weight-proportional target-deviation formula across all modules (the fourth predicate in the exit-prioritization algorithm below). The formula is balance-based — replacing the pre-LIP-35 count-based prioritization, which assumed every validator equals 32 ETH and would mis-rank operators once `0x02` validators with effective balances up to 2048 ETH come online. The same formula produces different effective behaviors depending only on how each module assigns operator weights — explicit on-chain weights for CMv2, off-chain aggregation via the Meta Registry for CMv1, and a uniform baseline weight for CSM, SDVT, and unreferenced CMv1 operators. The per-module behavior is detailed below the predicate table.
 
-- **Operator-weight–based withdrawals** (CMv2)
-- **Largest operator withdrawals** (CMv1, CSM, SDVT)
-
-The existing largest operator withdrawal strategy does not require any additional data. However, to support operator-weight–based withdrawals, it is proposed to add a `getOperatorWeights` method to the module interface. This method returns operator weights from the CMv2 on-chain allocation strategy.
+To support the explicit-weight case, it is proposed to add a `getOperatorWeights` method to the module interface; only CMv2 implements it.
 
 ```solidity
 interface ITargetAllocation {
@@ -1685,19 +1665,36 @@ interface ITargetAllocation {
 }
 ```
 
-To determine which validators to request for exit, Validators Exit Oracle builds a sorted list of exitable validators based on the predicates described in the table below. It then selects entries from this list until the withdrawal queue (WQ) demand is covered by the exiting validators and future rewards, or until the per-report limit is reached.
+**CMv1 operator weights via the Meta Registry.** CMv1 operator weights are not exposed on-chain; the Validators Exit Oracle computes them off-chain by aggregating CMv2 weights according to the Meta Registry mapping. This aggregation is necessary because the stake migration from CMv1 to CMv2 occurs unevenly — some operators migrate earlier than others — so the oracle must account for aggregate operator stakes and weights across both modules to determine from which CMv1 operators stake exits should be initiated.
 
-Within the new operator-weight–based distribution strategy for the CMv2 module, the fourth predicate in the Validators Exit Oracle’s exit-prioritization algorithm will be updated.
+The [Meta Registry](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md#meta-operators-registry) stores the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module, expressed as groups in which a CMv1 operator may be listed as an external operator alongside one or more CMv2 sub-operators.
+
+When selecting validators to exit from the CMv1 module, the Validators Exit Oracle uses this mapping to derive each CMv1 operator's aggregate stake and weight:
+
+- **Aggregate stake**: a CMv1 operator's `currentStake` plus the `currentStake` of its linked CMv2 sub-operators. When a CMv2 group lists multiple external operators, that group's sub-operator stake is split equally between them.
+- **Aggregate weight**: the sum of `operatorWeight` values from the CMv1 operator's linked CMv2 sub-operators. When a CMv2 group lists multiple external operators, that group's sub-operator weight is split equally between them. CMv1 operators that are not referenced in any CMv2 group fall back to a baseline weight (`100_000`).
+
+The Validators Exit Oracle then computes a target stake per CMv1 operator using the same `(totalStake × operatorWeight) / totalWeight` formula as for CMv2, with `totalStake` and `totalWeight` summed across all CMv1 operators after the aggregation above. This ensures that exits from CMv1 follow the same ValMart-style distribution as CMv2, treating an operator's already-migrated and not-yet-migrated stake as a single allocation.
+
+**Exit prioritization predicates.** To determine which validators to request for exit, Validators Exit Oracle builds a sorted list of exitable validators based on the predicates described in the table below. It then selects entries from this list until the withdrawal queue (WQ) demand is covered by the exiting validators and future rewards, or until the per-report limit is reached.
+
+The fourth predicate is the one introduced by this proposal; the other four are unchanged from the current Validators Exit Oracle implementation.
 
 _The full list of predicates used by Validators Exit Oracle to build the sorted list of exitable validators:_
 
-| Module                                      | Node Operator                                                                 | Validator              |
-| ------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------- |
-|                                             | Highest number of targeted validators for boosted exit                        |                        |
-|                                             | Highest number of targeted validators for smooth exit                         |                        |
-| Highest deviation from the exit share limit |                                                                               |                        |
-|                                             | **Balance of validators for (CMv1, CSM, SDVT) or operator weight for (CMv2)** |                        |
-|                                             |                                                                               | Lowest validator index |
+| Module                                      | Node Operator                                                                  | Validator              |
+| ------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------- |
+|                                             | Highest number of targeted validators for boosted exit                         |                        |
+|                                             | Highest number of targeted validators for smooth exit                          |                        |
+| Highest deviation from the exit share limit |                                                                                |                        |
+|                                             | **Highest deviation of operator's current stake from its weight-proportional target stake** |                        |
+|                                             |                                                                                | Lowest validator index |
+
+The fourth predicate is a single unified formula across all modules: `currentStake − totalModuleStake × operatorWeight / totalModuleWeight`. The effective behavior depends on how operator weights are populated:
+
+- For **CSM** and **SDVT**, all operators share the same default baseline weight (`100_000`), so the target stake reduces to the per-operator average and the predicate ranks operators by current balance descending (i.e., "largest operator first").
+- For **CMv2**, operator weights are read on-chain via `getOperatorWeights`; the predicate ranks operators by how much their current stake exceeds their weight-proportional share.
+- For **CMv1**, operators referenced in CMv2 groups inherit aggregated weights via the Meta Registry (as described above); unreferenced CMv1 operators fall back to the baseline weight.
 
 ## Stake Rebalancing
 
