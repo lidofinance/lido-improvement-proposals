@@ -1624,7 +1624,7 @@ This approach establishes a conservative upper bound on withdrawal volume per re
 
 It is proposed to update the Validators Exit Oracle off-chain logic to correctly support:
 
-- MaxEB
+- `0x02` validator type
 - Consolidation
 - Deposit reserve
 - Operator weight in the CSMv2 module
