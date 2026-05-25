@@ -1378,6 +1378,86 @@ interface IStakingRouter {
 }
 ```
 
+In addition to the deposit flow, the `IStakingRouter` interface is extended with the following groups of methods needed to support the new `0x02` module type and the on-chain balance accounting introduced by this proposal:
+
+- **Fee management** — `updateAllStakingModulesFees` performs an atomic batch update of staking module and treasury fees, ensuring that fee changes across all modules take effect in a single transaction and remain consistent (for all modules `staking module fees + treasury fees` is equal) .
+- **Validator balances reporting** — `reportValidatorBalancesByStakingModule` is the state-mutating entry point used by the Accounting Oracle to deliver per-module validator balance data to the StakingRouter, where it is stored as each module's `validatorsBalanceGwei` and used as the basis for rewards distribution. `validateReportValidatorBalancesByStakingModule` is its view-only counterpart, used by the sanity checker and the oracle to pre-validate a report against the current module set and configured limits before it is submitted on-chain.
+- **Validators balance accessors** — `getModuleValidatorsBalance` and `getTotalModulesValidatorsBalance` return the active validators balance used for rewards distribution, either for a single module or aggregated across all registered modules. 
+- **Module state getters** — `getStakingModuleStateConfig`, `getStakingModuleStateDeposits`, and `getStakingModuleStateAccounting` expose a module's state split into three logical parts (configuration, deposit-related fields, and accounting) to keep the returned structures small and decoupled, allowing consumers to fetch only the slice they need.
+- **Module-level helpers** — `getStakingModuleWithdrawalCredentials` returns the per-module withdrawal credentials with the module's type prefix applied (`0x01...` or `0x02...`), and `canDeposit` reports whether a module exists and is currently eligible to receive deposits.
+- **Versioning** — `getContractVersion` returns the current initialized version of the proxy, replacing the previous `Versioned` helper.
+
+```solidity
+interface IStakingRouter {
+  /// @notice Updates fees for all staking modules in a single atomic operation.
+  /// @param _stakingModuleFees New staking module fee values in the current module iteration order (returned by `getStakingModuleIds()`).
+  /// @param _treasuryFees New treasury fee values in the current module iteration order.
+  /// @dev The function is restricted to the `STAKING_MODULE_MANAGE_ROLE` role.
+  function updateAllStakingModulesFees(
+    uint256[] calldata _stakingModuleFees,
+    uint256[] calldata _treasuryFees
+  ) external;
+
+  /// @notice Submits per-module validator balances to the StakingRouter.
+  /// @param _stakingModuleIds Ids of the staking modules included in the report, in the current iteration order.
+  /// @param _validatorBalancesGwei Total CL balance attributed to each module's active validators (gwei), aligned with `_stakingModuleIds`.
+  /// @dev Called by the Accounting Oracle as part of the main report phase. The reported values are stored as each
+  ///      module's `validatorsBalanceGwei` and used by the rewards distribution logic.
+  function reportValidatorBalancesByStakingModule(
+    uint256[] calldata _stakingModuleIds,
+    uint256[] calldata _validatorBalancesGwei
+  ) external;
+
+  /// @notice Validates a validator balances report against the current StakingRouter module set and limits.
+  /// @dev View-only counterpart of `reportValidatorBalancesByStakingModule` used by the sanity checker / oracle to
+  ///      pre-validate report data without mutating state.
+  function validateReportValidatorBalancesByStakingModule(
+    uint256[] calldata _stakingModuleIds,
+    uint256[] calldata _validatorBalancesGwei
+  ) external view;
+
+  /// @notice Returns the configuration part of a staking module's state
+  ///         (module address, fees, share limits, status, withdrawal credentials type).
+  function getStakingModuleStateConfig(uint256 _stakingModuleId)
+    external
+    view
+    returns (ModuleStateConfig memory stateConfig);
+
+  /// @notice Returns the deposits-related part of a staking module's state
+  ///         (last deposit timestamp/block, max deposits per block, min deposit block distance).
+  function getStakingModuleStateDeposits(uint256 _stakingModuleId)
+    external
+    view
+    returns (ModuleStateDeposits memory stateDeposits);
+
+  /// @notice Returns the accounting part of a staking module's state.
+  /// @return validatorsBalanceGwei Total CL balance attributed to the module's active validators (gwei).
+  /// @return exitedValidatorsCount Total exited validators count tracked by the StakingRouter for the module.
+  function getStakingModuleStateAccounting(uint256 _stakingModuleId)
+    external
+    view
+    returns (uint64 validatorsBalanceGwei, uint64 exitedValidatorsCount);
+
+  /// @notice Returns the per-module withdrawal credentials with the module's type prefix applied.
+  /// @return 0x01... for legacy (`0x01`) modules, 0x02... for new (`0x02`) modules.
+  function getStakingModuleWithdrawalCredentials(uint256 _stakingModuleId) external view returns (bytes32);
+
+  /// @notice Returns whether the staking module exists and is in the `Active` status, i.e. eligible to receive deposits.
+  function canDeposit(uint256 _stakingModuleId) external view returns (bool);
+
+  /// @notice Returns the staking module's active validators balance used for rewards distribution.
+  /// @dev For `0x01` modules this is derived from on-chain accounting; for `0x02` modules it is the module's
+  ///      `validatorsBalanceGwei` tracked by the StakingRouter and updated by the oracle.
+  function getModuleValidatorsBalance(uint256 _stakingModuleId) external view returns (uint256);
+
+  /// @notice Returns the sum of `getModuleValidatorsBalance` across all registered staking modules.
+  function getTotalModulesValidatorsBalance() external view returns (uint256);
+
+  /// @notice Returns the current initialized version of the proxy (replaces the previous `Versioned` helper).
+  function getContractVersion() external view returns (uint256);
+}
+```
+
 #### Staking Router Configuration
 
 It is proposed to add a new `withdrawalCredentialsType` property to the module configuration in the `StakingRouter`. This property would distinguish modules that use `0x01` withdrawal credentials from modules that use `0x02` withdrawal credentials and support top-ups up to 2,048 ETH.
