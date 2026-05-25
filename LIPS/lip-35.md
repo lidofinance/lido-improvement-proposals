@@ -56,7 +56,7 @@ updated: 2026-05-22
     - [Predeposit flow](#predeposit-flow)
     - [Top-up flow](#top-up-flow)
     - [Depositor Bot](#depositor-bot)
-      - [Example Setup](#example-setup)
+      - [Deposit Module Selection](#deposit-module-selection)
       - [Stage 1. Predeposits to modules with `0x02` keys](#stage-1-predeposits-to-modules-with-0x02-keys)
       - [Stage 2. Top-ups to modules with `0x02` keys or deposits to `0x01` modules](#stage-2-top-ups-to-modules-with-0x02-keys-or-deposits-to-0x01-modules)
       - [Depositor Bot top-up flow for `0x02` key modules](#depositor-bot-top-up-flow-for-0x02-key-modules)
@@ -950,7 +950,7 @@ For withdrawal credentials of type `0x02`, the initial 32 ETH deposit is used to
 
 ![Predeposits flow](./assets/lip-35/predeposits_flow.png)
 
-1. **The Depositor Bot** collects guardian signatures and initiates the deposit transaction.
+1. **The Depositor Bot** collects guardian signatures and initiates the deposit transaction for the [selected module](#deposit-module-selection).
 2. **The DepositSecurityModule** verifies the guardian signatures and checks the deposit distance. If everything is valid, it calls `StakingRouter.deposit`.
 3. **The StakingRouter** performs deposits. As part of this process, the Staking Router:
    - Calculates how much of Lido’s available ETH should be allocated to each staking module.
@@ -964,7 +964,7 @@ As in the initial predeposit flow, the Staking Router will deposit 32 ETH for bo
 
 ![Top-up flow](./assets/lip-35/topup_flow.png)
 
-1. The Depositor Bot selects validators according to the algorithm described in the [Depositor Bot](#depositor-bot) section and calls `TopUpGateway.topUp`, providing staking module data (module ID, key indices, operator IDs), and Merkle proofs of validator consensus-layer (CL) data.
+1. The Depositor Bot select module and validators inside the module according to the algorithms described in the [Depositor Bot](#depositor-bot) section and calls `TopUpGateway.topUp`, providing staking module data (module ID, key indices, operator IDs), Merkle proofs, and validator consensus-layer (CL) data.
 2. `TopUpGateway` verifies the validators’ CL data using Merkle proofs. Based on the verified CL data, it calculates the maximum allowed top-up amount for each validator. It then calls `StakingRouter.topUp`, passing the per-validator top-up limits together with the corresponding validator data (public key, module ID, operator ID, and key index).
 3. The `StakingRouter` executes the top-ups:
    - The Staking Router verifies that top-ups are allowed for the module (i.e., the module uses withdrawal credentials of type `0x02`).
@@ -1011,7 +1011,7 @@ interface IStakingRouter {
 }
 ```
 
-#### Example Setup
+#### Deposit Module Selection
 
 Assume the system contains four modules:
 
@@ -1026,6 +1026,8 @@ The bot runs every 25 blocks. On each run, the bot executes a **two-stage algori
 
 1. **Stage 1** — Predeposits to modules with `0x02` keys
 2. **Stage 2** — Top-ups for `0x02` modules or full 32 ETH deposits for `0x01` modules
+
+> **Note:** If top-ups are disabled in the Depositor Bot, only full 32 ETH deposits for 0x01 modules are performed.
 
 #### Stage 1. Predeposits to modules with `0x02` keys
 
