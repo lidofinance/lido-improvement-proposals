@@ -34,7 +34,7 @@ updated: 2026-05-22
       - [Data Integrity](#data-integrity)
     - [Sanity Checks](#sanity-checks)
       - [AO CL Balance Decrease](#ao-cl-balance-decrease)
-        - [First 36 Days Problem](#first-36-days-problem)
+          - [First 36 Days Problem](#first-36-days-problem)
       - [AO CL Balances Consistency](#ao-cl-balances-consistency)
       - [AO Balance Increase Per Day](#ao-balance-increase-per-day)
       - [AO Exited Validators by Staking Module](#ao-exited-validators-by-staking-module)
@@ -413,9 +413,12 @@ The list of checks has been updated following the **Pectra hard-fork** and the s
 
 This check prevents an unexpectedly large drop in CL validator balance. It compares the actual balance decrease over up to 36 days with the maximum decrease that could happen naturally from penalties and slashing. The current allowed decrease is capped at about **3.6%** of CL validator balance over the checked period. 
 
-##### First 36 Days Problem
+###### First 36 Days Problem
+During the first 36 days after the upgrade, there will be no data for the full previous 36-day period.
 
-After a new staking router release, the oracle may not yet have a full 36 days of historical data. In that case, the check uses all available data and gradually expands the window day by day until it reaches 36 days. This still limits how much negative rebase can be hidden over time. 
+Effectively, this means that after the release the window starts at 1 day, becomes a 2-day window on day 2, and continues growing until it reaches 36 days.
+
+Even if the oracles were compromised on day 1, this approach still preserves the safety guarantees. A malicious actor could reduce the rebase by 3.6% on day 1, but applying the reduction again on day 2 would result in a cumulative decrease large enough to trigger the sanity check.
 
 #### AO CL Balances Consistency
 
