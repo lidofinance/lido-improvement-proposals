@@ -88,6 +88,7 @@ updated: 2026-05-22
     - [Deposit Reserve](#deposit-reserve-1)
       - [Proposed solution](#proposed-solution)
       - [Buffered Ether Allocation](#buffered-ether-allocation)
+    - [Edge Case — Last Withdrawals](#edge-case--last-withdrawals)
   - [Module Shares Easy Track](#module-shares-easy-track)
     - [Limits](#limits)
     - [Algorithm](#algorithm)
@@ -1797,6 +1798,13 @@ depositableEther = depositsReserve + unreserved = totalBuffered - withdrawalsRes
 **Example 3:** An ETH amount exceeding both the deposits reserve target and total withdrawal requests is available in buffer. In this case, the deposits reserve is filled, all withdrawal requests are covered, and the remaining ETH is available for additional CL deposits.
 
 ![Deposits reserve example 3](./assets/lip-35/deposits_reserve_example_3.png)
+
+### Edge Case — Last Withdrawals
+The deposits reserve is a soft allocation. The Accounting Oracle daemon normally uses the withdrawals reserve as its finalization budget, and the withdrawals reserve is reduced by the deposits reserve (see the allocation formula above). When nearly all stETH is being withdrawn and the buffer must cover the remaining obligations, this default budget may be too small to finalize all outstanding requests.
+
+If TVL drops significantly and the protocol enters a shutting-down state, the DAO should set the deposits reserve target to zero. However, during a Dual Governance rage quit, governance is frozen and cannot adjust the reserves.
+
+**Off-chain fallback.** The deposits reserve does not constrain withdrawal finalization. In this edge case the daemon can raise its finalization budget from `lido.getWithdrawalsReserve()` to the full `lido.getBufferedEther()`. For this to be safe, deposits to the Beacon Chain must also be blocked — the DSM and the depositor bot (deposits and top-ups) are turned off or staking is paused, or there are no depositable validators — otherwise the buffer could be consumed by deposits before finalization.
 
 ## Module Shares Easy Track
 
