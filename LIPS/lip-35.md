@@ -1948,6 +1948,10 @@ New implementation. The upgrade calls `finalizeUpgrade_v3(maxValidatorsPerReport
 | `frameDurationInSec`     | `48`      | Duration of each refill frame, in seconds                        |
 | `consensusVersion`       | `5`       | New consensus version bumped on upgrade                          |
 
+> Note: `maxExitBalanceEth`, `balancePerFrameEth`, and `frameDurationInSec` are derived from the legacy validator-count-denominated limits (which assumed 32 ETH validators):
+> - Previously `maxExitRequestsLimit = 11200`, `exitsPerFrame = 1`, `frameDurationInSec = 48`.
+> - The new ETH-denominated values are computed as `maxExitBalanceEth = maxExitRequestsLimit * 32 = 358400` and `balancePerFrameEth = exitsPerFrame * 32 = 32`; `frameDurationInSec` is carried over unchanged.
+
 ### WithdrawalVault
 
 Constructor is extended with `_consolidationGateway`; `finalizeUpgrade_v3()` bumps the contract version and has no parameters.
