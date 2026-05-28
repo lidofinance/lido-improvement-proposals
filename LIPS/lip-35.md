@@ -54,6 +54,7 @@ updated: 2026-05-22
       - [Lido](#lido)
       - [Staking Router](#staking-router)
     - [Predeposit flow](#predeposit-flow)
+      - [Deposit Security Module](#deposit-security-module)
     - [Top-up flow](#top-up-flow)
     - [Depositor Bot](#depositor-bot)
       - [Deposit Module Selection](#deposit-module-selection)
@@ -378,9 +379,11 @@ The migration aims to preserve data integrity and ensure correct rewards calcula
    `transientBalance = (depositedValidators − clValidators) × 32 ETH`.
 3. Populate the new state:
    - `clValidatorsBalance = clBalance`
-   - `clPendingBalance = transientBalance`
+   - `clPendingBalance = 0`
+   - `depositedSinceLastReport = transientBalance`
+   - `depositedForCurrentReport = transientBalance`
 
-The transient balance becomes the pending balance — semantically, it is the same thing (ETH on the way to activation), but now the oracle will report the actual value instead of a calculated one.
+At the moment of the upgrade the oracle has not yet seen any pending deposits in the new format, so `clPendingBalance` starts at `0`. The previously-transient ETH is preserved by seeding both deposit counters introduced in [Deposit Tracking](#deposit-tracking) with the legacy transient balance; the next oracle report will then move it into `clPendingBalance` (or `clValidatorsBalance`, if those deposits have already been activated) as it picks up actual CL data.
 
 #### StakingRouter Migration
 
@@ -400,7 +403,7 @@ The sum of `validatorsBalanceGwei` across all modules is written to the shared `
 
 The first report after migration is correct by construction:
 
-- `principalClBalance` includes the migrated pending balance
+- `principalClBalance` includes the migrated transient stake via `depositedSinceLastReport`
 - New deposits after migration are visible to the oracle in `clPendingBalance`
 - Old transient stake is not counted as rewards
 
@@ -916,8 +919,7 @@ Only the Staking Router will be permitted to pull ETH from Lido. The `withdrawDe
 ```solidity
 interface ILido {
   /// @notice Withdraw depositable ETH, send the requested ETH amount to the StakingRouter.
-  /// @dev Can be called only by StakingRouter.
-  /// @dev Access-controlled in the implementation (role-based).
+  /// @dev Can be called only by StakingRouter (address-based auth).
   /// @param _amount amount of ETH to withdraw
   /// @param _seedDepositsCount amount of seed deposits. In case of top up this value will be equal to 0
   function withdrawDepositableEther(uint256 _amount, uint256 _seedDepositsCount) external;
@@ -963,6 +965,13 @@ For withdrawal credentials of type `0x02`, the initial 32 ETH deposit is used to
    - Obtains deposit keys from the staking module.
    - Pulls from Lido the total amount of ETH required to execute deposits for the received keys.
    - Submits a 32 ETH deposit for each key.
+
+#### Deposit Security Module
+With the introduction of support for type `0x02` keys, Consul daemons must correctly verify the withdrawal credentials of such keys and must not attempt to unvet keys with valid Lido withdrawal credentials.
+
+To prevent outdated Consul daemons from incorrectly unvetting type 0x02 keys in newly added CMv2 modules after the protocol upgrade, it is proposed to include the contract version in the Guardian Signing Payload.
+
+It is suggested to bump DSM `VERSION` from `3` to `4` and is now embedded as a separate 32-byte field in the preimage of every guardian-signed message (attest a deposit, pause deposits, unvet signing keys); each hash is now formed as `keccak256(prefix, VERSION, …payload)` instead of `keccak256(prefix, …payload)`. Adding `VERSION` to the payload additionally binds it to a specific behavioral version of the DSM. 
 
 ### Top-up flow
 
@@ -1211,11 +1220,11 @@ struct ValidatorWitness {
   // Validator container fields (except WC)
   bytes pubkey;
   uint64 effectiveBalance;
-  bool slashed;
   uint64 activationEligibilityEpoch;
   uint64 activationEpoch;
   uint64 exitEpoch;
   uint64 withdrawableEpoch;
+  bool slashed;
 }
 
 interface ITopUpGateway {
@@ -1231,8 +1240,6 @@ interface ITopUpGateway {
   function setMaxValidatorsPerTopUp(uint256 newValue) external;
   function setMinBlockDistance(uint256 newValue) external;
   function setMaxRootAge(uint256 newValue) external;
-
-  function canTopUp(uint256 stakingModuleId) external view returns (bool);
 }
 ```
 
@@ -1391,6 +1398,8 @@ In addition to the deposit flow, the `IStakingRouter` interface is extended with
 - **Validators balance accessors** — `getModuleValidatorsBalance` and `getTotalModulesValidatorsBalance` return the active validators balance used for rewards distribution, either for a single module or aggregated across all registered modules. 
 - **Module state getters** — `getStakingModuleStateConfig`, `getStakingModuleStateDeposits`, and `getStakingModuleStateAccounting` expose a module's state split into three logical parts (configuration, deposit-related fields, and accounting) to keep the returned structures small and decoupled, allowing consumers to fetch only the slice they need.
 - **Module-level helpers** — `getStakingModuleWithdrawalCredentials` returns the per-module withdrawal credentials with the module's type prefix applied (`0x01...` or `0x02...`), and `canDeposit` reports whether a module exists and is currently eligible to receive deposits.
+- **Top-up cap configuration** — `setMaxTopUpPerBlockGwei` (restricted to `STAKING_MODULE_MANAGE_ROLE`) and `getMaxTopUpPerBlockGwei` manage the protocol-wide per-block top-up amount cap.
+- **Direct ETH transfers** — the new StakingRouter rejects any direct ETH transfers (`receive()` reverts). All ETH must enter via `receiveDepositableEther`, ensuring the [pull model](#depositable-eth-pull-model) is the single ETH-ingress path.
 - **Versioning** — `getContractVersion` returns the current initialized version of the proxy, replacing the previous `Versioned` helper.
 
 ```solidity
@@ -1409,6 +1418,7 @@ interface IStakingRouter {
   /// @param _validatorBalancesGwei Total CL balance attributed to each module's active validators (gwei), aligned with `_stakingModuleIds`.
   /// @dev Called by the Accounting Oracle as part of the main report phase. The reported values are stored as each
   ///      module's `validatorsBalanceGwei` and used by the rewards distribution logic.
+  /// @dev The function is restricted to the existing `REPORT_EXITED_VALIDATORS_ROLE` (reused, not a new role).
   function reportValidatorBalancesByStakingModule(
     uint256[] calldata _stakingModuleIds,
     uint256[] calldata _validatorBalancesGwei
@@ -1461,6 +1471,9 @@ interface IStakingRouter {
 
   /// @notice Returns the current initialized version of the proxy (replaces the previous `Versioned` helper).
   function getContractVersion() external view returns (uint256);
+
+  /// @notice A payable function for depositable eth acquisition. Can be called only by `Lido`
+  function receiveDepositableEther() external payable;
 }
 ```
 
