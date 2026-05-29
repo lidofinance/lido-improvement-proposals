@@ -81,6 +81,7 @@ updated: 2026-05-22
     - [Validators Exit Bus Oracle (VEBO)](#validators-exit-bus-oracle-vebo)
       - [Report format](#report-format)
       - [Sanity checker](#sanity-checker)
+      - [Exit-rate limit](#exit-rate-limit)
     - [Off-chain Validators Exit Oracle](#off-chain-validators-exit-oracle)
       - [Deposit reserve](#deposit-reserve)
       - [Consolidation](#consolidation-1)
@@ -1638,6 +1639,22 @@ Under the new logic, each VEBO report will be validated as follows:
 - Sum the resulting values across all modules and compare the total against the configured **ETH-denominated sanity-check limit**.
 
 This approach establishes a conservative upper bound on withdrawal volume per report and ensures that VEBO cannot trigger an excessively large withdrawal in a single submission, thereby reducing protocol risk.
+
+#### Exit-rate limit
+
+Beyond the per-report sanity check on oracle reports, [LIP-30](./lip-30.md) introduced a separate global rate limit in the `ValidatorsExitBus` contract that applies to **non-oracle** exit requests — Easy Track motions from the Curated and SDVT modules, and governance-submitted reports. The quota refills by `exitsPerFrame` units every `frameDuration` seconds up to `maxExitRequestsLimit`, and each request consumes one unit. Current parameters: `maxExitRequestsLimit=11200`, `exitsPerFrame=1`, `frameDuration=48s`.
+
+Once `0x02` keys with effective balances up to **2048 ETH** are accepted, charging one unit per validator no longer reflects the actual stake released.
+
+It is proposed to migrate the limit from a validator-count basis to an ETH-balance basis: each accepted exit request will debit the quota by the **32 ETH** for `0x01`-key modules, **2048 ETH** for `0x02`-key modules. The capacity and refill rate are re-expressed in ETH accordingly.
+
+External interface changes (function names are preserved; parameters, return values, and the associated event are renamed to reflect the new ETH unit):
+
+- `setExitRequestLimit(maxExitBalanceEth, balancePerFrameEth, frameDurationInSec)` replaces the previous `(maxExitRequestsLimit, exitsPerFrame, frameDurationInSec)` signature.
+- `getExitRequestLimitFullInfo()` returns `(maxExitBalanceEth, balancePerFrameEth, frameDurationInSec, prevExitBalanceEth, currentExitBalanceEth)`. When the limit is unset, `currentExitBalanceEth` returns `type(uint256).max`, matching the prior behavior of `currentExitRequestsLimit`.
+- The `ExitRequestsLimitSet(maxExitRequestsLimit, exitsPerFrame, frameDurationInSec)` event is replaced by `ExitBalanceLimitSet(maxExitBalanceEth, balancePerFrameEth, frameDurationInSec)`.
+
+The separate per-report count cap `maxValidatorsPerReport` (with `setMaxValidatorsPerReport` / `getMaxValidatorsPerReport`) is retained unchanged and is still enforced before the rate-limit check.
 
 ### Off-chain Validators Exit Oracle
 
