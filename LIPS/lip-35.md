@@ -131,7 +131,7 @@ A dedicated Easy Track factory streamlines module share management within pre-de
 
 ## Motivation
 
-Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between modules via consolidation operations, support new deposits into large validators, naturally streamlining the network, and lay the groundwork for smarter, leaner validator management overall.
+Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between modules via consolidation operations, support new deposits into large validators, naturally streamline the network, and lay the groundwork for smarter, leaner validator management overall.
 
 **A new, `0x02`-ready, accounting model.** Although already supported by the stVaults architecture, this is a fundamental shift for Lido Core. Currently, the Lido protocol handles critical aspects of validator accounting — deposits, rewards, withdrawals — through a unit-based approach where 1 validator equals 32 ETH. A balance-based accounting model is essential for supporting large validators and consolidations because it allows the protocol to treat validators as flexible balances rather than fixed units, enabling seamless consolidation and validator top-ups. For this to happen, a significant rework of several key components of the on-chain protocol is required.
 
@@ -232,9 +232,9 @@ The pending balance covers every pending CL deposit attributable to a Lido key, 
 transientBalance = (depositedValidators - clValidators) × 32 ETH
 ```
 
-This construct was necessary because a deposit could “temporary disappear” between the Execution Layer and the Consensus Layer for several hours or even days. The oracle didn’t see these funds, but the protocol had to account for them in `totalPooledEther`.
+This construct was necessary because a deposit could “temporarily disappear” between the Execution Layer and the Consensus Layer for several hours or even days. The oracle didn’t see these funds, but the protocol had to account for them in `totalPooledEther`.
 
-**Proposed:** [EIP-6110](https://eips.ethereum.org/EIPS/eip-6110), introduced in Pectra Hard Fork,  eliminates this problem. Deposits from the Execution Layer enter the Consensus Layer pending queue in the same block:
+**Proposed:** [EIP-6110](https://eips.ethereum.org/EIPS/eip-6110), introduced in the Pectra Hard Fork, eliminates this problem. Deposits from the Execution Layer enter the Consensus Layer pending queue in the same block:
 
 > “Validator deposits list supplied in a block is obtained by parsing deposit contract log events emitted by each deposit transaction included in a given block.” — [EIP-6110](https://eips.ethereum.org/EIPS/eip-6110)
 
@@ -411,11 +411,11 @@ The first report after migration is correct by construction:
 
 The list of checks has been updated following the **Pectra hard-fork** and the subsequent expansion of parameters passed to the Validator Exit Bus Oracle (VEBO) and Accounting Oracles (AO).
 
-[Here you can find full description of changes](https://hackmd.io/@lido/HJ0AC5D0Ze).
+[Here you can find a full description of changes](https://hackmd.io/@lido/HJ0AC5D0Ze).
 
 #### AO CL Balance Decrease
 
-This check prevents an unexpectedly large drop in CL validator balance. It compares the actual balance decrease over up to 36 days with the maximum decrease that could happen naturally from penalties and slashing. The current allowed decrease is capped at about **3.6%** of CL validator balance over the checked period. 
+This check prevents an unexpectedly large drop in CL validator balance. It compares the actual balance decrease over up to 36 days with the maximum decrease that could happen naturally from penalties and slashing. The current allowed decrease is capped at about **3.6%** of CL validator balance over the checked period.
 
 ###### First 36 Days Problem
 During the first 36 days after the upgrade, there will be no data for the full previous 36-day period.
@@ -426,15 +426,15 @@ Even if the oracles were compromised on day 1, this approach still preserves the
 
 #### AO CL Balances Consistency
 
-This is a basic consistency check. It verifies that the sum of validator balances across all staking modules equals the total CL validators balance reported by the oracle. 
+This is a basic consistency check. It verifies that the sum of validator balances across all staking modules equals the total CL validator balance reported by the oracle.
 
 #### AO Balance Increase Per Day
 
-This check validates daily balance growth. It ensures that pending ETH, newly activated ETH, validator balance increases, and per-module balance changes stay within expected daily limits, including safety caps for APR and gifts. 
+This check validates daily balance growth. It ensures that pending ETH, newly activated ETH, validator balance increases, and per-module balance changes stay within expected daily limits, including safety caps for APR and gifts.
 
 #### AO Exited Validators by Staking Module
 
-This check limits how many validators can be reported as exited per staking module. It was updated to account for consolidation, using a conservative worst-case assumption where validators may have only **16 ETH** balance. This prevents valid withdrawals from being incorrectly rejected. 
+This check limits how many validators can be reported as exited per staking module. It was updated to account for consolidation, using a conservative worst-case assumption where validators may have only **16 ETH** balance. This prevents valid withdrawals from being incorrectly rejected.
 
 #### VEBO Maximum Eth Amount To Exit
 
@@ -464,7 +464,7 @@ After the required [execution delay](#execution-delay) has passed, a permissionl
 
 The Consolidation Gateway verifies the target validators’ WC proofs, checks consolidation limits, and ensures that deposits in the Deposit Security Module (DSM) are not paused, that Lido is running, and that bunker mode is disabled.
 
-The Gateway then forwards the requests, and the fee to the Withdrawal Vault contract, which submits the request to the system contract.
+The Gateway then forwards the requests and the fee to the Withdrawal Vault contract, which submits the request to the system contract.
 
 Dedicated on-chain monitoring would help ensure that operators submit valid consolidation requests (i.e., no attempts to consolidate validators scheduled for exit by VEBO, no consolidation of inactive validators, and no duplicate pending consolidation requests).
 
@@ -489,7 +489,7 @@ A single node operator in the CMv1 module may consolidate into multiple operator
 The **Consolidation Migrator** contract validates stake consolidation (migration) requests from a source operator in one module to a target operator in another module. The **source module ID** and **target module ID** are provided at deployment time in the implementation contract and are immutable thereafter.
 
 ```
-// Consolidation Migrator receive key indexes grouped by target keys
+// Consolidation Migrator receives key indexes grouped by target keys
 sourceOperatorId
 targetOperatorId
 groups: [
@@ -517,7 +517,7 @@ To manage the list of allowed consolidation pairs (source → target operators),
 
 `selfDisallowPair` — allows the consolidation manager to revoke (disallow) a previously allowed pair that this manager is responsible for.
 
-Note. Once a consolidation pair is disallowed, it may be allowed again by creating and enacting a new EasyTrack motion by the operator.
+Note. Once a consolidation pair is disallowed, it may be allowed again by the operator creating and enacting a new EasyTrack motion.
 
 ```solidity
 /// @notice Interface for validating and submitting stake consolidation (migration) requests
@@ -689,7 +689,7 @@ groups: [
 ]
 ```
 
-The `executeConsolidation` verifies that:
+The `executeConsolidation` method verifies that:
 
 - the submitted batch hash matches the stored hash of the original request
 - the required execution delay has elapsed.
@@ -921,7 +921,7 @@ interface ILido {
   /// @notice Withdraw depositable ETH, send the requested ETH amount to the StakingRouter.
   /// @dev Can be called only by StakingRouter (address-based auth).
   /// @param _amount amount of ETH to withdraw
-  /// @param _seedDepositsCount amount of seed deposits. In case of top up this value will be equal to 0
+  /// @param _seedDepositsCount amount of seed deposits. In case of a top-up, this value will be equal to 0
   function withdrawDepositableEther(uint256 _amount, uint256 _seedDepositsCount) external;
 }
 ```
@@ -967,11 +967,11 @@ For withdrawal credentials of type `0x02`, the initial 32 ETH deposit is used to
    - Submits a 32 ETH deposit for each key.
 
 #### Deposit Security Module
-With the introduction of support for type `0x02` keys, Consul daemons must correctly verify the withdrawal credentials of such keys and must not attempt to unvet keys with valid Lido withdrawal credentials.
+With the introduction of support for type `0x02` keys, Council daemons must correctly verify the withdrawal credentials of such keys and must not attempt to unvet keys with valid Lido withdrawal credentials.
 
-To prevent outdated Consul daemons from incorrectly unvetting type 0x02 keys in newly added CMv2 modules after the protocol upgrade, it is proposed to include the contract version in the Guardian Signing Payload.
+To prevent outdated Council daemons from incorrectly unvetting type 0x02 keys in newly added CMv2 modules after the protocol upgrade, it is proposed to include the contract version in the Guardian Signing Payload.
 
-It is suggested to bump DSM `VERSION` from `3` to `4` and is now embedded as a separate 32-byte field in the preimage of every guardian-signed message (attest a deposit, pause deposits, unvet signing keys); each hash is now formed as `keccak256(prefix, VERSION, …payload)` instead of `keccak256(prefix, …payload)`. Adding `VERSION` to the payload additionally binds it to a specific behavioral version of the DSM. 
+It is suggested to bump DSM `VERSION` from `3` to `4`. The `VERSION` is now embedded as a separate 32-byte field in the preimage of every guardian-signed message (attest a deposit, pause deposits, unvet signing keys); each hash is now formed as `keccak256(prefix, VERSION, …payload)` instead of `keccak256(prefix, …payload)`. Adding `VERSION` to the payload additionally binds it to a specific behavioral version of the DSM.
 
 ### Top-up flow
 
@@ -979,7 +979,7 @@ As in the initial predeposit flow, the Staking Router will deposit 32 ETH for bo
 
 ![Top-up flow](./assets/lip-35/topup_flow.png)
 
-1. The Depositor Bot select module and validators inside the module according to the algorithms described in the [Depositor Bot](#depositor-bot) section and calls `TopUpGateway.topUp`, providing staking module data (module ID, key indices, operator IDs), Merkle proofs, and validator consensus-layer (CL) data.
+1. The Depositor Bot selects a module and validators inside the module according to the algorithms described in the [Depositor Bot](#depositor-bot) section and calls `TopUpGateway.topUp`, providing staking module data (module ID, key indices, operator IDs), Merkle proofs, and validator consensus-layer (CL) data.
 2. `TopUpGateway` verifies the validators’ CL data using Merkle proofs. Based on the verified CL data, it calculates the maximum allowed top-up amount for each validator. It then calls `StakingRouter.topUp`, passing the per-validator top-up limits together with the corresponding validator data (public key, module ID, operator ID, and key index).
 3. The `StakingRouter` executes the top-ups:
    - The Staking Router verifies that top-ups are allowed for the module (i.e., the module uses withdrawal credentials of type `0x02`).
@@ -991,7 +991,7 @@ As in the initial predeposit flow, the Staking Router will deposit 32 ETH for bo
 
 ### Depositor Bot
 
-The on-chain [min-first allocation strategy](https://docs.lido.fi/contracts/staking-router/#allocation-algorithm) defines how stake is distributed across modules. The depositor bot can not deposit more stake into any module than allowed by the allocation strategy.
+The on-chain [min-first allocation strategy](https://docs.lido.fi/contracts/staking-router/#allocation-algorithm) defines how stake is distributed across modules. The depositor bot cannot deposit more stake into any module than is allowed by the allocation strategy.
 
 Within the allocation constraint:
 
@@ -1001,7 +1001,7 @@ Within the allocation constraint:
 - For modules supporting `0x01` keys, only:
   - **Full deposits** (32 ETH deposits per new 0x01 validator)
 
-For modules that support `0x02 keys`, the system should maintain a sufficient number of validators eligible for top-ups, ensuring that a significant portion of the buffered ETH can be utilized without excessive delays (i.e., without waiting for validators to become active).
+For modules that support `0x02` keys, the system should maintain a sufficient number of validators eligible for top-ups, ensuring that a significant portion of the buffered ETH can be utilized without excessive delays (i.e., without waiting for validators to become active).
 
 The Depositor Bot is proposed to be responsible for maintaining an appropriate balance between predeposits and top-ups in `0x02` modules, with **predeposits prioritized over top-ups**.
 
@@ -1151,7 +1151,7 @@ When the Depositor Bot needs to top up validators in 0x02 modules, it performs t
 
 #### Top-up key selection for CMv2
 
-For **CMv2**, the Depositor Bot operates on a per-operator basis and selects keys based on following algorithm:
+For **CMv2**, the Depositor Bot operates on a per-operator basis and selects keys based on the following algorithm:
 
 1. Based on the allocated amount received from the Staking Router’s `getDepositAllocations` function, the Depositor Bot calls `getDepositsAllocation(uint256 depositAmount)` on the module to determine how much stake should be allocated to each operator.
 2. Across this list of operators, the Depositor Bot chooses the oldest validators and checks that:
@@ -1159,7 +1159,7 @@ For **CMv2**, the Depositor Bot operates on a per-operator basis and selects key
    - the validator is active;
    - the validator has not initiated exit on CL (`exitEpoch != FAR_FUTURE`);
    - the validator is not slashed;
-   - the validator is not a consolidation target (when source validator is Lido WC);
+   - the validator is not a consolidation target (when the source validator has Lido WC);
 3. For the selected validators, the Depositor Bot builds Merkle proofs:
    - Proof of the `Validator` container on CL;
 4. For the selected validators, the Depositor Bot calculates pending deposit amounts.
@@ -1179,7 +1179,7 @@ Because the `0x02` CSM cursor **should never be blocked**, the Depositor Bot **s
 
 - is slashed,
 - is marked for exit,
-- has `actual + pending` balance great then max effective balance (2048 ETH),
+- has `actual + pending` balance greater than max effective balance (2048 ETH),
 - or fails any other eligibility condition.
 
 Instead, the module relies on **TopUpGateway** to set a **top-up limit of zero** for such validators and then advance the cursor in the `0x02` version of CSM. This design ensures continuous progress of the CSM queue.
@@ -1334,9 +1334,9 @@ This design assumes that **minTopUpBlockDistance** and **maxTopUpPerBlockGwei** 
 
 It is proposed that top-ups should not be executed if the protocol is in bunker mode or paused, or if the module is not active.
 
-If DSM paused, it is not risky for top-ups, since during top-ups the withdrawal credentials are verified on-chain.
+If DSM is paused, it is not risky for top-ups, since during top-ups the withdrawal credentials are verified on-chain.
 
-Additionally it is proposed that TopUpGateway contract **can be paused via the `CircuitBreaker`** mechanism to provide emergency control.
+Additionally, it is proposed that the TopUpGateway contract **can be paused via the `CircuitBreaker`** mechanism to provide emergency control.
 
 If it becomes necessary to temporarily stop top-ups (e.g., during a hard fork), this can be achieved operationally. Since top-ups are permissioned (i.e., only the Depositor Bot is authorized), the bot can simply be stopped as a precautionary measure.
 
@@ -1393,9 +1393,9 @@ interface IStakingRouter {
 
 In addition to the deposit flow, the `IStakingRouter` interface is extended with the following groups of methods needed to support the new `0x02` module type and the on-chain balance accounting introduced by this proposal:
 
-- **Fee management** — `updateAllStakingModulesFees` performs an atomic batch update of staking module and treasury fees, ensuring that fee changes across all modules take effect in a single transaction and remain consistent (for all modules `staking module fees + treasury fees` is equal) .
+- **Fee management** — `updateAllStakingModulesFees` performs an atomic batch update of staking module and treasury fees, ensuring that fee changes across all modules take effect in a single transaction and remain consistent (for all modules `staking module fees + treasury fees` is equal).
 - **Validator balances reporting** — `reportValidatorBalancesByStakingModule` is the state-mutating entry point used by the Accounting Oracle to deliver per-module validator balance data to the StakingRouter, where it is stored as each module's `validatorsBalanceGwei` and used as the basis for rewards distribution. `validateReportValidatorBalancesByStakingModule` is its view-only counterpart, used by the sanity checker and the oracle to pre-validate a report against the current module set and configured limits before it is submitted on-chain.
-- **Validators balance accessors** — `getModuleValidatorsBalance` and `getTotalModulesValidatorsBalance` return the active validators balance used for rewards distribution, either for a single module or aggregated across all registered modules. 
+- **Validator balance accessors** — `getModuleValidatorsBalance` and `getTotalModulesValidatorsBalance` return the active validators balance used for rewards distribution, either for a single module or aggregated across all registered modules.
 - **Module state getters** — `getStakingModuleStateConfig`, `getStakingModuleStateDeposits`, and `getStakingModuleStateAccounting` expose a module's state split into three logical parts (configuration, deposit-related fields, and accounting) to keep the returned structures small and decoupled, allowing consumers to fetch only the slice they need.
 - **Module-level helpers** — `getStakingModuleWithdrawalCredentials` returns the per-module withdrawal credentials with the module's type prefix applied (`0x01...` or `0x02...`), and `canDeposit` reports whether a module exists and is currently eligible to receive deposits.
 - **Top-up cap configuration** — `setMaxTopUpPerBlockGwei` (restricted to `STAKING_MODULE_MANAGE_ROLE`) and `getMaxTopUpPerBlockGwei` manage the protocol-wide per-block top-up amount cap.
@@ -1872,7 +1872,7 @@ After enacting the motion, the parameters are rechecked to ensure the `currentXX
 
 ### Required changes to StakingRouter
 
-In the current version of the [`StakingRouter.sol`](https://github.com/lidofinance/core/blob/f7916decdddef32c404d47e8e589ee31cc713a56/contracts/0.8.9/StakingRouter.sol) contract module, parameters are changed using a single method, [`updateStakingModule`](https://github.com/lidofinance/core/blob/f7916decdddef32c404d47e8e589ee31cc713a56/contracts/0.8.9/StakingRouter.sol#L296). This approach requires the caller to grant significant permission (`STAKING_MODULE_MANAGE_ROLE`). Given the limited scope of the parameters involved in the described ET factory, it is reasonable to create a distinct method that will allow for changing the following module's parameters:
+In the current version of the [`StakingRouter.sol`](https://github.com/lidofinance/core/blob/f7916decdddef32c404d47e8e589ee31cc713a56/contracts/0.8.9/StakingRouter.sol) contract, module parameters are changed using a single method, [`updateStakingModule`](https://github.com/lidofinance/core/blob/f7916decdddef32c404d47e8e589ee31cc713a56/contracts/0.8.9/StakingRouter.sol#L296). This approach requires the caller to grant significant permission (`STAKING_MODULE_MANAGE_ROLE`). Given the limited scope of the parameters involved in the described ET factory, it is reasonable to create a distinct method that will allow for changing the following module's parameters:
 
 ```solidity
 interface IStakingRouter {
@@ -1913,7 +1913,7 @@ The deposits reserve target governs how much buffered ETH is held back from with
 
 ### LidoLocator
 
-New implementation. Two new addresses (`consolidationGateway`, `topUpGateway`) are added to the locator config;
+New implementation. Two new addresses (`consolidationGateway`, `topUpGateway`) are added to the locator config.
 
 | Name                   | Value                                 | Description                    |
 | ---------------------- | ------------------------------------- | ------------------------------ |
@@ -2165,7 +2165,7 @@ Both new flows that move ETH between the protocol and validators — **top-ups**
 
 For consolidations, the `ConsolidationGateway` verifies the **target** validator's withdrawal credentials via on-chain CL proofs (see [Consolidation Gateway](#consolidation-gateway)), so consolidation cannot redirect stake to a validator outside the Lido WC set. The **source** withdrawal credentials are guaranteed by the EIP-7251 system contract itself, since the consolidation request is signed by the `WithdrawalVault` contract, which is the canonical withdrawal address for all Lido core validators.
 
-For top-ups, the `TopUpGateway` verifies the target validator's withdrawal credentials via on-chain CL proofs (see [Validator State Validation](#validator-state-validation)), so a top-up cannot be routed to a non-Lido validator — even in the event a front-run during the predeposit was not caught by the DSM. The per-validator top-up limit is additionally forced to zero for slashed, exiting, or already-exited validators.
+For top-ups, the `TopUpGateway` verifies the target validator's withdrawal credentials via on-chain CL proofs (see [Validator State Validation](#validator-state-validation)), so a top-up cannot be routed to a non-Lido validator — even in the event that a front-run during the predeposit was not caught by the DSM. The per-validator top-up limit is additionally forced to zero for slashed, exiting, or already-exited validators.
 
 ### Authorized Depositor Bot for Top-Ups
 
@@ -2184,7 +2184,7 @@ Excessive or anomalous top-ups are detected by existing monitoring and trigger a
 
 ### Deposit reserve and withdrawal demand
 
-The deposit reserve protects a portion of buffered ether for CL deposits, reserve sizing is a governance trade-off:
+The deposit reserve protects a portion of buffered ether for CL deposits; reserve sizing is a governance trade-off:
 
 - A reserve that is too **small** does not meaningfully help with stake rebalancing during periods of high withdrawal demand.
 - A reserve that is too **large** delays withdrawal request finalization, since reserved ETH is filled with the highest priority and is not available to satisfy unfinalized stETH (see [Buffered Ether Allocation](#buffered-ether-allocation)).
