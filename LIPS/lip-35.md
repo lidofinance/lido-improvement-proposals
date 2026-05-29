@@ -84,7 +84,7 @@ updated: 2026-05-22
     - [Off-chain Validators Exit Oracle](#off-chain-validators-exit-oracle)
       - [Deposit reserve](#deposit-reserve)
       - [Consolidation](#consolidation-1)
-      - [Operator weight in the CMv2 module](#operator-weight-in-the-cmv2-module)
+      - [CMv2 operator weights](#cmv2-operator-weights)
   - [Stake Rebalancing](#stake-rebalancing)
     - [Deposit Reserve](#deposit-reserve-1)
       - [Proposed solution](#proposed-solution)
@@ -1645,7 +1645,8 @@ It is proposed to update the Validators Exit Oracle off-chain logic to correctly
 
 - Deposit reserve
 - Consolidation
-- Operator weight in the CMv2 module
+- CMv2 operator weights
+- CMv1 operator weights via the Meta Registry
 
 #### Deposit reserve
 
@@ -1666,7 +1667,7 @@ During stake migration from CMv1 to CMv2, and in other cases after the migration
 
 It is expected that VEBO would inspect the `PendingConsolidation` queue to differentiate exit requests from consolidation requests when calculating the required ETH withdrawal amount.
 
-#### Operator weight in the CMv2 module
+#### CMv2 operator weights
 
 For withdrawals, Validators Exit Oracle must be able to determine from which modules and from which operators stake should be withdrawn.
 
