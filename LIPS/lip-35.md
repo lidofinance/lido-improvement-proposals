@@ -1895,6 +1895,9 @@ In addition to a distinct method, it is proposed to create a special role (`STAK
 
 Below is a list of roles, configuration values, and deployment parameters proposed to be assigned as part of the upcoming upgrade. If certain parameters are not listed, they would either remain unchanged or are defined by network-level constraints.
 
+Full details about the proposed parameters can be found in [Staking Router 3.0 proposed parameters](https://hackmd.io/@lido/HJ0AC5D0Ze).
+
+
 ### Lido
 
 New implementation; state migration is performed via `finalizeUpgrade_v4()` which reads from storage and takes no arguments. The Lido app implementation has no parameters that change between versions.
@@ -1909,7 +1912,7 @@ The deposits reserve target governs how much buffered ETH is held back from with
 
 | Name                        | Value                                       | Description                                            |
 | --------------------------- | ------------------------------------------- | ------------------------------------------------------ |
-| `lidoDepositsReserveTarget` | `1000000000000000000000` (1000 ETH in wei) | Deposits reserve target  |
+| `lidoDepositsReserveTarget` | `1500000000000000000000` (1500 ETH in wei) | Deposits reserve target  |
 
 ### LidoLocator
 
@@ -2195,8 +2198,7 @@ The reserve target is configurable by `BUFFER_RESERVE_MANAGER_ROLE` so it can be
 
 - [LIP-33. Community Staking Module v3 and Curated Module v2](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md)
 - [Hoodi Curated Module v2 Migration - Node Operator Overview](https://enchanted-direction-844.notion.site/Hoodi-Curated-Module-v2-Migration-Node-Operator-Overview-PUBLIC-880bf633d0c982ea9dc58158d876d9e3?source=copy_link)
-- [ConsolidationGateway Limits](https://docs.google.com/document/d/1sq-CVq0AAznt0I7uamX0IWHzzaX3iGc3xfghDtB-9DA/edit?tab=t.0)
-- [TriggerableWithdrawalsGateway Limits](https://hackmd.io/@5wamg-wlRCCzGh0aoCqR0w/SJ-bhZ5elx/edit)
+- [Staking Router 3.0 proposed parameters](https://hackmd.io/@lido/HJ0AC5D0Ze)
 - [Sanity checks specification](https://docs.google.com/document/d/1YAWLxZk90dkcwCeQkv8xSeWYfVNKGCJmicZpPn-aGR0/edit?tab=t.0)
 - [CL balance decrease calculations](https://docs.google.com/document/d/1MK9XMU-xVdw0XQG9cxtR0rxusuBr1CI4DuGNxNXgswI/edit?tab=t.0)
 - [DG Reseal Manager](https://github.com/lidofinance/dual-governance/blob/main/contracts/ResealManager.sol)
