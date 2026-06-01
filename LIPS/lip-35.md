@@ -122,23 +122,23 @@ updated: 2026-05-22
 
 ## Simple Summary
 
-Staking Router v3 upgrades Lido's core protocol for [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) (MaxEB). Validator accounting moves from per-validator counts to direct balance tracking, rewards are distributed per-module balance, and the deposit flow switches from a push model orchestrated by the Lido contract to a pull model where the Staking Router withdraws ETH from Lido as needed. A new `TopUpGateway` enables top-ups of `0x02` validators up to 2048 ETH, secured by on-chain Merkle-proof verification of validator state.
+Staking Router v3 upgrades Lido's core protocol for [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) (`0x02` validator WCs, referred later as MaxEB). Validator accounting moves from per-validator counts to direct balance tracking, rewards are distributed per-module balance, and the deposit flow switches from a push model orchestrated by the Lido contract to a pull model where the Staking Router withdraws ETH from Lido as needed. A new `TopUpGateway` enables top-ups of `0x02` validators up to 2048 ETH, secured by on-chain Merkle-proof verification of validator state on Consensus Layer.
 
-A consolidation pipeline enables stake migration from Curated Module v1 to v2, and the validator exit flow becomes key-type-aware and balance-based, with sanity checks bound by total effective balance rather than validator count.
+A consolidation pipeline enables stake migration from Curated Module v1 to v2 ([LIP-33](lip-33.md)), and the validator exit flow becomes key-type-aware and balance-based, with sanity checks bound by total effective balance rather than validator count.
 
-A deposit reserve protects a portion of buffered ether for CL deposits, preventing withdrawal demand from consuming ETH needed for stake rebalancing and initial deposits during the CMv1 to CMv2 migration.
+A deposit reserve protects a portion of buffered ether for CL deposits, preventing withdrawal demand from consuming ETH needed for stake rebalancing and initial deposits during the Curated Module v1 to v2 migration.
 
 A dedicated Easy Track factory streamlines module share management within pre-defined bounds.
 
 ## Motivation
 
-Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to reallocate stake between modules via consolidation operations, support new deposits into large validators, naturally streamline the network, and lay the groundwork for smarter, leaner validator management overall.
+Staking Router v3 is the foundational infrastructure upgrade that serves as the base layer upon which [LIP-33 (CSM v3 and CM v2)](lip-33.md) is built. It unlocks a more flexible and efficient protocol, both technically and operationally. With these changes, the protocol will be able to migrate stake between modules via consolidation operations, support new deposits into large validators, naturally streamline the network, and lay the groundwork for smarter, leaner validator management overall.
 
 **A new, `0x02`-ready, accounting model.** Although already supported by the stVaults architecture, this is a fundamental shift for Lido Core. Currently, the Lido protocol handles critical aspects of validator accounting — deposits, rewards, withdrawals — through a unit-based approach where 1 validator equals 32 ETH. A balance-based accounting model is essential for supporting large validators and consolidations because it allows the protocol to treat validators as flexible balances rather than fixed units, enabling seamless consolidation and validator top-ups. For this to happen, a significant rework of several key components of the on-chain protocol is required.
 
-**Stake migration from CMv1 to CMv2.** The consolidation process would provide a secure and transparent way to quickly migrate stake from the old Curated Module v1 to the new Curated Module v2 with minimal stake inefficiency.
+**Stake migration from Curated Module v1 (CMv1) to Curated Module v2 (CMv2).** The consolidation process would provide a secure and transparent way to quickly migrate stake from the old CMv1 to the new CMv2 with minimal stake inefficiency.
 
-**Deposit reserve for reliable stake rebalancing.** Historically, stake rebalancing between modules through new deposits and withdrawals has been slow and unreliable — SDVT took over 1.5 years to reach its target share. A deposit reserve mechanism guarantees ETH availability for migration deposits and new module onboarding, regardless of withdrawal demand.
+**Deposit reserve for reliable stake rebalancing.** Historically, stake rebalancing between modules through new deposits and withdrawals has been slow and unreliable — [SDVT](https://operators.lido.fi/module/2) took over 1.5 years to reach its target share due to high withdrawal demand and almost no deposits surplus. A deposit reserve mechanism guarantees ETH availability for migration deposits and new module onboarding, regardless of withdrawal demand.
 
 # Specification
 
@@ -148,11 +148,11 @@ Staking Router v3 is the foundational infrastructure upgrade that serves as the 
 - **CL** — Consensus Layer. The Ethereum layer that runs proof-of-stake, coordinates validators, chooses the canonical chain, and provides finality.
 - **MaxEB** — Maximum Effective Balance. Raised by [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) from 32 ETH up to 2048 ETH for validators with `0x02` withdrawal credentials.
 - **WC** — Withdrawal Credentials. The 32-byte field on a validator that determines where its stake exits to and which key type it uses. All Lido core validators use credentials pointing to the `WithdrawalVault` contract.
-- **`0x01` / `0x02` keys** — validator key types, distinguished by withdrawal credentials prefix. `0x01` keys are capped at 32 ETH effective balance; `0x02` keys support effective balance up to 2048 ETH (MaxEB) and allow top-ups and consolidations.
+- **`0x01` / `0x02` keys** — validator key types, distinguished by withdrawal credentials prefix. `0x01` keys are capped at 32 ETH effective balance; `0x02` keys support effective balance up to 2048 ETH and allow top-ups and consolidations.
 - **Predeposit** — the minimal deposit (32 ETH) required to activate a validator. Required for both `0x01` and `0x02` keys.
 - **Top-up** — an additional deposit to an already-activated `0x02` validator, raising its balance toward the 2048 ETH cap.
 - **Consolidation** — an [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) operation that merges a source validator's balance into a target `0x02` validator.
-- **CMv1 / CMv2** — Curated Module v1 (the existing curated module with 0x01 withdrawal credentials, also known as Node Operators registry, or simply Curated Module) and Curated Module v2 (the new curated module supporting 0x02 withdrawal credentials only).
+- **CMv1 / CMv2** — CMv1 (the existing curated module with 0x01 withdrawal credentials, also known as Node Operators registry, or simply Curated Module) and CMv2 (the new curated module supporting 0x02 withdrawal credentials only).
 - **CSM** — Community Staking Module, Lido's permissionless staking module.
 - **SDVT** — Simple DVT module, the staking module that runs distributed validators. Uses the same code base as CMv1.
 - **Deposit Reserve** — a portion of Lido's buffered ether protected from withdrawal demand and reserved for CL deposits, ensuring stake rebalancing and migration deposits are not blocked.
@@ -400,6 +400,8 @@ For each legacy module during migration:
 
 The sum of `validatorsBalanceGwei` across all modules is written to the shared `RouterStateAccounting`. The next oracle report will update these values to actual balances from the Consensus Layer.
 
+Since there will be no modules supporting `0x02` keys at the moment of the upgrade, the 32 ETH assumption holds for all active validators, so the balance calculation is straightforward.
+
 #### Data Integrity
 
 The first report after migration is correct by construction:
@@ -412,7 +414,7 @@ The first report after migration is correct by construction:
 
 The list of checks has been updated following the **Pectra hard-fork** and the subsequent expansion of parameters passed to the Validator Exit Bus Oracle (VEBO) and Accounting Oracles (AO).
 
-[Here you can find a full description of changes](https://hackmd.io/@lido/HJ0AC5D0Ze).
+[Here you can find a full description of changes](https://hackmd.io/@lido/sr-v3-sanity-checks).
 
 #### AO CL Balance Decrease
 
@@ -457,7 +459,7 @@ For new integrations, `getBalanceStats()` is recommended, as it reflects the cur
 
 It is suggested that the first step in the consolidation process is an EasyTrack motion to set consolidation parameters.
 
-Operators will use EasyTrack to specify a **source/target operator pair** (CMv1 → CMv2), along with a **Consolidation Manager address**—the address that will be granted permission to submit consolidation requests for consolidating validators from the source operator to the target operator. Once the motion is enacted, stake transfers from a CMv1 operator entity to its corresponding CMv2 entity are permitted, allowing the operator to submit consolidation requests to the Migrator contract.
+Operators will use EasyTrack to specify a **source/target operator pair** (CMv1 → CMv2), along with a **Consolidation Manager address** — the address that will be granted permission to submit consolidation requests for consolidating validators from the source operator to the target operator. Once the motion is enacted, stake transfers from a CMv1 operator entity to its corresponding CMv2 entity are permitted, allowing the operator to submit consolidation requests to the Migrator contract.
 
 Once consolidation is allowed, the operator submits key indices to the Consolidation Migrator contract, which verifies that the keys are in use (deposited). The Consolidation Migrator, via dedicated modules, retrieves the corresponding pubkeys from the provided key indices. The consolidation requests are then sent to the Consolidation Bus, which stores the hash of the pubkey batch received from the Migrator.
 
@@ -467,7 +469,7 @@ The Consolidation Gateway verifies the target validators’ WC proofs, checks co
 
 The Gateway then forwards the requests and the fee to the Withdrawal Vault contract, which submits the request to the system contract.
 
-Dedicated on-chain monitoring would help ensure that operators submit valid consolidation requests (i.e., no attempts to consolidate validators scheduled for exit by VEBO, no consolidation of inactive validators, and no duplicate pending consolidation requests).
+A dedicated on-chain monitoring would help ensure that operators submit valid consolidation requests (i.e., no attempts to consolidate validators scheduled for exit by VEBO, no consolidation of inactive validators, and no duplicate pending consolidation requests).
 
 ### Consolidation EasyTrack
 
@@ -1189,7 +1191,7 @@ Instead, the module relies on **TopUpGateway** to set a **top-up limit of zero**
 
 TopUpGateway is a new contract that serves as the entry point for validator top-ups.
 
-It verifies validator status using Merkle proofs. Using this CL data, the TopUpGateway contract computes the maximum permitted top-up amount for each validator.
+It verifies validator status on CL using Merkle proofs. Using this CL data, the TopUpGateway contract computes the maximum permitted top-up amount for each validator.
 
 The contract then forwards these per-validator top-up limits — together with other validator metadata (public key, module ID, operator ID, and key index) — to the StakingRouter contract by calling `StakingRouter.topUp`.
 
@@ -1623,7 +1625,7 @@ It is proposed to introduce a second VEBO report data format, `DATA_FORMAT_LIST_
 
 It is proposed that oracles submit exit reports using the new `DATA_FORMAT_LIST_WITH_KEY_INDEX` format, enabling the key type (`0x01` / `0x02`) to be determined reliably on-chain.
 
-At the same time, existing trusted entities (i.e., Easy Track for the Curated and SDVT modules) are expected to continue operating with the current `DATA_FORMAT_LIST` format without changes. This is acceptable because Easy Track already performs an on-chain verification that the reported keys belong to the corresponding module before submitting exit requests.
+At the same time, existing trusted entities (i.e., Easy Track for the Curated and SDVT modules) are expected to continue operating with the current `DATA_FORMAT_LIST` format without changes. This is acceptable because Easy Track already performs an on-chain verification that the reported keys belong to the corresponding module before submitting exit requests and Governance-induced reports are expected to be validated off-chain by the proposers before submission, so the risk of invalid key types being reported by these entities is low.
 
 #### Sanity checker
 
@@ -1702,7 +1704,7 @@ interface ITargetAllocation {
 
 **CMv1 operator weights via the Meta Registry.** CMv1 operator weights are not exposed on-chain; the Validators Exit Oracle computes them off-chain by aggregating CMv2 weights according to the Meta Registry mapping. This aggregation is necessary because the stake migration from CMv1 to CMv2 occurs unevenly — some operators migrate earlier than others — so the oracle must account for aggregate operator stakes and weights across both modules to determine from which CMv1 operators stake exits should be initiated.
 
-The [Meta Registry](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-33.md#meta-operators-registry) stores the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module, expressed as groups in which a CMv1 operator may be listed as an external operator alongside one or more CMv2 sub-operators.
+The [Meta Registry](lip-33.md#meta-operators-registry) stores the explicit relationship between CMv1 module operators and their corresponding operators in the CMv2 module, expressed as groups in which a CMv1 operator may be listed as an external operator alongside one or more CMv2 sub-operators.
 
 When selecting validators to exit from the CMv1 module, the Validators Exit Oracle uses this mapping to derive each CMv1 operator's aggregate stake and weight:
 
