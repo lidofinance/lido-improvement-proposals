@@ -97,6 +97,7 @@ updated: 2026-06-03
     - [Motion creation](#motion-creation)
       - [Motion enacting](#motion-enacting)
     - [Required changes to StakingRouter](#required-changes-to-stakingrouter)
+  - [Operational controls](#operational-controls)
   - [Proposed params and roles](#proposed-params-and-roles)
     - [Lido](#lido-1)
     - [LidoLocator](#lidolocator)
@@ -107,11 +108,9 @@ updated: 2026-06-03
     - [DepositSecurityModule](#depositsecuritymodule)
     - [OracleReportSanityChecker](#oraclereportsanitychecker)
     - [ConsolidationGateway](#consolidationgateway)
-    - [ConsolidationGateway CircuitBreaker registration](#consolidationgateway-circuitbreaker-registration)
     - [ConsolidationBus](#consolidationbus)
     - [ConsolidationMigrator](#consolidationmigrator)
     - [TopUpGateway](#topupgateway-1)
-    - [TopUpGateway CircuitBreaker registration](#topupgateway-circuitbreaker-registration)
     - [TriggerableWithdrawalGateway](#triggerablewithdrawalgateway)
     - [EasyTrack](#easytrack)
   - [Security Considerations](#security-considerations)
@@ -1911,6 +1910,16 @@ interface IStakingRouter {
 
 In addition to a distinct method, it is proposed to create a special role (`STAKING_MODULE_SHARE_MANAGE_ROLE`) to allow for granular permissions in the updated version of the `StakingRouter.sol`.
 
+
+
+## Operational controls
+Staking Router v3 introduces a set of operational controls to ensure safe and controlled functioning of the upgraded staking system:
+
+- **Consolidation Gateway Pause.** Used to immediately suspend validator consolidation activities in response to risks or incidents. Triggered via a CircuitBreaker by the CircuitBreaker Committee (former GateSeal Committee).
+- **Top-Up Gateway Pause.** Used to stop new stake top-ups in the event of the incident affecting the top-up flow. Triggered via a CircuitBreaker by the CircuitBreaker Committee (former GateSeal Committee).
+- **Consolidation Migrator Permission Revocation.** Used to revoke incorrectly linked or no longer relevant operator consolidation pairings. Triggered via a direct on-chain action (`disallowPair`) by the Curated Module Committee (CMC).
+- **Consolidation Bus Batch Removal.** Used to remove incorrect consolidation batches from the Consolidation Bus. Triggered via a direct on-chain action (`removeBatches`) by the Curated Module Committee (CMC).
+
 ## Proposed params and roles
 
 Below is a list of roles, configuration values, and deployment parameters proposed to be assigned as part of the upcoming upgrade. If certain parameters are not listed, they would either remain unchanged or are defined by network-level constraints.
@@ -2050,15 +2059,6 @@ Constructor parameters:
 | `gIFirstValidatorCurr`          | `0x0000000000000000000000000000000000000000000000000096000000000028` | Generalized index for first validator after fork pivot        |
 | `pivotSlot`                     | `0`                                                                  | Slot at which the active generalized index switches           |
 
-### ConsolidationGateway CircuitBreaker registration
-
-`ConsolidationGateway` is registered as a pausable contract on the existing [CircuitBreaker](./lip-34.md) instance, with a dedicated pauser committee assigned to it. Pause duration and heartbeat interval are global CircuitBreaker parameters and are not set per registration.
-
-| Name       | Value                    | Description                                                      |
-| ---------- | ------------------------ | ---------------------------------------------------------------- |
-| `pausable` | `ConsolidationGateway`   | Contract registered as pausable on CircuitBreaker                |
-| `pauser`   | Gate Seal contract | Gate Seal committee authorized to trigger a pause on `ConsolidationGateway` |
-
 ### ConsolidationBus
 
 New contract behind `OssifiableProxy`.
@@ -2068,7 +2068,7 @@ New contract behind `OssifiableProxy`.
 | Proxy admin          | Aragon Agent          |
 | `DEFAULT_ADMIN_ROLE` | Aragon Agent          |
 | `PUBLISH_ROLE`       | ConsolidationMigrator |
-| `REMOVE_ROLE`        | Aragon Agent          |
+| `REMOVE_ROLE`        | CMC Committee         |
 | `MANAGE_ROLE`        | Aragon Agent          |
 
 Constructor parameters (implementation):
@@ -2145,15 +2145,6 @@ Constructor parameters (implementation):
 | `_maxRootAgeSec`         | `600`                              | Maximum age (seconds) of the beacon root used to prove validator state                    |
 | `_targetBalanceGwei`     | `2046750000000` (2046.75 ETH)      | Validator target balance ceiling after top-up (leaves 1.25 ETH safety margin below MaxEB) |
 | `_minTopUpGwei`          | `2000000000` (2 ETH)               | Minimum top-up amount; smaller calculated top-ups are skipped                             |
-
-### TopUpGateway CircuitBreaker registration
-
-`TopUpGateway` is registered as a pausable contract on the existing [CircuitBreaker](./lip-34.md) instance, with a dedicated pauser committee assigned to it. Pause duration and heartbeat interval are global CircuitBreaker parameters and are not set per registration.
-
-| Name       | Value              | Description                                                            |
-| ---------- | ------------------ | ---------------------------------------------------------------------- |
-| `pausable` | `TopUpGateway`     | Contract registered as pausable on CircuitBreaker                      |
-| `pauser`   | Gate Seal contract | Gate Seal committee authorized to trigger a pause on `TopUpGateway`    |
 
 ### TriggerableWithdrawalGateway
 
