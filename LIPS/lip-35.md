@@ -5,7 +5,7 @@ status: Proposed
 author: Maksim Kuraian (@mkurayan) , KRogLA (@KRogLA), Alexander Kolesnikov (@eddort), Anna Mukharram (@Amuhar)
 discussions-to: https://research.lido.fi/t/staking-router-v3-design-implementation-proposal-lip-35/11621
 created: 2026-05-22
-updated: 2026-06-03
+updated: 2026-06-09
 ---
 
 # LIP-35. Staking Router v3
@@ -1954,7 +1954,7 @@ New implementation. Two new addresses (`consolidationGateway`, `topUpGateway`) a
 
 ### StakingRouter
 
-Two new immutables (`MAX_EFFECTIVE_BALANCE_WC_TYPE_01`, `MAX_EFFECTIVE_BALANCE_WC_TYPE_02`) are added. Per-module state migration and OpenZeppelin AccessControl role re-import are performed in `finalizeUpgrade_v4(_maxTopUpPerBlockGwei)`, which also seeds the global per-block top-up cap.
+Per-module state migration and OpenZeppelin AccessControl role re-import are performed in `finalizeUpgrade_v4(_maxTopUpPerBlockGwei)`, which also seeds the global per-block top-up cap.
 
 | Role                               | Assignee                     |
 | ---------------------------------- | ---------------------------- |
@@ -2082,7 +2082,7 @@ Constructor parameters (implementation):
 | Name                      | Value                              | Description                                                 |
 | ------------------------- | ---------------------------------- | ----------------------------------------------------------- |
 | `admin`                   | Aragon Agent (via temporary admin) | Receives `DEFAULT_ADMIN_ROLE`, `MANAGE_ROLE`, `REMOVE_ROLE` |
-| `initialBatchSize`        | `350`                              | Maximum number of consolidation requests per batch          |
+| `initialBatchSize`        | `200`                              | Maximum number of consolidation requests per batch          |
 | `initialMaxGroupsInBatch` | `10`                               | Maximum number of target validator groups per batch         |
 | `initialExecutionDelay`   | `86400` (24 hours)                 | Delay (seconds) between batch publishing and executability  |
 
