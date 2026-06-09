@@ -1913,11 +1913,12 @@ In addition to a distinct method, it is proposed to create a special role (`STAK
 
 
 ## Operational controls
-Staking Router v3 introduces a set of operational controls to ensure safe and controlled functioning of the upgraded staking system:
+
+Staking Router v3 introduces a set of operational controls to ensure the safe and controlled functioning of the upgraded staking system:
 
 - **Consolidation Gateway Pause.** Used to immediately suspend validator consolidation activities in response to risks or incidents. Triggered via a CircuitBreaker by the CircuitBreaker Committee (former GateSeal Committee).
 - **Top-Up Gateway Pause.** Used to stop new stake top-ups in the event of the incident affecting the top-up flow. Triggered via a CircuitBreaker by the CircuitBreaker Committee (former GateSeal Committee).
-- **Consolidation Migrator Permission Revocation.** Used to revoke incorrectly linked or no longer relevant operator consolidation pairings. Triggered via a direct on-chain action (`disallowPair`) by the Curated Module Committee (CMC).
+- **Consolidation Migrator Operator Pair Permission Revocation.** Used to revoke incorrectly linked or no longer relevant operator consolidation pairings. Triggered via a direct on-chain action (`disallowPair`) by the Curated Module Committee (CMC).
 - **Consolidation Bus Batch Removal.** Used to remove incorrect consolidation batches from the Consolidation Bus. Triggered via a direct on-chain action (`removeBatches`) by the Curated Module Committee (CMC).
 
 ## Proposed params and roles
