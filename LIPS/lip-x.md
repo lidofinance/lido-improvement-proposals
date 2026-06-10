@@ -621,6 +621,8 @@ function getChainConfig() external view returns (
 
 `getInitialRefSlot()` is replaced by `getInitialTimestamp()`, and `getChainConfig()` is dropped because frame math no longer depends on chain config. All in-protocol consumers of these methods are updated to the timestamp-based interface in this release.
 
+**Note — external consumers.** These two functions are public view methods that out-of-protocol integrations (block explorers, dashboards, indexers, analytics, third-party contracts) may read. Removing them is a breaking ABI change beyond Lido's own codebase, so before removal it requires dedicated research to enumerate external dependents and an advance announcement so integrators can move to the timestamp-based equivalents. If that research surfaces hard external dependencies that cannot migrate in time, retaining the two methods as thin read-only compatibility shims should be reconsidered rather than removing them outright.
+
 ##### Events and Errors
 
 All events and custom errors that reference `refSlot`, `slot`, `epoch`, `epochsPerFrame`, `fastLaneLengthSlots`, or `initialEpoch` must be updated to their timestamp-based equivalents. Off-chain services that parse these events (oracle daemons, indexers, monitoring tools) will require corresponding updates before or at the time of contract upgrading.
@@ -690,7 +692,7 @@ Because CSM's contracts are a separate fork with their own deployment, the `core
 
 | Contract                        | Repointing required                                                                                                            |
 |---------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| `HashConsensus` (core)          | Set as the consensus contract on `AccountialngOracle` and `ValidatorsExitBusOracle` (`setConsensusContract`).                  |
+| `HashConsensus` (core)          | Set as the consensus contract on `AccountingOracle` and `ValidatorsExitBusOracle` (`setConsensusContract`).                    |
 | `HashConsensus` (CSM, vendored) | Set as the consensus contract on CSM's `FeeOracle`.                                                                            |
 | `DepositSecurityModule`         | Update the `LidoLocator` reference and re-grant its deposit role; update any monitoring/config that hardcodes the DSM address. |
 | `OracleReportSanityChecker`     | Only if the ZK-oracle path is adopted; update the `LidoLocator` reference.                                                     |
