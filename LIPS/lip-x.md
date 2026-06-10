@@ -68,7 +68,7 @@ The release consists of four coordinated changes:
 
 **Why KDF ships with its adoption scope.** The `DelegationFactory` and `DelegationContract` are inert on their own: without the Oracle and DSM integration they deliver no security benefit and give operators no migration path. Shipping the contracts together with their adoption scope is what actually closes the hot-key risk in this release rather than deferring it.
 
-**Why a purpose-built own delegation contract rather than reusing an existing solution.** A general-purpose delegation or smart-account framework is far more flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes KDF's guarantees structural — admin can never `execute()` or sign, one active delegatee, instant assignment and revocation, irreversible `pause()` — keeping the audited surface small.
+**Why a purpose-built own delegation contract rather than reusing an existing solution.** A general-purpose delegation or smart-account framework is far more flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes KDF's guarantees structural — admin can never `execute()` or sign, one active delegatee, instant assignment and revocation, irreversible `terminate()` — keeping the audited surface small.
 
 ### Technical Specification
 
@@ -89,10 +89,10 @@ The contract has exactly two roles, **admin** and **delegatee**:
 
 | Role                    | Custody                                                    | Capabilities                                                                                                                |
 |-------------------------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| **Admin**               | Safe multisig or other audited multisig with justification | Assign, reassign, and revoke the delegatee (`assignDelegatee()` / `revokeDelegatee()`); irreversibly `pause()` the contract |
+| **Admin**               | Safe multisig or other audited multisig with justification | Assign, reassign, and revoke the delegatee (`assignDelegatee()` / `revokeDelegatee()`); irreversibly `terminate()` the contract |
 | **Delegatee (Hot Key)** | Hot key in the off-chain daemon                            | Call `execute()` to dispatch transactions (`push`); sign messages verifiable via EIP-1271 (`pull`)                          |
 
-The admin manages the delegatee's lifecycle but can never act *as* the contract. Pausing is the escape hatch for admin-key compromise: because `pause()` is irreversible and permanently disables `execute()` and `isValidSignature()`, a still-trusted admin can neutralise the contract entirely — stripping the delegatee of any usable role under its authority — even when the only safe move is to take the seat offline rather than rotate it.
+The admin manages the delegatee's lifecycle but can never act *as* the contract. Termination is the escape hatch for admin-key compromise: because `terminate()` is irreversible and permanently disables `execute()` and `isValidSignature()`, a still-trusted admin can neutralize the contract entirely — stripping the delegatee of any usable role under its authority — even when the only safe move is to take the seat offline rather than rotate it.
 
 ##### Contract Interface
 
@@ -111,19 +111,19 @@ interface IDelegationContract {
     ///         Takes effect immediately.
     function revokeDelegatee() external;
 
-    /// @notice Pause the contract, permanently disabling execute() and
+    /// @notice Terminate the contract, permanently disabling execute() and
     ///         isValidSignature(). Only callable by admin.
     ///         Intended for emergency use when the admin suspects compromise
     ///         of the delegatee or of the contract itself.
-    ///         Pausing is irreversible; a new DelegationContract must be
+    ///         Termination is irreversible; a new DelegationContract must be
     ///         deployed and governance must reassign the protocol seat.
-    function pause() external;
+    function terminate() external;
 
     // --- Push integration ---
 
     /// @notice Execute an arbitrary call on behalf of this contract.
     ///         Only callable by the current delegatee.
-    ///         Reverts if the contract is paused.
+    ///         Reverts if the contract is terminated.
     ///         Reverts if the target call reverts, propagating the target's
     ///         revert data — the whole transaction is atomic, so forwarded
     ///         ETH is returned to the delegatee on failure.
@@ -144,7 +144,7 @@ interface IDelegationContract {
     ///         Returns the magic value iff `signature` was produced by
     ///         the currently assigned delegatee over `hash`.
     ///         Returns a non-magic value (does not revert) if the contract
-    ///         is paused or no delegatee is assigned.
+    ///         is terminated or no delegatee is assigned.
     function isValidSignature(bytes32 hash, bytes calldata signature)
         external
         view
@@ -158,14 +158,14 @@ interface IDelegationContract {
     /// @notice Returns the current active delegatee, or address(0) if none.
     function getDelegatee() external view returns (address);
 
-    /// @notice Returns true if the contract has been paused.
-    function isPaused() external view returns (bool);
+    /// @notice Returns true if the contract has been terminated.
+    function isTerminated() external view returns (bool);
 
     // --- Events ---
 
     event DelegateeAssigned(address indexed newDelegatee);
     event DelegateeRevoked(address indexed revokedDelegatee);
-    event Paused();
+    event Terminated();
 }
 
 interface IDelegationFactory {
@@ -227,12 +227,12 @@ Off-chain bot (delegatee)          DelegationContract         Protocol contract
         │◄── result (or revert) ───────────│                          │
 ```
 
-`execute()` is `payable` and forwards `msg.value` to the target. This is required to support future permissioned bots that interact with payable protocol functions, such as EIP-7002 triggerable withdrawal requests and EIP-7251 consolidation requests, where a fee must be paid in ETH at call time. After the target call returns, `execute()` sweeps any ETH still held by the contract back to the delegatee, so change refunded by the target (e.g. the excess fee the EIP-7002 / EIP-7251 predeploys return to their caller) is forwarded to the bot rather than stranded on the delegation contract.
+`execute()` is `payable` and forwards `msg.value` to the target. This is required to support future permissioned bots that interact with payable protocol functions, such as EIP-7002 triggerable withdrawal requests and EIP-7251 consolidation requests, where a fee must be paid in ETH at call time. After the target call returns, `execute()` sweeps any ETH still held by the contract back to the delegatee, so change refunded by the target is forwarded to the bot rather than stranded on the delegation contract.
 
 **Security assumptions:**
 - The target contract must verify `msg.sender == DelegationContract` is a registered permission holder (e.g., oracle committee member, DSM guardian). It must not rely on `tx.origin`.
 - The delegatee can call any target with any data; the contract does not restrict the call target. Governance must ensure the `DelegationContract` address holds only the narrowest set of permissions needed.
-- If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegatee. On a *successful* call, any ETH the target refunds to the contract (change) is swept back to the delegatee before `execute()` returns; only ETH the target actually consumes/keeps is non-recoverable. Bots should still send at least the required fee, but overpayment that the target refunds is no longer lost.
+- If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegatee. On a *successful* call, any ETH the target refunds to the contract (change) is swept back to the delegatee before `execute()` returns; only ETH the target actually consumes/keeps is non-recoverable.
 
 **When to use:** Any integration where the bot submits transactions that modify on-chain state and the protocol contract checks `msg.sender` for authorization. Examples: oracle report submission (`submitReportData`) or any permissioned bots.
 
@@ -251,15 +251,15 @@ Both assignment and revocation take effect immediately, with no scheduling or wa
 
 The expected sequence is: detect delegatee compromise → `revokeDelegatee()` immediately → notify DAO → `assignDelegatee(newHotKey)`.
 
-##### Emergency Pause
+##### Emergency Termination
 
-The admin may call `pause()` to permanently disable the contract's `execute()` and `isValidSignature()` functions. This is an **irreversible** operation: a paused contract cannot be un-paused. After pausing:
+The admin may call `terminate()` to permanently disable the contract's `execute()` and `isValidSignature()` functions. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
 
 - All delegatee calls to `execute()` revert.
 - All EIP-1271 signature verifications return a non-magic value (not a revert), so upstream callers that check the return value rather than reverting on a bad result will handle this gracefully.
 - A new `DelegationContract` must be deployed and governance must reassign the protocol seat to the new address.
 
-The pause is intended for scenarios where the admin believes the admin's own address has been compromised and wishes to ensure no further actions can be taken under its authority. The expected sequence is: detect compromise → `pause()` → notify DAO → deploy new delegation contract → governance vote.
+Termination is intended for scenarios where the admin believes the admin's own address has been compromised and wishes to ensure no further actions can be taken under its authority. The expected sequence is: detect compromise → `terminate()` → notify DAO → deploy new delegation contract → governance vote.
 
 ##### Hot-Key Rotation
 
@@ -286,8 +286,8 @@ Governance grants protocol permissions (e.g., oracle committee membership, DSM g
 
 - **Smart contracts**: `lidofinance/delegation-execution-authority` (Solidity + Foundry framework)
   - `DelegationFactory` and `DelegationContract`
-  - EIP-1271 signature validation; payable `execute()` with value forwarding; immediate `assignDelegatee()` / `revokeDelegatee()`; irreversible `pause()`; admin-cannot-execute invariant enforced by design
-  - Full test suite including mainnet fork tests (Foundry, covering contract logic, factory deployment, access control, EIP-1271, payable execution, assignment/revocation, and pause behaviour)
+  - EIP-1271 signature validation; payable `execute()` with value forwarding; immediate `assignDelegatee()` / `revokeDelegatee()`; irreversible `terminate()`; admin-cannot-execute invariant enforced by design
+  - Full test suite including mainnet fork tests (Foundry, covering contract logic, factory deployment, access control, EIP-1271, payable execution, assignment/revocation, and termination behavior)
 
 ---
 
@@ -382,7 +382,7 @@ function depositBufferedEther(
 
 function pauseDeposits(
     uint256 blockNumber,
-    GuardianSignature calldata sig   // was Signature[]
+    GuardianSignature calldata sig   // was Signature
 ) external;
 
 function unvetSigningKeys(
@@ -392,7 +392,7 @@ function unvetSigningKeys(
     uint256 nonce,
     bytes calldata nodeOperatorIds,
     bytes calldata vettedSigningKeysCounts,
-    GuardianSignature calldata sig   // was Signature[]
+    GuardianSignature calldata sig   // was Signature
 ) external;
 ```
 
@@ -410,7 +410,7 @@ On-chain, DSM is given that guardian address explicitly, sees it is a contract, 
 
 **Required change to the council daemon:** Sign with the delegatee private key, set `DELEGATION_CONTRACT_ADDRESS`, and publish that `DelegationContract` address together with each signature (so consumers know which registered guardian the signature is for). No structural code change is required beyond configuration and attaching the guardian address to each published signature.
 
-**Required change to the depositor bot:** The bot relays the council-provided `(DelegationContract address, signature)` pairs to DSM as-is. The only behavioural change is ordering: when assembling `depositBufferedEther`, the bot must sort the signature array by the council-supplied guardian address (matching DSM's new ascending-by-`guardian` ordering) rather than by recovered signer.
+**Required change to the depositor bot:** The bot relays the council-provided `(DelegationContract address, signature)` pairs to DSM as-is. The only behavioral change is ordering: when assembling `depositBufferedEther`, the bot must sort the signature array by the council-supplied guardian address (matching DSM's new ascending-by-`guardian` ordering) rather than by recovered signer.
 
 ---
 
@@ -443,18 +443,15 @@ Until the governance vote in step 5 executes, operators continue to run as EOA p
 
 The unbounded `_reportVariants` array is replaced with a two-dimensional mapping keyed by frame ID and member index:
 
-```solidity
-// Removed:
-mapping(uint256 => ReportVariant) internal _reportVariants;
-uint256 internal _reportVariantsLength;
-
-// Added:
-struct Report {
-    bytes32 hash;
-    uint64  refTimestamp;
-}
-mapping(uint256 => mapping(uint256 => Report)) internal _currentMemberHash;
-// frameId => memberIndex => Report
+```diff
+-mapping(uint256 => ReportVariant) internal _reportVariants;
+-uint256 internal _reportVariantsLength;
++struct Report {
++    bytes32 hash;
++    uint64  refTimestamp;
++}
++// frameId => memberIndex => Report
++mapping(uint256 => mapping(uint256 => Report)) internal _currentMemberHash;
 ```
 
 Each oracle member has at most one stored report per frame. Old entries with a stale `refTimestamp` are ignored in consensus evaluation, eliminating the need to clear storage between frames.
@@ -491,132 +488,104 @@ The case is reinforced by EIP-8198 ("Quick Slots"), which proposes to make slot 
 
 ###### `IReportAsyncProcessor` (implemented by `BaseOracle`, and therefore by `AccountingOracle` and `ValidatorsExitBusOracle`; CSM runs a separate forked copy — see Affected Contracts below)
 
-```solidity
-// Before:
-interface IReportAsyncProcessor {
-    function submitConsensusReport(
-        bytes32 _report,
-        uint256 _refSlot,
-        uint256 _deadline
-    ) external;
+```diff
+ interface IReportAsyncProcessor {
+     function submitConsensusReport(
+         bytes32 _report,
+-        uint256 _refSlot,
++        uint256 _refTimestamp,
+         uint256 _deadline
+     ) external;
 
-    function discardConsensusReport(uint256 _refSlot) external;
-}
-
-// After:
-interface IReportAsyncProcessor {
-    function submitConsensusReport(
-        bytes32 _report,
-        uint256 _refTimestamp,
-        uint256 _deadline
-    ) external;
-
-    function discardConsensusReport(uint256 _refTimestamp) external;
-}
+-    function discardConsensusReport(uint256 _refSlot) external;
++    function discardConsensusReport(uint256 _refTimestamp) external;
+ }
 ```
 
 Existing implementations receive a `uint256` regardless; because `refTimestamp` values are numerically larger than any historical `refSlot`, all on-chain value comparisons (e.g., "must be greater than last processed value") remain valid without modification. Any logic that interprets the value semantically as a slot number is updated in this release as part of the protocol-wide ABI migration.
 
 ###### View Functions
 
-```solidity
-// Before:
-function getFrameConfig() external view returns (
-    uint256 initialEpoch,
-    uint256 epochsPerFrame,
-    uint256 fastLaneLengthSlots
-);
-function getCurrentFrame() external view returns (
-    uint256 refSlot,
-    uint256 reportProcessingDeadlineSlot
-);
-function getMembers() external view returns (
-    address[] memory addresses,
-    uint256[] memory lastReportedRefSlots
-);
-function getFastLaneMembers() external view returns (
-    address[] memory addresses,
-    uint256[] memory lastReportedRefSlots
-);
-function getConsensusState() external view returns (
-    uint256 refSlot,
-    bytes32 consensusReport,
-    bool isReportProcessing
-);
-
-// After:
-function getFrameConfig() external view returns (
-    uint256 initialTimestamp,
-    uint256 secondsPerFrame,
-    uint256 fastLaneSeconds
-);
-function getCurrentFrame() external view returns (
-    uint256 refTimestamp,
-    uint256 reportProcessingDeadlineTimestamp
-);
-function getMembers() external view returns (
-    address[] memory addresses,
-    uint256[] memory lastReportedRefTimestamps
-);
-function getFastLaneMembers() external view returns (
-    address[] memory addresses,
-    uint256[] memory lastReportedRefTimestamps
-);
-function getConsensusState() external view returns (
-    uint256 refTimestamp,
-    bytes32 consensusReport,
-    bool isReportProcessing
-);
+```diff
+ function getFrameConfig() external view returns (
+-    uint256 initialEpoch,
+-    uint256 epochsPerFrame,
+-    uint256 fastLaneLengthSlots
++    uint256 initialTimestamp,
++    uint256 secondsPerFrame,
++    uint256 fastLaneSeconds
+ );
+ function getCurrentFrame() external view returns (
+-    uint256 refSlot,
+-    uint256 reportProcessingDeadlineSlot
++    uint256 refTimestamp,
++    uint256 reportProcessingDeadlineTimestamp
+ );
+ function getMembers() external view returns (
+     address[] memory addresses,
+-    uint256[] memory lastReportedRefSlots
++    uint256[] memory lastReportedRefTimestamps
+ );
+ function getFastLaneMembers() external view returns (
+     address[] memory addresses,
+-    uint256[] memory lastReportedRefSlots
++    uint256[] memory lastReportedRefTimestamps
+ );
+ function getConsensusState() external view returns (
+-    uint256 refSlot,
++    uint256 refTimestamp,
+     bytes32 consensusReport,
+     bool isReportProcessing
+ );
 ```
 
 ###### `MemberConsensusState` Struct
 
-```solidity
-struct MemberConsensusState {
-    uint256 currentFrameRefTimestamp;      // renamed from currentFrameRefSlot
-    bytes32 currentFrameConsensusReport;
-    bool    isMember;
-    bool    isFastLane;
-    bool    canReport;
-    uint256 lastMemberReportTimestamp;     // renamed from lastMemberReportRefSlot
-    bytes32 currentFrameMemberReport;
-}
+```diff
+ struct MemberConsensusState {
+-    uint256 currentFrameRefSlot;
++    uint256 currentFrameRefTimestamp;
+     bytes32 currentFrameConsensusReport;
+     bool    isMember;
+     bool    isFastLane;
+     bool    canReport;
+-    uint256 lastMemberReportRefSlot;
++    uint256 lastMemberReportTimestamp;
+     bytes32 currentFrameMemberReport;
+ }
 ```
 
 ###### Setter / Admin Functions
 
-```solidity
-// Before:
-function setFrameConfig(uint256 epochsPerFrame, uint256 fastLaneLengthSlots) external;
-function submitReport(uint256 slot, bytes32 report, uint256 consensusVersion) external;
-function updateInitialEpoch(uint256 initialEpoch) external;
-function setFastLaneLengthSlots(uint256 fastLaneLengthSlots) external;
-
-// After:
-function setFrameConfig(uint256 secondsPerFrame, uint256 fastLaneSeconds) external;
-function submitReport(uint256 timestamp, bytes32 report, uint256 consensusVersion) external;
-function updateInitialTimestamp(uint256 initialTimestamp) external;
-function setFastLaneSeconds(uint256 fastLaneSeconds) external;
+```diff
+-function setFrameConfig(uint256 epochsPerFrame, uint256 fastLaneLengthSlots) external;
+-function submitReport(uint256 slot, bytes32 report, uint256 consensusVersion) external;
+-function updateInitialEpoch(uint256 initialEpoch) external;
+-function setFastLaneLengthSlots(uint256 fastLaneLengthSlots) external;
++function setFrameConfig(uint256 secondsPerFrame, uint256 fastLaneSeconds) external;
++function submitReport(uint256 timestamp, bytes32 report, uint256 consensusVersion) external;
++function updateInitialTimestamp(uint256 initialTimestamp) external;
++function setFastLaneSeconds(uint256 fastLaneSeconds) external;
 ```
 
 ###### New Function
 
-```solidity
-function getInitialTimestamp() external view returns (uint256);
+```diff
++function getInitialTimestamp() external view returns (uint256);
 ```
 
 ###### Removed Functions
 
-```solidity
-// Removed — superseded by getInitialTimestamp():
-function getInitialRefSlot() external view returns (uint256);
-
-// Removed — no longer required for frame math under seconds-based frames:
-function getChainConfig() external view returns (
-    uint256 slotsPerEpoch,
-    uint256 secondsPerSlot,
-    uint256 genesisTime
-);
+```diff
+-// Superseded by getInitialTimestamp():
+-function getInitialRefSlot() external view returns (uint256);
+-
+-// No longer required for frame math under seconds-based frames:
+-function getChainConfig() external view returns (
+-    uint256 slotsPerEpoch,
+-    uint256 secondsPerSlot,
+-    uint256 genesisTime
+-);
 ```
 
 `getInitialRefSlot()` is replaced by `getInitialTimestamp()`, and `getChainConfig()` is dropped because frame math no longer depends on chain config. All in-protocol consumers of these methods are updated to the timestamp-based interface in this release.
@@ -675,7 +644,7 @@ The slot-to-timestamp migration touches two independent codebases, each with its
 | `HashConsensus.sol` (CSM)                   | Upgrade required | Identical epoch/slot frame math **and** the same unbounded `_reportVariants` storage — so CSM's fee oracle is independently exposed to the same DoS. Both fixes apply here too. |
 | `BaseOracle.sol` (CSM)                      | Upgrade required | Same `getChainConfig()` / `getInitialRefSlot()` calls and `ConsensusReport.refSlot` as core's `BaseOracle`.                                                                     |
 | `FeeOracle.sol` (deployed as `CSFeeOracle`) | Rename           | Passes `data.refSlot` through only (no slot arithmetic) — easier than `core`'s `AccountingOracle`.                                                                              |
-| `TwoPhaseFrameConfigUpdate.sol`             | To remove        | Frame-config update utility tied to the old slot-based `setFrameConfig`.                                                                                                        |
+| `TwoPhaseFrameConfigUpdate.sol`             | Upgrade required | Frame-config update utility tied to `setFrameConfig`; updated for the seconds-based config (kept for future use, not removed).                                                  |
 
 Because CSM's contracts are a separate fork with their own deployment, the `core` changes do not propagate to them automatically. They are in scope of this proposal and must be deployed together with the `core` changes so that CSM's fee oracle receives the DoS fix and the timestamp migration at the same time rather than being left exposed.
 
@@ -729,15 +698,15 @@ The delegation model shifts trust from "this hot key is the oracle" to "this del
 
 **Admin cannot act as bot by design.** The admin address has no ability to call `execute()` or produce EIP-1271-valid signatures. This is enforced at the contract level: the admin is kept maximally cold and can only manage the delegatee lifecycle.
 
-**Pull integration (EIP-1271):** Consumer contracts must treat the `DelegationContract` address as the authorized principal, never the recovered signer EOA. A paused contract returns a non-magic value rather than reverting — consumers that check the return value will fail closed, but consumers that assume a revert on failure may inadvertently accept a paused contract's output.
+**Pull integration (EIP-1271):** Consumer contracts must treat the `DelegationContract` address as the authorized principal, never the recovered signer EOA. A terminated contract returns a non-magic value rather than reverting — consumers that check the return value will fail closed, but consumers that assume a revert on failure may inadvertently accept a terminated contract's output.
 
 **Push integration (`execute()`):** The delegatee can call any target. Permission grants must be narrowly scoped per contract, enforced by the one-contract-per-bot rule. ETH is forwarded to the target and any change is swept back to the delegatee after the call, so overpayment refunded by the target is recovered; only ETH the target actually consumes is non-recoverable.
 
 **Admin compromise.** An attacker with admin access can immediately assign a delegatee they control and have it act within the seat's permissions — there is no delay and no reaction window, so this is the model's most serious failure mode and the reason the admin must be a cold, high-threshold multisig. The attacker still cannot call `execute()` or sign directly (the admin-cannot-execute invariant holds), so they must route actions through an assigned delegatee, and the `DelegateeAssigned` event fires on-chain for monitoring to catch. The blast radius is bounded to that single contract's permissions.
 
-As a last resort — while the legitimate admin still controls the key — it can `pause()` the contract. `pause()` is irreversible by design: once paused, no action can be taken under the contract's authority by anyone, and an attacker who later gains admin access cannot un-pause it. The cost is that a new contract must be deployed and governance must reassign the seat, but this is preferable to leaving an attacker able to act through the contract. This irreversibility must be explicit in operator training material.
+As a last resort — while the legitimate admin still controls the key — it can `terminate()` the contract. `terminate()` is irreversible by design: once terminated, no action can be taken under the contract's authority by anyone, and an attacker who later gains admin access cannot reverse it. The cost is that a new contract must be deployed and governance must reassign the seat, but this is preferable to leaving an attacker able to act through the contract. This irreversibility must be explicit in operator training material.
 
-**Delegatee compromise.** An attacker with only the delegatee key can act within the contract's protocol permissions but cannot assign a new delegatee, cannot pause, and cannot perform any admin operation. The admin can instantly revoke the delegatee via `revokeDelegatee()`.
+**Delegatee compromise.** An attacker with only the delegatee key can act within the contract's protocol permissions but cannot assign a new delegatee, cannot terminate, and cannot perform any admin operation. The admin can instantly revoke the delegatee via `revokeDelegatee()`.
 
 **One contract per bot.** Mandatory. Sharing a delegation contract across roles means a single compromise affects multiple protocol functions. Enforced at the governance permission-grant step.
 
