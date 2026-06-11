@@ -1,6 +1,6 @@
 ---
 lip: <to be assigned>
-title: "KDF Release: HashConsensus Hardening, Timestamp-Based Frames, Key Delegation Framework, and Protocol-Wide KDF Adoption"
+title: "Key Delegation Authority"
 status: WIP
 author: Raman Siamionau
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
@@ -13,18 +13,18 @@ This proposal bundles four related improvements to Lido's infrastructure into a 
 
 1. **Key Delegation Framework (KDF)** — introduces a general-purpose on-chain delegation layer that sits in front of any permissioned key in the protocol, allowing its operator to rotate the hot signing key instantly, without governance voting.
 2. **KDF adoption within Oracle and DSM scope** — specifies the concrete off-chain and on-chain changes required to adopt KDF across Lido Oracles and Council daemons.
-3. **HashConsensus vulnerability fix** — closes a denial-of-service vector in the `HashConsensus` contract by bounding the number of stored report variants per frame.
+3. **HashConsensus vulnerability fix** — closes a denial-of-service vector in the `HashConsensus` contract by bounding the number of stored report variants per frame ([`lidofinance/core#1379`](https://github.com/lidofinance/core/issues/1379)).
 4. **Timestamp-based oracle frames** — replaces slot/epoch-based frame logic in `HashConsensus` with wall-clock seconds, so oracle frame lengths stay stable across future Ethereum hardforks (including the EIP-7782 slot time reduction).
 
 ## Abstract
 
 This upgrade pursues two main goals: to improve the security of the protocol, and to abstract existing functionality away from slots and epochs so that future upgrades are simpler to perform.
 
-On the security side, we propose to standardize the Key Delegation Framework (KDF) as a protocol-wide primitive and to adopt it for every key that holds any protocol permission. KDF inserts a factory-deployed, per-entity delegation contract between the protocol and each operator's hot key: governance grants permissions to the delegation contract, while the operator's cold key or multisig controls which hot key is active and can rotate it at any time without a governance vote, or irreversibly lock the contract should the cold key itself be compromised. As the first batch of adopters, we propose to begin using KDF immediately for Oracle and Council operators, so that the response to a key compromise can be measured in minutes rather than the ~10 days a governance vote requires today.
+On the security side, we propose to standardize the Key Delegation Framework (KDF) as a protocol-wide primitive and to adopt it for every key that holds any protocol permission. KDF inserts a factory-deployed, per-entity delegation contract between the protocol and each operator's hot key: governance grants permissions to the delegation contract, while the operator's cold key or multisig controls which hot key is active and can rotate it at any time without a governance vote, or irreversibly lock the contract should the cold key itself be compromised. As the first batch of adopters, we propose to begin using KDF immediately for Oracle and Council operators, so that the response to a key compromise can be measured in minutes rather than the ~10 days a governance vote requires today. Beyond incident response, periodic hot-key rotation is itself a valuable security practice, and KDF makes it possible to perform it routinely.
 
-On the abstraction side, we propose to rewrite the `HashConsensus` contract ([`lidofinance/core`](https://github.com/lidofinance/core)) to express all frame logic in wall-clock seconds (`secondsPerFrame`, `fastLaneSeconds`, `initialTimestamp`, `refTimestamp`) instead of epoch- and slot-based parameters. This decouples oracle frame durations from Ethereum's consensus-layer slot timing and future-proofs oracle operation against changes such as the [EIP-7782](https://eips.ethereum.org/EIPS/eip-7782) slot-time reduction. The same redeployment also closes a denial-of-service vector in `HashConsensus`: the report-variant storage model is reworked so that, instead of accumulating all unique hashes submitted in a frame, the contract stores only the most recent hash per oracle member per frame via a `frameId → memberIndex → Report` mapping, eliminating the unbounded iteration that enables the attack.
+On the abstraction side, we propose to rewrite the `HashConsensus` contract ([`lidofinance/core`](https://github.com/lidofinance/core)) to express all frame logic in wall-clock seconds (`secondsPerFrame`, `fastLaneSeconds`, `initialTimestamp`, `refTimestamp`) instead of epoch- and slot-based parameters. This decouples oracle frame durations from Ethereum's consensus-layer slot timing and future-proofs oracle operation against changes such as the [EIP-7782](https://eips.ethereum.org/EIPS/eip-7782) slot-time reduction. The same redeployment also closes a denial-of-service vector in `HashConsensus`: a member can no longer inflate the report-variant array with distinct hashes, because abandoned variant slots are reused, capping the array — and every loop over it — at the committee size, eliminating the unbounded iteration that enables the attack.
 
-Concretely, we propose to deploy an updated `HashConsensus` contract, a new `DelegationFactory` / `DelegationContract` system (repository: [`lidofinance/delegation-execution-authority`](https://github.com/lidofinance/delegation-execution-authority)), and targeted updates to the [`lido-oracle`](https://github.com/lidofinance/lido-oracle) daemon and `DepositSecurityModule`. The adoption scope specifies the integration points: the `lido-oracle` daemon gains delegation support via a `DELEGATION_CONTRACT_ADDRESS` environment variable, and the `DepositSecurityModule` is updated to validate guardian signatures via [EIP-1271](https://eips.ethereum.org/EIPS/eip-1271), enabling council members to operate behind delegation contracts. Adoption is mandatory for these roles; a coordinated migration process is defined for existing Oracle and DSM operators to onboard to the new model without service interruption.
+Concretely, we propose to deploy an updated `HashConsensus` contract, a new `DelegationFactory` / `DelegationContract` system (repository: [`lidofinance/delegation-execution-authority`](https://github.com/lidofinance/delegation-execution-authority)), and targeted updates to the [`lido-oracle`](https://github.com/lidofinance/lido-oracle) daemon and `DepositSecurityModule`. The adoption scope specifies the integration points: the `lido-oracle` daemon gains delegation support via a `DELEGATION_CONTRACT_ADDRESS` environment variable, and the `DepositSecurityModule` is updated to verify guardian signatures by recovering the signer and checking it against the guardian's `DelegationContract.getDelegatee()`, enabling council members to operate behind delegation contracts. Adoption is mandatory for these roles; a coordinated migration process is defined for existing Oracle and DSM operators to onboard to the new model without service interruption.
 
 ## Motivation
 
@@ -33,15 +33,14 @@ Concretely, we propose to deploy an updated `HashConsensus` contract, a new `Del
 Oracle members and Deposit Security Module Committee council members currently operate with hot EOA private keys stored directly in off-chain bots. These keys:
 
 - Carry meaningful protocol permissions (report submission, pause/unvet signing, deposit message signing).
-- Are frequently shared across personnel and systems.
 - May be long-lived with an unclear custody history.
 - Require a full on-chain governance vote (~10 days) to rotate in the event of compromise.
 
-The 10-day exposure window between a key compromise and its on-chain revocation is an unacceptable operational risk, and the threat is not hypothetical: the May 2025 compromise of a Chorus One oracle key triggered an emergency DAO vote to rotate the affected oracle. While that incident did not exploit a specific vulnerability, it confirmed that adversarial oracle key control is a realistic scenario — and that the only remediation available today, a full governance vote, is far too slow for an active compromise.
+By their very nature, these bots must operate with hot keys: the signing key lives on the machine, which makes it inherently exposed and comparatively easy to compromise. The quorum requirements these roles operate under already absorb most of the risk of any single such key being compromised — a lone compromised member cannot, on its own, move the protocol — so the long voting window is not in itself the core concern. The real problem is operational: rotating a hot key today requires a full on-chain governance vote, drawing in the dev team and token holders for what should be a routine key-management action. That makes rotation burdensome both for proactive, periodic rotation and, more acutely, for responding to an active compromise. And because a replacement key is only authorized once the vote executes, an operator that stops trusting a suspect key cannot use a new one in the meantime — the seat simply stops participating until governance acts.
 
 ### HashConsensus DoS vulnerability
 
-The current `HashConsensus` contract stores every unique report hash submitted by any oracle member in a per-frame array (`_reportVariants` / `_reportVariantsLength`). Consensus is determined by iterating the full array. Because a single oracle member can submit an unlimited number of distinct hashes, a malicious or buggy member can inflate this array, making each subsequent `submitReport` and `_isQuorumReached` call more expensive — the iteration cost grows with every additional report variant stored.
+The current `HashConsensus` contract stores every unique report hash submitted by any oracle member in a per-frame array (`_reportVariants` / `_reportVariantsLength`). Consensus is determined by iterating the full array. Because a single oracle member can submit an unlimited number of distinct hashes, a member can inflate this array, making each subsequent `submitReport` and `_isQuorumReached` call more expensive — the iteration cost grows with every additional report variant stored. This exposes an attack vector in which a single compromised key can block reports from being completely delivered.
 
 The attack works by submitting so many alternative report variants that iterating over them no longer fits within a single transaction's gas limit. At that point report submission can no longer be completed in one transaction and quorum can no longer be reached. The practical consequence is a halt of oracle reporting: for as long as the attack is sustained, `HashConsensus` cannot reach consensus and the protocol cannot process the accounting reports that drive stETH rebases, withdrawal request finalization, and validator exit requests. The DoS therefore degrades core protocol operation, not merely the `HashConsensus` contract in isolation.
 
@@ -58,7 +57,7 @@ EIP-8198 goes further by making slot duration a runtime-configurable parameter r
 The release consists of four coordinated changes:
 
 1. Deployment of the `DelegationFactory`, establishing the general-purpose on-chain delegation infrastructure (KDF).
-2. An update to the `DepositSecurityModule` contract to verify guardian signatures via EIP-1271, so that Council guardians can operate behind KDF delegation contracts.
+2. An update to the `DepositSecurityModule` contract to verify guardian signatures against the guardian's `DelegationContract.getDelegatee()`, so that Council guardians can operate behind KDF delegation contracts.
 3. Modifications to the Oracle and Council daemons to support operating behind delegation contracts.
 4. Modifications to the `HashConsensus` contract and related contracts — in both `lidofinance/core` and CSM's separately-deployed fork — to fix the DoS vulnerability and switch to seconds-based frames.
 
@@ -81,18 +80,18 @@ The release consists of four coordinated changes:
 The delegation layer is composed of two contracts deployed from a single factory:
 
 - **`DelegationFactory`** — a singleton that deploys `DelegationContract` instances. Each permissioned entity (oracle operator, council member) deploys exactly one `DelegationContract` per bot. A single delegation contract **must not** be shared across multiple bots or protocol roles; each independently operating bot requires its own instance.
-- **`DelegationContract`** — a non-upgradeable, minimal on-chain delegation proxy. It enforces a one-admin / one-active-delegatee model and supports two integration patterns described below.
+- **`DelegationContract`** — a non-upgradeable, minimal on-chain delegation contract. It enforces a one-admin / one-active-delegatee model and supports two integration patterns described below.
 
 ##### Roles
 
 The contract has exactly two roles, **admin** and **delegatee**:
 
-| Role                    | Custody                                                    | Capabilities                                                                                                                |
-|-------------------------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| Role                    | Custody                                                    | Capabilities                                                                                                                    |
+|-------------------------|------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | **Admin**               | Safe multisig or other audited multisig with justification | Assign, reassign, and revoke the delegatee (`assignDelegatee()` / `revokeDelegatee()`); irreversibly `terminate()` the contract |
-| **Delegatee (Hot Key)** | Hot key in the off-chain daemon                            | Call `execute()` to dispatch transactions (`push`); sign messages verifiable via EIP-1271 (`pull`)                          |
+| **Delegatee (Hot Key)** | Hot key in the off-chain daemon                            | Call `execute()` to dispatch transactions (`push`); sign messages that integrators verify against `getDelegatee()` (`pull`)     |
 
-The admin manages the delegatee's lifecycle but can never act *as* the contract. Termination is the escape hatch for admin-key compromise: because `terminate()` is irreversible and permanently disables `execute()` and `isValidSignature()`, a still-trusted admin can neutralize the contract entirely — stripping the delegatee of any usable role under its authority — even when the only safe move is to take the seat offline rather than rotate it.
+The admin manages the delegatee's lifecycle but can never act *as* the contract. Termination is the escape hatch for admin-key compromise: because `terminate()` is irreversible — it permanently disables `execute()` and clears the delegatee (so `getDelegatee()` returns `address(0)`) — a still-trusted admin can neutralize the contract entirely, stripping the delegatee of any usable role under its authority.
 
 ##### Contract Interface
 
@@ -104,6 +103,7 @@ interface IDelegationContract {
     ///         Only callable by admin. Takes effect immediately: the new
     ///         delegatee replaces any current one atomically, and the old
     ///         key can no longer call execute() or produce valid signatures.
+    ///         Reverts if delegatee == admin.
     /// @param delegatee Address of the incoming delegatee.
     function assignDelegatee(address delegatee) external;
 
@@ -111,10 +111,11 @@ interface IDelegationContract {
     ///         Takes effect immediately.
     function revokeDelegatee() external;
 
-    /// @notice Terminate the contract, permanently disabling execute() and
-    ///         isValidSignature(). Only callable by admin.
-    ///         Intended for emergency use when the admin suspects compromise
-    ///         of the delegatee or of the contract itself.
+    /// @notice Terminate the contract, permanently disabling execute().
+    ///         Only callable by admin.
+    ///         Also clears the active delegatee (as revokeDelegatee), so
+    ///         getDelegatee() returns address(0) after termination.
+    ///         Intended for emergency use when the admin is suspected compromised.
     ///         Termination is irreversible; a new DelegationContract must be
     ///         deployed and governance must reassign the protocol seat.
     function terminate() external;
@@ -138,24 +139,15 @@ interface IDelegationContract {
         payable
         returns (bytes memory result);
 
-    // --- Pull integration ---
-
-    /// @notice EIP-1271 signature validation.
-    ///         Returns the magic value iff `signature` was produced by
-    ///         the currently assigned delegatee over `hash`.
-    ///         Returns a non-magic value (does not revert) if the contract
-    ///         is terminated or no delegatee is assigned.
-    function isValidSignature(bytes32 hash, bytes calldata signature)
-        external
-        view
-        returns (bytes4 magicValue);
-
     // --- Views ---
 
     /// @notice Returns the current admin address.
     function getAdmin() external view returns (address);
 
     /// @notice Returns the current active delegatee, or address(0) if none.
+    ///         Also returns address(0) once the contract is terminated, so
+    ///         integrations that resolve the active delegatee via this method
+    ///         fail closed rather than continue to trust the last delegatee.
     function getDelegatee() external view returns (address);
 
     /// @notice Returns true if the contract has been terminated.
@@ -174,10 +166,23 @@ interface IDelegationFactory {
     ///                  lifetime of the contract — there is no on-chain way to
     ///                  change it; replacing the admin requires deploying a new
     ///                  contract and a governance vote to reassign the seat.
+    /// @param delegatee Initial active delegatee, set in the constructor.
+    ///                  Pass address(0) to deploy with no delegatee and assign
+    ///                  one later via assignDelegatee(). Lets an operator
+    ///                  deploy a ready-to-use contract in a single transaction.
     /// @return instance Address of the newly deployed DelegationContract.
-    function deploy(address admin)
+    function deploy(address admin, address delegatee)
         external
         returns (address instance);
+
+    /// @notice Emitted for each DelegationContract deployed by the factory,
+    ///         so the full set of KDF instances can be discovered on-chain
+    ///         (e.g. for the monitoring registry) by indexing this event.
+    event DelegationContractDeployed(
+        address indexed instance,
+        address indexed admin,
+        address delegatee
+    );
 }
 ```
 
@@ -185,29 +190,32 @@ interface IDelegationFactory {
 
 The `DelegationContract` is designed as a **general integration primitive** for any permissioned bot in the Lido ecosystem. Two complementary patterns are supported; protocol integrations should select the one that fits their verification model.
 
-###### Pull Style — Signature Verification via EIP-1271
+###### Pull Style — Signature Verification against `getDelegatee()`
 
-The consumer contract calls `isValidSignature(hash, sig)` on the `DelegationContract` when it needs to verify that a message was authorized by the registered entity.
+The integrator (protocol) contract verifies a message itself: it recovers the signer from the signature and checks that it matches the registered entity's current delegatee, read via `getDelegatee()`.
+
+The integrator must know which `DelegationContract` to check. The address can be relayed alongside the signature (as the DSM integration does), or — for stronger binding — embedded directly in the signed message, so the signature is bound to a specific delegation contract and the integrator reads the delegator target from the message.
 
 ```
-Off-chain bot (delegatee)          DelegationContract         Protocol contract
-        │                                  │                          │
-        │  sign message (ECDSA, hot key)   │                          │
-        │                                  │                          │
-        │─ signature relayed off-chain ──────────────────────────────►│
-        │                                  │                          │
-        │                                  │◄──── isValidSignature() ─│
-        │                                  │      (hash, sig)         │
-        │                                  │                          │
-        │                                  │  recover signer,         │
-        │                                  │  check == getDelegatee() │
-        │                                  │                          │
-        │                                  │─► returns magic value ──►│
+Off-chain bot (delegatee)          DelegationContract          Protocol contract
+        │                                  │                           │
+        │  sign message (ECDSA, hot key)   │                           │
+        │                                  │                           │
+        │─ signature + DelegationContract addr relayed off-chain ─────►│
+        │                                  │                           │
+        │                                  │◄──── getDelegatee() ──────│
+        │                                  │───── delegatee ──────────►│
+        │                                  │                           │
+        │                                  │   integrator checks:      │
+        │                                  │   ecrecover(sig)==        │
+        │                                  │   delegatee, and addr is  │
+        │                                  │   a registered principal  │
 ```
 
 **Security assumptions:**
-- The protocol contract must treat the `DelegationContract` address — not the hot key — as the authorized principal. It must never trust the raw signer address extracted from the signature.
-- The delegatee key used for signing must correspond to the key currently stored in `getDelegatee()` at the time the signature is verified on-chain. A key rotated after signing but before verification will cause rejection.
+- The integrator must treat the `DelegationContract` address — not the recovered hot key — as the authorized principal: it checks that the supplied `DelegationContract` is a registered entity (e.g. guardian) and that the recovered signer equals that contract's `getDelegatee()`.
+- The signing key must match `getDelegatee()` at the time of on-chain verification. A key rotated (or the contract terminated, which sets `getDelegatee()` to `address(0)`) after signing but before verification causes rejection — failing closed.
+- The integrator **must reject a zero delegatee.** `ecrecover` returns `address(0)` for a malformed signature, and `getDelegatee()` returns `address(0)` when no delegatee is assigned (revoked/terminated/unassigned). Comparing the two naively would let a garbage signature validate as `0 == 0`, so the integrator must require `getDelegatee() != address(0)` (equivalently, reject a recovered `address(0)`) before accepting.
 
 **When to use:** Any integration where the protocol collects signatures off-chain and verifies them on-chain in a single transaction. Examples: DSM guardian pause messages, deposit attestations, unvet signatures.
 
@@ -246,17 +254,17 @@ Rotating the admin (e.g., moving the seat to a different multisig, or re-keying 
 
 Both assignment and revocation take effect immediately, with no scheduling or waiting period:
 
-- **Assignment** (`assignDelegatee(newHotKey)`) replaces the active delegatee atomically. The previous key can no longer call `execute()` or produce valid EIP-1271 signatures from the moment the transaction lands.
+- **Assignment** (`assignDelegatee(newHotKey)`) replaces the active delegatee atomically. From the moment the transaction lands the previous key can no longer call `execute()`, and integrators verifying against `getDelegatee()` stop accepting its signatures.
 - **Revocation** (`revokeDelegatee()`) removes the active delegatee, leaving the contract with no delegatee until a new one is assigned.
 
 The expected sequence is: detect delegatee compromise → `revokeDelegatee()` immediately → notify DAO → `assignDelegatee(newHotKey)`.
 
 ##### Emergency Termination
 
-The admin may call `terminate()` to permanently disable the contract's `execute()` and `isValidSignature()` functions. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
+The admin may call `terminate()` to permanently disable the contract's `execute()` function; it also clears the active delegatee (equivalent to `revokeDelegatee()`) as part of the same call. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
 
 - All delegatee calls to `execute()` revert.
-- All EIP-1271 signature verifications return a non-magic value (not a revert), so upstream callers that check the return value rather than reverting on a bad result will handle this gracefully.
+- `getDelegatee()` returns `address(0)`, so any pull-style integrator that resolves the active delegatee through it (to verify a signature) fails closed and does not keep trusting the last delegatee.
 - A new `DelegationContract` must be deployed and governance must reassign the protocol seat to the new address.
 
 Termination is intended for scenarios where the admin believes the admin's own address has been compromised and wishes to ensure no further actions can be taken under its authority. The expected sequence is: detect compromise → `terminate()` → notify DAO → deploy new delegation contract → governance vote.
@@ -286,8 +294,8 @@ Governance grants protocol permissions (e.g., oracle committee membership, DSM g
 
 - **Smart contracts**: `lidofinance/delegation-execution-authority` (Solidity + Foundry framework)
   - `DelegationFactory` and `DelegationContract`
-  - EIP-1271 signature validation; payable `execute()` with value forwarding; immediate `assignDelegatee()` / `revokeDelegatee()`; irreversible `terminate()`; admin-cannot-execute invariant enforced by design
-  - Full test suite including mainnet fork tests (Foundry, covering contract logic, factory deployment, access control, EIP-1271, payable execution, assignment/revocation, and termination behavior)
+  - `getDelegatee()`-based delegation; payable `execute()` with value forwarding; immediate `assignDelegatee()` / `revokeDelegatee()`; irreversible `terminate()`; admin-cannot-execute invariant enforced by design
+  - Full test suite including mainnet fork tests (Foundry, covering contract logic, factory deployment, access control, payable execution, assignment/revocation, and termination behavior)
 
 ---
 
@@ -300,7 +308,7 @@ This section defines which components are migrated to the delegation model in th
 | Component                              | Integration style                                                                                                            |
 |----------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
 | Lido Oracle (holds delegatee key)      | Push (`execute()`)                                                                                                           |
-| `DepositSecurityModule` contract       | Pull (EIP-1271)                                                                                                              |
+| `DepositSecurityModule` contract       | Pull (DSM recovers signer, checks against `getDelegatee()`)                                                                  |
 | Council daemon (holds delegatee key)   | Pull (signs messages, publishes its `DelegationContract` address with each signature, DSM verifies)                          |
 | Depositor bot                          | Claims the council-provided `(signature, DelegationContract address)` pairs; re-sorts the deposit array by guardian address. |
 | Validator ejector (node-operator side) | Off-chain only — must resolve the active delegatee via `getDelegatee()`. See Validator Ejector section below                 |
@@ -317,17 +325,17 @@ All components in the table are migrated together.
 
 **Daemon configuration:** `DELEGATION_CONTRACT_ADDRESS` environment variable. When set, all oracle contract calls are routed through `DelegationModule`, a Web3py extension that wraps `execute()` dispatch. Startup validation checks: (a) `getDelegatee() == configuredHotKey`, and (b) `delegationContract` address holds oracle committee membership in `HashConsensus`.
 
-**Transitional behavior:** When `DELEGATION_CONTRACT_ADDRESS` is unset, calls are sent directly from the hot key EOA as before. This path exists for development purposes.
+**Transitional behavior:** When `DELEGATION_CONTRACT_ADDRESS` is unset, calls are sent directly from the hot key EOA as before. This path exists for development, for the migration window, and as a long-term fallback (e.g. if native account-abstraction delegation later meets these needs directly).
 
 ---
 
 ###### DSM Contract — Pull Integration
 
-**Pattern:** Pull via `isValidSignature()`.
+**Pattern:** Pull — DSM recovers the signer and checks it against the guardian's `getDelegatee()`.
 
 **Authorization model today.** `DepositSecurityModule` does **not** take the guardian address as an input — it *derives* it: every verification path (`_verifyAttestSignatures` for deposits, plus `pauseDeposits` and `unvetSigningKeys`) calls `ECDSA.recover(msgHash, sig.r, sig.vs)` and looks the recovered EOA up in the guardian set via `_isGuardian`.
 
-**Required change — the guardian address must be supplied with the signature.** Because a contract guardian cannot be recovered, the submitter provides the registered guardian address (the `DelegationContract`, or the EOA for a legacy guardian) **explicitly alongside each signature**, and DSM verifies the signature *against that address*:
+**Required change — the guardian address must be supplied with the signature.** A contract guardian cannot be recovered from a signature, so the submitter provides the registered guardian address (the `DelegationContract`, or the EOA for a legacy guardian) **explicitly alongside each signature**. DSM keeps doing the ECDSA recovery itself; for a contract guardian it then checks the recovered signer against that contract's `getDelegatee()`.
 
 ```solidity
 // Per-signature payload gains the guardian address it is signed under:
@@ -344,14 +352,18 @@ function _isValidGuardianSignature(
     bytes32 vs
 ) internal view returns (bool) {
     if (!_isGuardian(guardian)) return false;
+    address recovered = ECDSA.recover(msgHash, r, vs);
+
     if (guardian.code.length > 0) {
-        // Contract guardian: EIP-1271 over the 64-byte (2098) signature.
-        // The DelegationContract recovers the signer and checks == getDelegatee().
-        return IERC1271(guardian).isValidSignature(msgHash, abi.encodePacked(r, vs))
-            == IERC1271.isValidSignature.selector;
+        // Contract guardian: recovered signer must be the contract's delegatee.
+        // getDelegatee() returns address(0) if revoked/terminated; the explicit
+        // non-zero check stops a malformed signature (recovered == address(0))
+        // from matching a contract with no active delegatee (0 == 0).
+        address delegatee = IDelegationContract(guardian).getDelegatee();
+        return delegatee != address(0) && delegatee == recovered;
     }
     // Legacy EOA guardian: recovered signer must equal the claimed guardian.
-    return ECDSA.recover(msgHash, r, vs) == guardian;
+    return recovered == guardian;
 }
 ```
 
@@ -396,21 +408,24 @@ function unvetSigningKeys(
 ) external;
 ```
 
-**Transitional behavior:** The existing ECDSA path is retained, so a guardian still registered as an EOA continues to be verified unchanged. This path exists for development purposes.
+**Transitional behavior:** The existing ECDSA path is retained, so a guardian still registered as an EOA continues to be verified unchanged. This path exists for development, for the migration window, and as a long-term fallback (e.g. if native account-abstraction delegation later meets these needs directly).
 
 ---
 
 ###### Council Daemon — Pull Integration (Signer Side)
 
-**Pattern:** Pull (the daemon signs; DSM verifies on-chain via `isValidSignature()`).
+**Pattern:** Pull (the daemon signs; DSM recovers the signer and checks it against the guardian's `getDelegatee()`).
 
 The council daemon produces ECDSA signatures over the standard DSM message using the **delegatee hot key**. The signed digest is unchanged. Because DSM no longer derives the guardian by recovery (see DSM Contract above), **the council daemon's responsibility is to publish, for each message, both the signature and its registered guardian address** — the daemon's `DelegationContract` address, not the delegatee EOA.
 
-On-chain, DSM is given that guardian address explicitly, sees it is a contract, and calls `isValidSignature(msgHash, abi.encodePacked(r, vs))` on it; the `DelegationContract` recovers the signer from the 64-byte signature and checks it against `getDelegatee()`.
+On-chain, DSM is given that guardian address explicitly, sees it is a contract, recovers the signer from the signature, and checks that it equals the contract's `getDelegatee()`.
 
 **Required change to the council daemon:** Sign with the delegatee private key, set `DELEGATION_CONTRACT_ADDRESS`, and publish that `DelegationContract` address together with each signature (so consumers know which registered guardian the signature is for). No structural code change is required beyond configuration and attaching the guardian address to each published signature.
 
-**Required change to the depositor bot:** The bot relays the council-provided `(DelegationContract address, signature)` pairs to DSM as-is. The only behavioral change is ordering: when assembling `depositBufferedEther`, the bot must sort the signature array by the council-supplied guardian address (matching DSM's new ascending-by-`guardian` ordering) rather than by recovered signer.
+**Required change to the depositor bot:** The bot relays the council-provided `(DelegationContract address, signature)` pairs to DSM as-is. Two behavioral changes are required:
+
+1. **Filtering (on receival):** accept an incoming message only if its signer is the **current delegatee** of the referenced guardian's `DelegationContract` (resolved via `getDelegatee()`), instead of matching against a delegation-contract address. Messages signed by a rotated-out key are dropped.
+2. **Ordering (on submission):** when assembling `depositBufferedEther`, sort the signature array by the council-supplied guardian address (matching DSM's new ascending-by-`guardian` ordering) rather than by recovered signer.
 
 ---
 
@@ -419,7 +434,7 @@ On-chain, DSM is given that guardian address explicitly, sees it is a contract, 
 The VEBO module of `lido-oracle` is covered by the push integration above. Separately, the **validator ejector** run by node operators — the daemon that watches `ValidatorsExitBusOracle` exit request events and sends voluntary exit messages to the consensus layer — performs no on-chain transactions and needs no `DelegationContract` of its own. It does, however, need updates to operate correctly once oracles sit behind delegation contracts:
 
 - Any check that validates the origin of an exit request against a configured oracle address must compare against the `DelegationContract` address (the registered committee member), not the delegatee EOA.
-- Any component resolving the oracle's signing address (monitoring, dashboards, message verification) must resolve the current signer via `getDelegatee()` on the delegation contract rather than a static configured address.
+- For verifying signatures on oracle messages, the signer is always an **EOA** — the **delegatee** under delegation, or the directly-permissioned EOA in the legacy setup. The ejector keeps a whitelist of accepted signing addresses and must populate it with that signing EOA, i.e. the delegatee — **not** the `DelegationContract` address, which never signs. When an operator rotates the delegatee, the whitelist must be updated to the new delegatee EOA (the same way the oracle's signing key is configured today).
 
 ---
 
@@ -427,7 +442,7 @@ The VEBO module of `lido-oracle` is covered by the push integration above. Separ
 
 Migration is designed to be zero-downtime. All preparatory steps are completed off the critical path, leaving a single irreversible governance vote that flips every prepared seat to delegation at once. The reassignment of a committee seat from a hot EOA to a `DelegationContract` cannot be undone without a further governance vote, so operators are expected to validate the full flow on the Hoodi testnet before the mainnet vote.
 
-1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(adminAddress)` — the admin being a Safe multisig, fixed for the contract's lifetime (see Admin Immutability in Part 1) — and assigns the active delegatee (its existing hot key) via `assignDelegatee()`.
+1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(adminAddress, hotKey)` — the admin being a Safe multisig, fixed for the contract's lifetime (see Admin Immutability in Part 1), and the active delegatee (its existing hot key) set in the same transaction. (Passing `address(0)` for the delegatee and assigning it later via `assignDelegatee()` is also supported.)
 2. **Publish and verify addresses (operators)**: each operator publishes its `DelegationContract` and admin addresses on the Lido research forum, so the DAO and other operators can verify them ahead of the vote.
 3. **Prepare daemons for rotation (operators)**: each operator stages the delegatee key and the `DELEGATION_CONTRACT_ADDRESS` configuration in its Oracle and Council daemons, so they are ready to operate via the delegation contract the moment the seat is reassigned. No key material changes, and the daemons keep operating from the hot EOA until the vote lands.
 4. **Set up monitoring (Lido team)**: the Lido team registers every delegation contract in the monitoring infrastructure and begins watching the admin and delegatee addresses for unexpected activity, so anomalies are caught both before and after the seat reassignment.
@@ -439,40 +454,32 @@ Until the governance vote in step 5 executes, operators continue to run as EOA p
 
 #### Part 3: HashConsensus — Bounded Report Variant Storage
 
-##### Storage Change
+The DoS comes from the unbounded `_reportVariants` array: a member submitting many distinct hashes grows it without limit, so the loops over it (`submitReport`'s hash lookup and `_isQuorumReached`) become arbitrarily expensive.
 
-The unbounded `_reportVariants` array is replaced with a two-dimensional mapping keyed by frame ID and member index:
+In new solution each member has exactly one live vote, so at most committee-size variants ever have non-zero support; switching hashes decrements the old variant's support, and a slot at zero support is abandoned. Instead of always appending a new variant, the contract reuses an abandoned slot when one exists and only grows the array when every slot is still live:
 
 ```diff
--mapping(uint256 => ReportVariant) internal _reportVariants;
--uint256 internal _reportVariantsLength;
-+struct Report {
-+    bytes32 hash;
-+    uint64  refTimestamp;
-+}
-+// frameId => memberIndex => Report
-+mapping(uint256 => mapping(uint256 => Report)) internal _currentMemberHash;
+ uint64 varIndex = 0;
++uint64 reuseIndex = type(uint64).max;  // first abandoned (support == 0) slot, if any
+ while (varIndex < variantsLength && _reportVariants[varIndex].hash != report) {
++    if (reuseIndex == type(uint64).max && _reportVariants[varIndex].support == 0) {
++        reuseIndex = varIndex;
++    }
+     ++varIndex;
+ }
+ ...
+ } else {  // new hash
++    if (reuseIndex != type(uint64).max) varIndex = reuseIndex;  // reuse abandoned slot
++    else _reportVariantsLength = ++variantsLength;              // otherwise grow
+     support = 1;
+     _reportVariants[varIndex] = ReportVariant({hash: report, support: 1});
+-    _reportVariantsLength = ++variantsLength;
+ }
 ```
 
-Each oracle member has at most one stored report per frame. Old entries with a stale `refTimestamp` are ignored in consensus evaluation, eliminating the need to clear storage between frames.
+This caps `_reportVariantsLength` — and every loop over the variants — at the committee size, no matter how many hashes a member submits. All existing semantics are preserved: resubmitting the identical hash still reverts (`DuplicateReport`); a different hash still moves the member's vote and triggers `discardConsensusReport` if it drops a reached consensus below quorum.
 
-##### `submitReport` Behavior
-
-Calling `submitReport(uint256 timestamp, bytes32 report, uint256 consensusVersion)` overwrites `_currentMemberHash[frameId][memberIndex]` unconditionally. This allows a member to correct a previously submitted hash within the same frame, which is a functional improvement over the current model.
-
-##### Consensus Evaluation (`_isQuorumReached`)
-
-The consensus check iterates the fixed member set (bounded by committee size), fetching each member's single stored hash for the current frame and counting votes per unique hash. This iteration is O(N) in committee size, not O(N) in submitted variants.
-
-##### Secondary Effect — Oracle Members Can Update Their Report
-
-As a consequence of the new model, oracle members can replace an earlier submission within the same frame. This is beneficial (allows correction of off-chain bugs mid-frame) but introduces the theoretical edge case that, if members repeatedly change their reports without converging, quorum formation could be delayed. Monitoring should alert on frames where consensus is not reached within the fast-lane window.
-
-If a member changes its hash after consensus was already reached and quorum no longer holds, `HashConsensus` calls `discardConsensusReport(refTimestamp)` on the report processor to drop the now-invalid report for that frame.
-
-##### Applicability to CSM
-
-CSM's fee oracle (`src/FeeOracle.sol`, deployed as `CSFeeOracle`) is served by a separately-deployed `HashConsensus` instance built from a vendored copy of the same contract, which carries the identical unbounded `_reportVariants` storage and is therefore independently exposed to this DoS. The same bounded-storage fix is applied to CSM's `HashConsensus` in this release (see Affected Contracts in Part 4).
+CSM runs a vendored copy of `HashConsensus` with the same `_reportVariants` storage and is independently exposed to this DoS; the same fix is applied there (see Affected Contracts in Part 4).
 
 ---
 
@@ -480,9 +487,9 @@ CSM's fee oracle (`src/FeeOracle.sol`, deployed as `CSFeeOracle`) is served by a
 
 ##### Motivation
 
-EIP-7782 reduces Ethereum's slot time from 12 s to 6 s. All oracle frame lengths are currently expressed as `epochsPerFrame`, which translates to seconds via `epochsPerFrame × slotsPerEpoch × secondsPerSlot`. After the hardfork, the same `epochsPerFrame` value produces half the intended wall-clock duration. A seconds-based `secondsPerFrame` removes this dependency entirely.
+There is a fairly high probability that Ethereum will change the slot duration, and possibly the epoch length, in the future — several EIPs already propose exactly this (e.g. [EIP-7782](https://eips.ethereum.org/EIPS/eip-7782), reducing slot time to 6 s, and [EIP-8198](https://eips.ethereum.org/EIPS/eip-8198) "Quick Slots", making slot duration runtime-configurable), though none has yet been scheduled into a fork. Oracle frame lengths are currently expressed as `epochsPerFrame`, which translates to seconds via `epochsPerFrame × slotsPerEpoch × secondsPerSlot`. Any such change would alter the wall-clock duration of every frame — under a 12 s → 6 s reduction, for instance, the same `epochsPerFrame` would yield half the intended duration.
 
-The case is reinforced by EIP-8198 ("Quick Slots"), which proposes to make slot duration a runtime-configurable parameter (targeting a 12 s → 8 s reduction) rather than a hardcoded constant. If slot timing becomes a value that can change between hardforks — or be tuned iteratively across devnets — any frame logic anchored to `slotsPerEpoch × secondsPerSlot` becomes perpetually fragile. Expressing frames directly in wall-clock seconds insulates oracle operation from both EIP-7782 and EIP-8198, and from any subsequent slot-timing change.
+Rather than re-tune `epochsPerFrame` for each potential change, we express frames directly in wall-clock seconds (`secondsPerFrame`). This removes the dependency on slot/epoch timing entirely, so frame duration stays stable across any present or future slot-timing change — whether a one-off reduction or a runtime-configurable schedule.
 
 ##### Interface Modifications
 
@@ -507,37 +514,53 @@ Existing implementations receive a `uint256` regardless; because `refTimestamp` 
 ###### View Functions
 
 ```diff
- function getFrameConfig() external view returns (
+-function getFrameConfig() external view returns (
 -    uint256 initialEpoch,
 -    uint256 epochsPerFrame,
 -    uint256 fastLaneLengthSlots
+-);
++function getFrameConfigV2() external view returns (
 +    uint256 initialTimestamp,
 +    uint256 secondsPerFrame,
 +    uint256 fastLaneSeconds
- );
- function getCurrentFrame() external view returns (
++);
+-function getCurrentFrame() external view returns (
 -    uint256 refSlot,
 -    uint256 reportProcessingDeadlineSlot
+-);
++function getCurrentFrameV2() external view returns (
 +    uint256 refTimestamp,
 +    uint256 reportProcessingDeadlineTimestamp
- );
- function getMembers() external view returns (
-     address[] memory addresses,
++);
+-function getMembers() external view returns (
+-    address[] memory addresses,
 -    uint256[] memory lastReportedRefSlots
+-);
++function getMembersV2() external view returns (
++    address[] memory addresses,
 +    uint256[] memory lastReportedRefTimestamps
- );
- function getFastLaneMembers() external view returns (
-     address[] memory addresses,
++);
+-function getFastLaneMembers() external view returns (
+-    address[] memory addresses,
 -    uint256[] memory lastReportedRefSlots
+-);
++function getFastLaneMembersV2() external view returns (
++    address[] memory addresses,
 +    uint256[] memory lastReportedRefTimestamps
- );
- function getConsensusState() external view returns (
++);
+-function getConsensusState() external view returns (
 -    uint256 refSlot,
+-    bytes32 consensusReport,
+-    bool isReportProcessing
+-);
++function getConsensusStateV2() external view returns (
 +    uint256 refTimestamp,
-     bytes32 consensusReport,
-     bool isReportProcessing
- );
++    bytes32 consensusReport,
++    bool isReportProcessing
++);
 ```
+
+**Why the `V2` suffix.** Each of these view getters changes its return **semantics** from slots/epochs to timestamps, so it is given a `V2` name to change its selector. If the name were kept, the selector would be identical (the getters take no arguments) and an out-of-protocol caller of e.g. `getFrameConfig()` would keep compiling and silently receive a timestamp where it expected an epoch — the most dangerous outcome.
 
 ###### `MemberConsensusState` Struct
 
@@ -600,7 +623,7 @@ All events and custom errors that reference `refSlot`, `slot`, `epoch`, `epochsP
 
 On-chain the frame is now anchored to a wall-clock `refTimestamp`, but an oracle report is still built against the consensus-layer state at a concrete **slot**. The daemon must therefore resolve the frame's `refTimestamp` to a reference slot before assembling a report:
 
-1. **Read the frame reference.** Fetch `refTimestamp` from `HashConsensus.getCurrentFrame()`.
+1. **Read the frame reference.** Fetch `refTimestamp` from `HashConsensus.getCurrentFrameV2()`.
 2. **Resolve it to a slot.** If a slot boundary falls exactly on `refTimestamp` — `(refTimestamp − genesisTime) % secondsPerSlot == 0` — that slot is the reference slot. If no slot lands exactly on `refTimestamp`, the daemon takes the **latest slot at or before `refTimestamp`** (the previous slot):
 
    ```
@@ -634,7 +657,7 @@ The slot-to-timestamp migration touches two independent codebases, each with its
 | `BaseOracle.sol`                                     | Upgrade required                               | `ConsensusReport.refSlot` → `refTimestamp`; the `IReportAsyncProcessor` implementation and `_getCurrentRefSlot()` are opaque pass-through (rename only). Its two consensus calls change: the `getChainConfig()` consistency check is dropped/repointed, and `getInitialRefSlot()` → `getInitialTimestamp()`.                                                            |
 | `AccountingOracle.sol`                               | Upgrade required                               | Interprets the reference as a slot: the `_getSlotTimestamp(slot)` helper computes `GENESIS_TIME + slot * SECONDS_PER_SLOT`, and `timeElapsed = (data.refSlot − prevRefSlot) * SECONDS_PER_SLOT`. With a timestamp reference these conversions must change (the value is already a timestamp / a second-delta), or `onOracleReport` and exit-time math silently corrupt. |
 | `ValidatorsExitBusOracle.sol`                        | Rename                                         | `DataProcessingState.refSlot` + an equality check; opaque pass-through.                                                                                                                                                                                                                                                                                                 |
-| `RefSlotCache.sol`, `VaultHub.sol`, `LazyOracle.sol` | Rename                                         | Use `getCurrentFrame()`'s first return purely as an opaque `uint48` cache key (no slot arithmetic); functionally unchanged. The cached value simply becomes a timestamp. `ILazyOracle._vaultsDataRefSlot` is a parameter rename.                                                                                                                                        |
+| `RefSlotCache.sol`, `VaultHub.sol`, `LazyOracle.sol` | Upgrade required                               | Use the frame reference purely as an opaque `uint48` cache key (no slot arithmetic), so they are functionally unaffected — but the call site must move from the removed `getCurrentFrame()` to `getCurrentFrameV2()`, so they must be updated/redeployed. The cached value simply becomes a timestamp. `ILazyOracle._vaultsDataRefSlot` is a parameter rename.          |
 | `OracleReportSanityChecker.sol`                      | Upgrade required (for ZK-oracle compatibility) | Uses `refSlot` to align the ZK-oracle report with the accounting report during a negative rebase. Only needed if the ZK oracle is connected to the protocol; otherwise the change can be skipped.                                                                                                                                                                       |
 
 **`lidofinance/community-staking-module` (CSM):** CSM does **not** depend on `core`'s `HashConsensus`; it vendors its own copies under `src/lib/base-oracle/` and runs a **separate deployed `HashConsensus` instance** for its fee oracle (`src/FeeOracle.sol`). That fork carries the same two problems and must be migrated in lock-step (own PR, own deployment):
@@ -696,9 +719,9 @@ The ability for members to change their submitted hash creates a subtle quorum-f
 
 The delegation model shifts trust from "this hot key is the oracle" to "this delegation contract is the oracle." The delegation contract is non-upgradeable and minimal in scope. The admin Safe multisig is the new security boundary.
 
-**Admin cannot act as bot by design.** The admin address has no ability to call `execute()` or produce EIP-1271-valid signatures. This is enforced at the contract level: the admin is kept maximally cold and can only manage the delegatee lifecycle.
+**Admin cannot act as bot by design.** The admin address has no ability to call `execute()`, and is never the delegatee returned by `getDelegatee()`, so it cannot produce signatures any integrator will accept. This is enforced at the contract level: the admin is kept maximally cold and can only manage the delegatee lifecycle.
 
-**Pull integration (EIP-1271):** Consumer contracts must treat the `DelegationContract` address as the authorized principal, never the recovered signer EOA. A terminated contract returns a non-magic value rather than reverting — consumers that check the return value will fail closed, but consumers that assume a revert on failure may inadvertently accept a terminated contract's output.
+**Pull integration (`getDelegatee()`):** Integrator contracts must treat the `DelegationContract` address as the authorized principal — checking both that it is a registered entity and that the recovered signer equals its `getDelegatee()`.
 
 **Push integration (`execute()`):** The delegatee can call any target. Permission grants must be narrowly scoped per contract, enforced by the one-contract-per-bot rule. ETH is forwarded to the target and any change is swept back to the delegatee after the call, so overpayment refunded by the target is recovered; only ETH the target actually consumes is non-recoverable.
 
@@ -712,10 +735,10 @@ As a last resort — while the legitimate admin still controls the key — it ca
 
 ## Links
 
-- EIP-1271 (standard signature validation): https://eips.ethereum.org/EIPS/eip-1271
 - EIP-7782 (Ethereum slot time reduction): https://eips.ethereum.org/EIPS/eip-7782
 - EIP-8198 (Quick Slots — runtime-configurable slot duration): https://eips.ethereum.org/EIPS/eip-8198
 - Core repository (`lidofinance/core`): https://github.com/lidofinance/core
 - Delegation contracts repository (`lidofinance/delegation-execution-authority`): https://github.com/lidofinance/delegation-execution-authority
 - Oracle daemon (`lidofinance/lido-oracle`): https://github.com/lidofinance/lido-oracle
 - Community Staking Module — forked oracle stack (`lidofinance/community-staking-module`): https://github.com/lidofinance/community-staking-module
+- HashConsensus DoS vulnerability issue (`lidofinance/core#1379`): https://github.com/lidofinance/core/issues/1379
