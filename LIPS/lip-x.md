@@ -67,7 +67,7 @@ The release consists of four coordinated changes:
 
 **Why KDF ships with its adoption scope.** The `DelegationFactory` and `DelegationContract` are inert on their own: without the Oracle and DSM integration they deliver no security benefit and give operators no migration path. Shipping the contracts together with their adoption scope is what actually closes the hot-key risk in this release rather than deferring it.
 
-**Why a purpose-built own delegation contract rather than reusing an existing solution.** A general-purpose delegation or smart-account framework is far more flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes KDF's guarantees structural — admin can never `execute()` or sign, one active delegatee, instant assignment and revocation, irreversible `terminate()` — keeping the audited surface small.
+**Why a purpose-built own delegation contract rather than reusing an existing solution.** A general-purpose delegation or smart-account framework is far more flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes KDF's guarantees structural — admin can never `execute()` or sign, one active delegatee, immediate revocation with a cooldown-gated assignment, irreversible `terminate()` — keeping the audited surface small.
 
 ### Technical Specification
 
@@ -100,15 +100,15 @@ interface IDelegationContract {
     // --- Admin controls ---
 
     /// @notice Assign (or reassign) the active delegatee.
-    ///         Only callable by admin. Takes effect immediately: the new
-    ///         delegatee replaces any current one atomically, and the old
-    ///         key can no longer call execute() or produce valid signatures.
+    ///         Only callable by admin. The previous delegatee is dropped at
+    ///         once and the new one becomes effective only after the contract's
+    ///         cooldown (`getCooldown()` seconds).
     ///         Reverts if delegatee == admin.
     /// @param delegatee Address of the incoming delegatee.
     function assignDelegatee(address delegatee) external;
 
-    /// @notice Instantly remove the current delegatee. Only callable by admin.
-    ///         Takes effect immediately.
+    /// @notice Remove the current and any pending delegatee. 
+    ///         Only callable by admin.
     function revokeDelegatee() external;
 
     /// @notice Terminate the contract, permanently disabling execute().
@@ -144,18 +144,29 @@ interface IDelegationContract {
     /// @notice Returns the current admin address.
     function getAdmin() external view returns (address);
 
-    /// @notice Returns the current active delegatee, or address(0) if none.
-    ///         Also returns address(0) once the contract is terminated, so
-    ///         integrations that resolve the active delegatee via this method
-    ///         fail closed rather than continue to trust the last delegatee.
+    /// @notice Returns the currently *effective* delegatee, or address(0) if
+    ///         none. A delegatee assigned within the last `getCooldown()`
+    ///         seconds is not yet effective — this returns the address(0)
+    ///         until the cooldown elapses. Returns address(0) once the
+    ///         contract is terminated.
     function getDelegatee() external view returns (address);
+
+    /// @notice Returns the pending (not-yet-effective) delegatee and the
+    ///         timestamp at which it becomes effective, or (address(0), 0) if
+    ///         no assignment is in cooldown.
+    function getPendingDelegatee() external view returns (address delegatee, uint256 activeFrom);
+
+    /// @notice Cooldown in seconds between assigning a delegatee and it
+    ///         becoming effective. Set in the constructor and immutable
+    ///         thereafter.
+    function getCooldown() external view returns (uint256);
 
     /// @notice Returns true if the contract has been terminated.
     function isTerminated() external view returns (bool);
 
     // --- Events ---
 
-    event DelegateeAssigned(address indexed newDelegatee);
+    event DelegateeAssigned(address indexed newDelegatee, uint256 activeFrom);
     event DelegateeRevoked(address indexed revokedDelegatee);
     event Terminated();
 }
@@ -166,12 +177,16 @@ interface IDelegationFactory {
     ///                  lifetime of the contract — there is no on-chain way to
     ///                  change it; replacing the admin requires deploying a new
     ///                  contract and a governance vote to reassign the seat.
-    /// @param delegatee Initial active delegatee, set in the constructor.
-    ///                  Pass address(0) to deploy with no delegatee and assign
-    ///                  one later via assignDelegatee(). Lets an operator
-    ///                  deploy a ready-to-use contract in a single transaction.
+    /// @param delegatee Initial active delegatee, set in the constructor (and
+    ///                  effective immediately — the cooldown applies only to
+    ///                  later reassignments). Pass address(0) to deploy with no
+    ///                  delegatee and assign one later via assignDelegatee().
+    /// @param cooldown  Seconds a reassigned delegatee waits before becoming
+    ///                  effective (see assignDelegatee). Set in the constructor
+    ///                  and immutable thereafter; may be 0 to disable the
+    ///                  cooldown.
     /// @return instance Address of the newly deployed DelegationContract.
-    function deploy(address admin, address delegatee)
+    function deploy(address admin, address delegatee, uint256 cooldown)
         external
         returns (address instance);
 
@@ -252,12 +267,12 @@ Rotating the admin (e.g., moving the seat to a different multisig, or re-keying 
 
 ##### Delegatee Assignment and Revocation
 
-Both assignment and revocation take effect immediately, with no scheduling or waiting period:
+Assignment is cooldown-gated; revocation is immediate:
 
-- **Assignment** (`assignDelegatee(newHotKey)`) replaces the active delegatee atomically. From the moment the transaction lands the previous key can no longer call `execute()`, and integrators verifying against `getDelegatee()` stop accepting its signatures.
-- **Revocation** (`revokeDelegatee()`) removes the active delegatee, leaving the contract with no delegatee until a new one is assigned.
+- **Assignment** (`assignDelegatee(newHotKey)`) drops the previous delegatee at once and schedules the new one, which becomes effective only after the contract's `cooldown` elapses (immediately if the cooldown is 0). **During the cooldown the contract has no effective delegatee** — `getDelegatee()` returns `address(0)`, so the seat is inactive until the new key activates. Reassigning before the cooldown elapses overwrites the pending one and restarts the cooldown. The cooldown is a reaction window: an unexpected assignment (e.g. from a compromised admin) is visible via the `DelegateeAssigned` event and `getPendingDelegatee()` for `cooldown` seconds before the new key can act — and during that window no key can act at all.
+- **Revocation** (`revokeDelegatee()`) is immediate and clears both the current and any pending delegatee, leaving the contract with no delegatee until a new one is assigned. No cooldown applies — *inaction (no active delegatee) is always safer than a malicious action*.
 
-The expected sequence is: detect delegatee compromise → `revokeDelegatee()` immediately → notify DAO → `assignDelegatee(newHotKey)`.
+The cooldown is set in the constructor and is immutable; it may be 0. The recommended value for both Oracle and DSM delegation contracts is **1 hour** — long enough to give monitoring and the DAO a reaction window against an unexpected assignment, short enough that the seat's brief inactivity during a rotation is tolerable under quorum. Because a rotation takes the seat inactive for the cooldown, the expected sequence on a suspected delegatee compromise is simply `assignDelegatee(newHotKey)` (which drops the compromised key immediately and brings the new one online after the cooldown), or `revokeDelegatee()` if no replacement is ready yet.
 
 ##### Emergency Termination
 
@@ -271,14 +286,14 @@ Termination is intended for scenarios where the admin believes the admin's own a
 
 ##### Hot-Key Rotation
 
-The admin rotates the active delegatee by calling `assignDelegatee(newHotKey)`. The old key is invalidated atomically as the new one becomes active in the same transaction.
+The admin rotates the active delegatee by calling `assignDelegatee(newHotKey)`. The old key stops being accepted immediately, and the new key becomes effective after the cooldown — so the seat is inactive for the cooldown duration during a rotation (tolerable under quorum). Plan routine rotations accordingly.
 
-The specific cadence for routine rotation is not mandated here; recommended practices will be maintained on the Lido research forum and may be revised without a governance vote. Contract-level requirements are:
+The specific cadence for routine rotation is not mandated here; recommended practices will be maintained on the Lido research forum and may be revised. Contract-level requirements are:
 
 - Rotation must be performed promptly upon any suspected or confirmed hot-key compromise. If a replacement key is not immediately ready, `revokeDelegatee()` should be called first to take the compromised key out of service.
 - After assignment, the operator verifies the new delegatee via `getDelegatee()` and updates the daemon configuration before restarting.
 
-For monitoring purposes, the `DelegateeAssigned` event is sufficient to track the current delegatee; no additional view method is required beyond `getDelegatee()`.
+For monitoring purposes, the `DelegateeAssigned` event (carrying the `activeFrom` timestamp) flags every assignment the moment it is scheduled, and `getPendingDelegatee()` / `getDelegatee()` expose the pending and effective delegatee on-chain — so an unexpected rotation can be caught during its cooldown.
 
 ##### Admin Address Requirements
 
@@ -294,7 +309,7 @@ Governance grants protocol permissions (e.g., oracle committee membership, DSM g
 
 - **Smart contracts**: `lidofinance/delegation-execution-authority` (Solidity + Foundry framework)
   - `DelegationFactory` and `DelegationContract`
-  - `getDelegatee()`-based delegation; payable `execute()` with value forwarding; immediate `assignDelegatee()` / `revokeDelegatee()`; irreversible `terminate()`; admin-cannot-execute invariant enforced by design
+  - `getDelegatee()`-based delegation; payable `execute()` with value forwarding; cooldown-gated `assignDelegatee()` and immediate `revokeDelegatee()`; irreversible `terminate()`; admin-cannot-execute invariant enforced by design
   - Full test suite including mainnet fork tests (Foundry, covering contract logic, factory deployment, access control, payable execution, assignment/revocation, and termination behavior)
 
 ---
@@ -442,7 +457,7 @@ The VEBO module of `lido-oracle` is covered by the push integration above. Separ
 
 Migration is designed to be zero-downtime. All preparatory steps are completed off the critical path, leaving a single irreversible governance vote that flips every prepared seat to delegation at once. The reassignment of a committee seat from a hot EOA to a `DelegationContract` cannot be undone without a further governance vote, so operators are expected to validate the full flow on the Hoodi testnet before the mainnet vote.
 
-1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(adminAddress, hotKey)` — the admin being a Safe multisig, fixed for the contract's lifetime (see Admin Immutability in Part 1), and the active delegatee (its existing hot key) set in the same transaction. (Passing `address(0)` for the delegatee and assigning it later via `assignDelegatee()` is also supported.)
+1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(adminAddress, hotKey, cooldown)` — the admin being a Safe multisig, fixed for the contract's lifetime (see Admin Immutability in Part 1); the active delegatee (its existing hot key) set in the same transaction; and a `cooldown` of **1 hour** for both Oracle and DSM contracts (reduced or 0 on testnet). (Passing `address(0)` for the delegatee and assigning it later via `assignDelegatee()` is also supported.)
 2. **Publish and verify addresses (operators)**: each operator publishes its `DelegationContract` and admin addresses on the Lido research forum, so the DAO and other operators can verify them ahead of the vote.
 3. **Prepare daemons for rotation (operators)**: each operator stages the delegatee key and the `DELEGATION_CONTRACT_ADDRESS` configuration in its Oracle and Council daemons, so they are ready to operate via the delegation contract the moment the seat is reassigned. No key material changes, and the daemons keep operating from the hot EOA until the vote lands.
 4. **Set up monitoring (Lido team)**: the Lido team registers every delegation contract in the monitoring infrastructure and begins watching the admin and delegatee addresses for unexpected activity, so anomalies are caught both before and after the seat reassignment.
@@ -725,7 +740,7 @@ The delegation model shifts trust from "this hot key is the oracle" to "this del
 
 **Push integration (`execute()`):** The delegatee can call any target. Permission grants must be narrowly scoped per contract, enforced by the one-contract-per-bot rule. ETH is forwarded to the target and any change is swept back to the delegatee after the call, so overpayment refunded by the target is recovered; only ETH the target actually consumes is non-recoverable.
 
-**Admin compromise.** An attacker with admin access can immediately assign a delegatee they control and have it act within the seat's permissions — there is no delay and no reaction window, so this is the model's most serious failure mode and the reason the admin must be a cold, high-threshold multisig. The attacker still cannot call `execute()` or sign directly (the admin-cannot-execute invariant holds), so they must route actions through an assigned delegatee, and the `DelegateeAssigned` event fires on-chain for monitoring to catch. The blast radius is bounded to that single contract's permissions.
+**Admin compromise.** An attacker with admin access can assign a delegatee they control, but it cannot act until the `cooldown` elapses — and the `DelegateeAssigned` event (with its `activeFrom`) and `getPendingDelegatee()` expose the pending assignment on-chain for the whole window. This gives the DAO and monitoring a reaction window before the malicious key becomes effective: the legitimate admin can `terminate()`. The attacker also cannot call `execute()` or sign directly (the admin-cannot-execute invariant holds), so they must route actions through an assigned delegatee, and the blast radius is bounded to that single contract's permissions. With a zero cooldown there is no such window.
 
 As a last resort — while the legitimate admin still controls the key — it can `terminate()` the contract. `terminate()` is irreversible by design: once terminated, no action can be taken under the contract's authority by anyone, and an attacker who later gains admin access cannot reverse it. The cost is that a new contract must be deployed and governance must reassign the seat, but this is preferable to leaving an attacker able to act through the contract. This irreversibility must be explicit in operator training material.
 
