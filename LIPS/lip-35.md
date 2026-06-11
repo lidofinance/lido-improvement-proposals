@@ -5,7 +5,7 @@ status: Proposed
 author: Maksim Kuraian (@mkurayan) , KRogLA (@KRogLA), Alexander Kolesnikov (@eddort), Anna Mukharram (@Amuhar)
 discussions-to: https://research.lido.fi/t/staking-router-v3-design-implementation-proposal-lip-35/11621
 created: 2026-05-22
-updated: 2026-06-09
+updated: 2026-06-11
 ---
 
 # LIP-35. Staking Router v3
@@ -1930,7 +1930,7 @@ Full details about the proposed parameters can be found in [Staking Router 3.0 p
 
 ### Lido
 
-New implementation; state migration is performed via `finalizeUpgrade_v4()` which reads from storage and takes no arguments. The Lido app implementation has no parameters that change between versions.
+New implementation; state migration is performed via `finalizeUpgrade_v4(_depositsReserveTarget)`.
 
 A new role `BUFFER_RESERVE_MANAGER_ROLE` is created on Lido and granted to the Aragon Agent during the upgrade.
 
@@ -2070,7 +2070,7 @@ New contract behind `OssifiableProxy`.
 | `DEFAULT_ADMIN_ROLE` | Aragon Agent          |
 | `PUBLISH_ROLE`       | ConsolidationMigrator |
 | `REMOVE_ROLE`        | CMC Committee         |
-| `MANAGE_ROLE`        | Aragon Agent          |
+| `MANAGE_ROLE`        | Not assigned by default |
 
 Constructor parameters (implementation):
 
@@ -2082,7 +2082,7 @@ Constructor parameters (implementation):
 
 | Name                      | Value                              | Description                                                 |
 | ------------------------- | ---------------------------------- | ----------------------------------------------------------- |
-| `admin`                   | Aragon Agent (via temporary admin) | Receives `DEFAULT_ADMIN_ROLE`, `MANAGE_ROLE`, `REMOVE_ROLE` |
+| `admin`                   | Aragon Agent (via temporary admin) | Receives `DEFAULT_ADMIN_ROLE`       |
 | `initialBatchSize`        | `200`                              | Maximum number of consolidation requests per batch          |
 | `initialMaxGroupsInBatch` | `10`                               | Maximum number of target validator groups per batch         |
 | `initialExecutionDelay`   | `86400` (24 hours)                 | Delay (seconds) between batch publishing and executability  |
