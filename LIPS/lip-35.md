@@ -413,7 +413,7 @@ The first report after migration is correct by construction:
 
 The list of checks has been updated following the **Pectra hard-fork** and the subsequent expansion of parameters passed to the Validator Exit Bus Oracle (VEBO) and Accounting Oracles (AO).
 
-[Here you can find a full description of changes](https://hackmd.io/@lido/sr-v3-sanity-checks).
+[Here you can find a full description of changes](https://hackmd.io/RLqefrGYQlaaPXnXEF8-ew).
 
 #### AO CL Balance Decrease
 
