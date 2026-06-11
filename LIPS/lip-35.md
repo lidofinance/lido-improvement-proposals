@@ -975,6 +975,12 @@ To prevent outdated Council daemons from incorrectly unvetting type 0x02 keys in
 
 It is suggested to bump DSM `VERSION` from `3` to `4`. The `VERSION` is now embedded as a separate 32-byte field in the preimage of every guardian-signed message (attest a deposit, pause deposits, unvet signing keys); each hash is now formed as `keccak256(prefix, VERSION, …payload)` instead of `keccak256(prefix, …payload)`. Adding `VERSION` to the payload additionally binds it to a specific behavioral version of the DSM.
 
+Additionally, it is proposed to remove `canDeposit`, a helper method that was previously used by off-chain tools such as the Depositor Bot and is no longer necessary.
+
+```diff
+- function canDeposit(uint256 stakingModuleId)
+```
+
 ### Top-up flow
 
 As in the initial predeposit flow, the Staking Router will deposit 32 ETH for both `0x01` and `0x02` keys. To support reaching the maximum effective balance for `0x02` keys, it is proposed to add Merkle-proof–based top-ups via a separate flow. This adds security by reducing trust assumptions and avoids complicating the validator-creation logic. Top-ups are allowed only for modules that support creation of `0x02` keys.
@@ -1399,7 +1405,7 @@ In addition to the deposit flow, the `IStakingRouter` interface is extended with
 - **Validator balances reporting** — `reportValidatorBalancesByStakingModule` is the state-mutating entry point used by the Accounting Oracle to deliver per-module validator balance data to the StakingRouter, where it is stored as each module's `validatorsBalanceGwei` and used as the basis for rewards distribution. `validateReportValidatorBalancesByStakingModule` is its view-only counterpart, used by the sanity checker and the oracle to pre-validate a report against the current module set and configured limits before it is submitted on-chain.
 - **Validator balance accessors** — `getModuleValidatorsBalance` and `getTotalModulesValidatorsBalance` return the active validators balance used for rewards distribution, either for a single module or aggregated across all registered modules.
 - **Module state getters** — `getStakingModuleStateConfig`, `getStakingModuleStateDeposits`, and `getStakingModuleStateAccounting` expose a module's state split into three logical parts (configuration, deposit-related fields, and accounting) to keep the returned structures small and decoupled, allowing consumers to fetch only the slice they need.
-- **Module-level helpers** — `getStakingModuleWithdrawalCredentials` returns the per-module withdrawal credentials with the module's type prefix applied (`0x01...` or `0x02...`), and `canDeposit` reports whether a module exists and is currently eligible to receive deposits.
+- **Module-level helpers** — `getStakingModuleWithdrawalCredentials` returns the per-module withdrawal credentials with the module's type prefix applied (`0x01...` or `0x02...`).
 - **Top-up cap configuration** — `setMaxTopUpPerBlockGwei` (restricted to `STAKING_MODULE_MANAGE_ROLE`) and `getMaxTopUpPerBlockGwei` manage the protocol-wide per-block top-up amount cap.
 - **Direct ETH transfers** — the new StakingRouter rejects any direct ETH transfers (`receive()` reverts). All ETH must enter via `receiveDepositableEther`, ensuring the [pull model](#depositable-eth-pull-model) is the single ETH-ingress path.
 - **Versioning** — `getContractVersion` returns the current initialized version of the proxy, replacing the previous `Versioned` helper.
@@ -1459,9 +1465,6 @@ interface IStakingRouter {
   /// @notice Returns the per-module withdrawal credentials with the module's type prefix applied.
   /// @return 0x01... for legacy (`0x01`) modules, 0x02... for new (`0x02`) modules.
   function getStakingModuleWithdrawalCredentials(uint256 _stakingModuleId) external view returns (bytes32);
-
-  /// @notice Returns whether the staking module exists and is in the `Active` status, i.e. eligible to receive deposits.
-  function canDeposit(uint256 _stakingModuleId) external view returns (bool);
 
   /// @notice Returns the staking module's active validators balance used for rewards distribution.
   /// @dev For `0x01` modules this is derived from on-chain accounting; for `0x02` modules it is the module's
