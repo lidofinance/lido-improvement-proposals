@@ -757,3 +757,18 @@ As a last resort — while the legitimate admin still controls the key — it ca
 - Oracle daemon (`lidofinance/lido-oracle`): https://github.com/lidofinance/lido-oracle
 - Community Staking Module — forked oracle stack (`lidofinance/community-staking-module`): https://github.com/lidofinance/community-staking-module
 - HashConsensus DoS vulnerability issue (`lidofinance/core#1379`): https://github.com/lidofinance/core/issues/1379
+
+---
+
+```my python
+                           (o)(o)
+                          /     \
+                         /       |
+                        /   \ .. |
+          ________     /    /\__/
+  _      /        \   /    /   \\
+ / \    /  ____    \_/    /
+//\ \  /  /    \         /
+V  \ \/  /      \       /
+    \___/        \_____/
+```
