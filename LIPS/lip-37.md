@@ -63,7 +63,7 @@ The release consists of three coordinated changes:
 
 **Why a purpose-built own delegation contract rather than reusing an existing solution.** Other delegation frameworks we looked into are far more complex and flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes KDF's guarantees structural — owner can never `execute()` or sign, one active delegatee, immediate revocation with a cooldown-gated assignment, irreversible `terminate()` — keeping the audited surface small.
 
-**Why keep cryptography outside the protocol.** All signature verification lives in KDF, so the eventual move to post-quantum signatures means updating only KDF, not the protocol. The protocol just does a generic ERC-1271 check against the delegation contract address and never needs to know how a signature is produced, so a PQ migration stays entirely within KDF. See [Post-Quantum (PQ) Readiness](#post-quantum-pq-readiness) below.
+**Why keep cryptography outside the protocol.** All signature verification lives in KDF, so the eventual move to post-quantum signatures means updating only KDF, not the protocol. The protocol just does a generic ERC-1271 check against the delegation contract address and never needs to know how a signature is produced, so a PQ migration stays entirely within KDF.
 
 ### Technical Specification
 
@@ -238,7 +238,7 @@ The `DelegationContract` is designed as a **general integration primitive** for 
 
 The `DelegationContract` is itself an **[ERC-1271](https://eips.ethereum.org/EIPS/eip-1271) signer**: it implements `isValidSignature(hash, signature)`. The integrator (protocol) contract treats the `DelegationContract` address as the signing principal and verifies a relayed signature via OpenZeppelin's [`SignatureChecker.isValidSignatureNow(delegationContract, hash, signature)`](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/SignatureChecker.sol).
 
-All of the delegation indirection lives inside `isValidSignature`: it resolves the current effective delegatee via `getDelegatee()` and validates the signature against it. This keeps the integrator **delegation-agnostic**. The contract fails closed: with no effective delegatee (never assigned, revoked, or terminated) - `getDelegatee()` is `address(0)`.
+All of the delegation indirection lives inside `isValidSignature`: it resolves the current effective delegatee via `getDelegatee()` and validates the signature against it. This keeps the integrator **delegation-agnostic**. The contract fails closed: with no effective delegatee (never assigned, revoked, or terminated) — `getDelegatee()` is `address(0)`.
 
 The integrator must know which `DelegationContract` to check. The address must be relayed alongside the signature, so the signature is bound to a specific delegation contract and the integrator reads the target from the message.
 
@@ -360,7 +360,7 @@ This section defines which components are migrated to the delegation model in th
 | Component                              | Integration style                                                                                                            |
 |----------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
 | Lido Oracle                            | Push (`execute()`)                                                                                                           |
-| `DepositSecurityModule` contract       | Pull (DSM verifies via a standard ERC-1271 check against the guardian address; `SignatureChecker`)                           |
+| `DepositSecurityModule` contract       | Pull (DSM verifies via a standard ERC-1271 `isValidSignature` check against the guardian's `DelegationContract`)             |
 | Council daemon                         | Pull (signs messages, publishes its `DelegationContract` address with each signature, DSM verifies)                          |
 | Depositor bot                          | Claims the council-provided `(signature, DelegationContract address)` pairs; re-sorts the deposit array by guardian address. |
 | Validator ejector (node-operator side) | Off-chain only — must resolve the active delegatee via `getDelegatee()`. See Validator Ejector section below                 |
@@ -383,7 +383,7 @@ All components in the table are migrated together.
 
 ###### DSM Contract — Pull Integration
 
-**Pattern:** Pull — DSM verifies each signature against the supplied guardian with a standard ERC-1271 check (`SignatureChecker`) over a digest **bound to that guardian**.
+**Pattern:** Pull — DSM verifies each signature against the supplied guardian with a standard ERC-1271 `isValidSignature` check over a digest **bound to that guardian**.
 
 **Authorization model today.** `DepositSecurityModule` does **not** take the guardian address as an input — it *derives* it: every verification path calls `ECDSA.recover(msgHash, sig.r, sig.vs)` and looks the recovered EOA up in the guardian set via `_isGuardian`.
 
@@ -412,7 +412,7 @@ function _isValidGuardianSignature(
 **Binding the digest and counting distinct signers.** The legacy EOA scheme got two properties for free that the indirection breaks, and both must be restored explicitly:
 
 1. **The signed digest must be bound to the guardian.** Because the signer (a delegatee) is no longer the same address as the principal being counted (the guardian contract), an unbound signature would validate for *every* guardian contract that currently resolves to that delegatee. The signed digest therefore includes the guardian address. The existing per-action message prefix already binds the chain id, the DSM address, and the action type — `keccak256(ATTEST_MESSAGE, block.chainid, address(this))` — so adding the guardian completes the binding (guardian + DSM + chain id + action + the existing message fields).
-2. **Quorum must count distinct guardians and distinct hot keys.** Both dimensions must be unique within a batch. Deduplicating by guardian address alone is insufficient — two different guardian contracts can share one delegatee, so a single compromised hot key could still count multiple times toward the 4-of-6 quorum. Deduplicating by delegatee alone is also insufficient — it would not stop one guardian from being submitted twice (e.g., if the delegate contract supports multi delegatee). DSM therefore rejects both a repeated **guardian address** and a repeated **delegatee address** (`getDelegatee()`): it requires the batch to be strictly ascending by guardian address (which rejects an unsorted array and any duplicate guardian in a single comparison) and additionally rejects any repeated resolved delegatee across the batch:
+2. **Quorum must count distinct guardians and distinct hot keys.** Both dimensions must be unique within a batch. Deduplicating by guardian address alone is insufficient — two different guardian contracts can share one delegatee, so a single compromised hot key could still count multiple times toward the 4-of-6 quorum. Deduplicating by delegatee alone is also insufficient — it would not stop one guardian from being submitted twice (e.g., if a delegation contract variant supported multiple delegatees). DSM therefore rejects both a repeated **guardian address** and a repeated **delegatee address** (`getDelegatee()`): it requires the batch to be strictly ascending by guardian address (which rejects an unsorted array and any duplicate guardian in a single comparison) and additionally rejects any repeated resolved delegatee across the batch:
 
 ```solidity
 // Digest now binds the guardian; the prefix already binds chainId/DSM/action.
