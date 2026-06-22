@@ -12,12 +12,12 @@ discussions-to: https://research.lido.fi/t/lip-18-vault-contract-for-potential-s
 
 ## Simple Summary
 
-The Lido Insurance Fund is planned to be used by the Lido DAO as a transparent store of funds allocated for potential self-cover purposes.
+The Lido Reserve Fund is planned to be used by the Lido DAO as a transparent store of funds allocated for potential self-cover purposes.
 
 
 ## Motivation
 
-Initially, Lido hedged against slashing penalties via a third party insurance provider. In a [July 2021 vote](https://snapshot.org/#/lido-snapshot.eth/proposal/QmWeMuwkLJ3strPAM58kzLaKzbEPrWTLb1VC93ergrYrbv), the DAO decided to explore an independent approach by marking the funds accrued in the form of protocol fees as potentially usable for self-cover purposes. The enactment of [vote #134](https://vote.lido.fi/vote/134) redirected the flow of protocol fees into the Treasury and fixed the amount allocated for cover. However, there is still no apparent distinction between Insurance and Treasury funds as both are stored under the same contract.
+Initially, Lido hedged against slashing penalties via a third party insurance provider. In a [July 2021 vote](https://snapshot.org/#/lido-snapshot.eth/proposal/QmWeMuwkLJ3strPAM58kzLaKzbEPrWTLb1VC93ergrYrbv), the DAO decided to explore an independent approach by marking the funds accrued in the form of protocol fees as potentially usable for self-cover purposes. The enactment of [vote #134](https://vote.lido.fi/vote/134) redirected the flow of protocol fees into the Treasury and fixed the amount allocated for cover. However, there is still no apparent distinction between Reserve and Treasury funds as both are stored under the same contract.
 
 This proposal introduces a dedicated vault contract that will serve as a transparent store for cover funds which can only be retrieved by the [DAO Agent](https://etherscan.io/address/0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c). Additionally, the vault features functions for recovering non-cover assets that were sent to the contract by mistake.
 
@@ -26,10 +26,10 @@ This proposal introduces a dedicated vault contract that will serve as a transpa
 
 ## Mechanics
 
-The Insurance Fund is a simple vault that inherits [OpenZeppelin's `Ownable`](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.7.3/contracts/access/Ownable.sol) and allows the owner to transfer ether, ERC20, ERC721, ERC1155 tokens from the contract. The owner, which will the Lido DAO Agent, can transfer ownership to another entity with an exception of [zero address](https://etherscan.io/address/0x0000000000000000000000000000000000000000).
+The Reserve Fund is a simple vault that inherits [OpenZeppelin's `Ownable`](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.7.3/contracts/access/Ownable.sol) and allows the owner to transfer ether, ERC20, ERC721, ERC1155 tokens from the contract. The owner, which will the Lido DAO Agent, can transfer ownership to another entity with an exception of [zero address](https://etherscan.io/address/0x0000000000000000000000000000000000000000).
 
 ## Specification
-We propose the following interface for `InsuranceFund`. The code below assumes the Solidity v0.8.10 syntax.
+We propose the following interface for `ReserveFund`. The code below assumes the Solidity v0.8.10 syntax.
 
 ### Constructor
 ```solidity
@@ -163,4 +163,4 @@ The ownership can be transferred but not renounced. The initial owner set upon c
 - [Lido DAO Agent](https://etherscan.io/address/0x3e40D73EB977Dc6a537aF587D48316feE66E9C8c)
 - [LIP 6: In-protocol coverage application mechanism proposal
 ](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-6.md)
-- [Redirecting incoming revenue stream from insurance fund to DAO treasury](https://research.lido.fi/t/redirecting-incoming-revenue-stream-from-insurance-fund-to-dao-treasury/2528)
+- [Redirecting incoming revenue stream from reserve fund to DAO treasury](https://research.lido.fi/t/redirecting-incoming-revenue-stream-from-insurance-fund-to-dao-treasury/2528)
