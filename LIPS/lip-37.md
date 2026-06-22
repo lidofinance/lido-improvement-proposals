@@ -32,7 +32,7 @@ KDA improvements unlock:
 
 - **Routine rotation as hygiene.** Periodic hot-key rotation limits the value of any single leaked key and shrinks the window in which an undetected compromise stays useful — a standard operational practice that the governance-gated path makes impractical today.
 - **Smart-account owners.** Owners increasingly prefer a smart account (multisig or account-abstraction wallet) over a bare EOA for stronger custody, but today's permission model assumes an EOA signer. Verifying the delegatee through ERC-1271 lets the hot key itself be a contract.
-- **Future signing-scheme migration.** The signing schemes these keys rely on are not fixed forever — most concretely, an eventual migration to post-quantum signatures. Routing all signature verification through KDF means such a migration needs no per-role protocol change.
+- **Future signing-scheme migration.** The signing schemes KDF relies on are not post-quantum safe, and in the future the protocol might need to support such verification. Routing all signature verification through KDF means such a migration needs no protocol change, only a KDF upgrade itself.
 
 ### Hot-key operational risk for Oracle and Council operators
 
@@ -55,7 +55,7 @@ The release consists of three coordinated changes:
 
 1. Deployment of the `DelegationFactory`, establishing the general-purpose on-chain delegation infrastructure (KDF).
 2. An update to the `DepositSecurityModule` contract to verify guardian signatures via the guardian's ERC-1271 `DelegationContract.isValidSignature`, so that Council guardians can operate behind KDF delegation contracts.
-3. Modifications to the Oracle and Council daemons to support operating behind delegation contracts.
+3. Modifications to the Oracle and Council daemons' off-chain code to support operating behind delegation contracts.
 
 ### Rationale
 
@@ -73,7 +73,7 @@ The release consists of three coordinated changes:
 
 ##### Architecture
 
-The delegation layer is composed of two contracts deployed from a single factory:
+The delegation layer is composed of two contracts:
 
 - **`DelegationFactory`** — a singleton that deploys a fresh `DelegationContract` per instance. The per-instance `owner` and `cooldown` are constructor arguments stored as Solidity `immutable`s; the initial `delegatee` is set in the same constructor.
 - **`DelegationContract`** — a non-upgradeable, minimal on-chain delegation contract. It enforces a one-owner / one-active-delegatee model and supports two integration patterns described below.
@@ -90,6 +90,8 @@ The contract has exactly two trusted entities, **owner** and **delegatee**:
 The owner manages the delegatee's lifecycle but can never act *as* the contract. Termination is the escape hatch for owner-key compromise: because `terminate()` is irreversible — it permanently disables `execute()` and clears the delegatee — a still-trusted owner can neutralize the contract entirely.
 
 ##### Contract Interface
+
+The contract implements [ERC-165](https://eips.ethereum.org/EIPS/eip-165) `supportsInterface`, advertising ERC-1271, [ERC-5313](https://eips.ethereum.org/EIPS/eip-5313), and `IDelegationContract`. The owner is exposed via the ERC-5313 `owner()` view.
 
 ```solidity
 interface IDelegationFactory {
@@ -114,7 +116,7 @@ interface IDelegationFactory {
     event DelegationContractDeployed(
         address indexed instance,
         address indexed owner,
-        address delegatee,
+        address indexed delegatee,
         uint256 cooldown
     );
 }
@@ -134,11 +136,13 @@ interface IDelegationContract {
     ///         effective throughout. To drop a (e.g. compromised) delegatee
     ///         immediately, use revokeDelegatee().
     ///         Reverts if delegatee == owner.
+    ///         Reverts if the contract is terminated.
     /// @param delegatee Address of the incoming delegatee.
     function assignDelegatee(address delegatee) external;
 
     /// @notice Remove the current and pending delegatee. 
     ///         Only callable by owner.
+    ///         Reverts if the contract is terminated.
     function revokeDelegatee() external;
 
     /// @notice Terminate the contract, permanently disabling execute().
@@ -147,6 +151,7 @@ interface IDelegationContract {
     ///         getDelegatee() returns address(0) after termination.
     ///         Intended for emergency use when the owner is suspected compromised.
     ///         Termination is irreversible.
+    ///         Reverts if the contract is already terminated.
     function terminate() external;
 
     // --- Push integration ---
@@ -236,13 +241,11 @@ The `DelegationContract` is designed as a **general integration primitive** for 
 
 ###### Pull Style — ERC-1271 Signature Verification
 
-The `DelegationContract` is itself an **[ERC-1271](https://eips.ethereum.org/EIPS/eip-1271) signer**: it implements `isValidSignature(hash, signature)`. The integrator (protocol) contract treats the `DelegationContract` address as the signing principal and verifies a relayed signature via OpenZeppelin's [`SignatureChecker.isValidSignatureNow(delegationContract, hash, signature)`](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/SignatureChecker.sol).
+The `DelegationContract` is itself an **[ERC-1271](https://eips.ethereum.org/EIPS/eip-1271) signer**: it implements `isValidSignature(hash, signature)`. The integrator (protocol) contract treats the `DelegationContract` address as the signing principal and verifies a relayed signature by calling that contract's `isValidSignature(hash, signature)`.
 
 All of the delegation indirection lives inside `isValidSignature`: it resolves the current effective delegatee via `getDelegatee()` and validates the signature against it. This keeps the integrator **delegation-agnostic**. The contract fails closed: with no effective delegatee (never assigned, revoked, or terminated) — `getDelegatee()` is `address(0)`.
 
 The integrator must know which `DelegationContract` to check. The address must be relayed alongside the signature, so the signature is bound to a specific delegation contract and the integrator reads the target from the message.
-
-The contract also implements [ERC-165](https://eips.ethereum.org/EIPS/eip-165) `supportsInterface`, advertising ERC-1271, [ERC-5313](https://eips.ethereum.org/EIPS/eip-5313), and `IDelegationContract`. The owner is exposed via the ERC-5313 `owner()` view so block explorers and multisig tooling recognize the controlling party; there is deliberately no `transferOwnership`, preserving owner immutability.
 
 ```
 Off-chain bot (delegatee)          DelegationContract              Protocol contract
@@ -260,7 +263,7 @@ Off-chain bot (delegatee)          DelegationContract              Protocol cont
 ```
 
 **Security assumptions:**
-- The integrator must treat the `DelegationContract` address — not the signing key — as the authorized principal: it checks that the supplied `DelegationContract` is a registered entity **and** that `isValidSignature` returns the magic value.
+- The integrator must treat the `DelegationContract` address as the authorized principal: it checks that the supplied `DelegationContract` is a registered entity **and** that `isValidSignature` returns the magic value (`0x1626ba7e`) for a valid signature.
 - The signing key must match the effective delegatee at the time of on-chain verification. A key rotated (or the contract terminated) after signing but before verification causes `isValidSignature` to reject — failing closed.
 - The fail-closed-on-zero-delegatee guard lives **inside** `isValidSignature` (it returns the failure value rather than verifying against `address(0)`), so integrators cannot accidentally validate a malformed signature against an unassigned delegatee.
 
@@ -281,7 +284,7 @@ function isValidSignature(bytes32 hash, bytes calldata signature)
 }
 ```
 
-**When to use:** Any integration where the protocol collects signatures off-chain and verifies them on-chain in a single transaction.
+**When to use:** Any integration where the protocol collects signatures off-chain and verifies them on-chain.
 
 ###### Push Style — Transaction Execution via `execute()`
 
@@ -328,6 +331,7 @@ The cooldown is set in the constructor and cannot change; it may be 0.
 The owner may call `terminate()` to permanently disable the contract's `execute()` function; it also clears the active delegatee (equivalent to `revokeDelegatee()`) as part of the same call. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
 
 - All delegatee calls to `execute()` revert.
+- All state-changing owner methods (`assignDelegatee()`, `revokeDelegatee()`, and `terminate()` itself) also revert.
 - `getDelegatee()` returns `address(0)`, so any pull-style integrator that resolves the active delegatee through it (to verify a signature) fails closed and does not keep trusting the last delegatee.
 - A new `DelegationContract` must be deployed and the role must be reassigned to the new address.
 
@@ -357,13 +361,13 @@ This section defines which components are migrated to the delegation model in th
 
 ##### Scope of Migration in This Release
 
-| Component                              | Integration style                                                                                                            |
-|----------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
-| Lido Oracle                            | Push (`execute()`)                                                                                                           |
-| `DepositSecurityModule` contract       | Pull (DSM verifies via a standard ERC-1271 `isValidSignature` check against the guardian's `DelegationContract`)             |
-| Council daemon                         | Pull (signs messages, publishes its `DelegationContract` address with each signature, DSM verifies)                          |
-| Depositor bot                          | Claims the council-provided `(signature, DelegationContract address)` pairs; re-sorts the deposit array by guardian address. |
-| Validator ejector (node-operator side) | Off-chain only — must resolve the active delegatee via `getDelegatee()`. See Validator Ejector section below                 |
+| Component                              | Integration style                                                                                                                                             |
+|----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Lido Oracle                            | Push (`execute()`)                                                                                                                                            |
+| `DepositSecurityModule` contract       | Pull (DSM verifies via a standard ERC-1271 `isValidSignature` check against the guardian's `DelegationContract`)                                              |
+| Council daemon                         | Pull (signs messages, publishes its `DelegationContract` address with each signature, DSM verifies)                                                           |
+| Depositor bot                          | Claims the council-provided `(signature, DelegationContract address)` pairs; re-sorts the deposit array by delegation contract address. See DSM section below |
+| Validator ejector (node-operator side) | Off-chain only — must resolve the active delegatee via `getDelegatee()`. See Validator Ejector section below                                                  |
 
 All components in the table are migrated together.
 
@@ -430,6 +434,7 @@ function _effectiveSigner(address guardian) internal view returns (address) {
     return IDelegationContract(guardian).getDelegatee();
 }
 
+// The loop below runs inside _verifyAttestSignatures (the signature verification path).
 address prevGuardian;
 address[] memory signers = new address[](sortedGuardianSignatures.length);
 for (uint256 i = 0; i < sortedGuardianSignatures.length; ++i) {
@@ -465,12 +470,14 @@ function depositBufferedEther(
     uint256 stakingModuleId,
     uint256 nonce,
     bytes calldata depositCalldata,
-    GuardianSignature[] calldata sortedGuardianSignatures   // was Signature[]
+    // Changed in LIP-37, was Signature[] before
+    GuardianSignature[] calldata sortedGuardianSignatures
 ) external;
 
 function pauseDeposits(
     uint256 blockNumber,
-    GuardianSignature calldata sig   // was Signature
+    // Changed in LIP-37, was Signature before
+    GuardianSignature calldata sig
 ) external;
 
 function unvetSigningKeys(
@@ -480,7 +487,8 @@ function unvetSigningKeys(
     uint256 nonce,
     bytes calldata nodeOperatorIds,
     bytes calldata vettedSigningKeysCounts,
-    GuardianSignature calldata sig   // was Signature
+    // Changed in LIP-37, was Signature before
+    GuardianSignature calldata sig
 ) external;
 ```
 
