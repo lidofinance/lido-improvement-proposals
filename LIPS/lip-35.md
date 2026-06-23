@@ -5,7 +5,7 @@ status: Proposed
 author: Maksim Kuraian (@mkurayan) , KRogLA (@KRogLA), Alexander Kolesnikov (@eddort), Anna Mukharram (@Amuhar)
 discussions-to: https://research.lido.fi/t/staking-router-v3-design-implementation-proposal-lip-35/11621
 created: 2026-05-22
-updated: 2026-06-11
+updated: 2026-06-23
 ---
 
 # LIP-35. Staking Router v3
@@ -971,9 +971,7 @@ For withdrawal credentials of type `0x02`, the initial 32 ETH deposit is used to
 #### Deposit Security Module
 With the introduction of support for type `0x02` keys, Council daemons must correctly verify the withdrawal credentials of such keys and must not attempt to unvet keys with valid Lido withdrawal credentials.
 
-To prevent outdated Council daemons from incorrectly unvetting type 0x02 keys in newly added CMv2 modules after the protocol upgrade, it is proposed to include the contract version in the Guardian Signing Payload.
-
-It is suggested to bump DSM `VERSION` from `3` to `4`. The `VERSION` is now embedded as a separate 32-byte field in the preimage of every guardian-signed message (attest a deposit, pause deposits, unvet signing keys); each hash is now formed as `keccak256(prefix, VERSION, …payload)` instead of `keccak256(prefix, …payload)`. Adding `VERSION` to the payload additionally binds it to a specific behavioral version of the DSM.
+To prevent outdated Council daemons from incorrectly unvetting `0x02` keys in newly added CMv2 modules after the protocol upgrade, it is proposed to bump DSM `VERSION` from `3` to `4`. 
 
 Additionally, it is proposed to remove `canDeposit`, a helper method that was previously used by off-chain tools such as the Depositor Bot and is no longer necessary.
 
