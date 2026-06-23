@@ -1,10 +1,11 @@
 ---
 lip: 34
 title: CircuitBreaker — Programmable panic layer
-status: Proposed
+status: Implemented
 author: Azat Serikov
 discussions-to: https://research.lido.fi/t/circuitbreaker-programmable-panic-layer/11400
 created: 2026-04-07
+updated: 2026-06-26
 ---
 
 # LIP-34: CircuitBreaker
