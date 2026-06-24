@@ -171,25 +171,6 @@ interface IDelegationContract {
         payable
         returns (bytes memory result);
 
-    // --- Asset recovery ---
-    //
-    // Rescue assets that were sent to this contract (the delegatee can already
-    // move them via execute(); these give the cold owner an independent path,
-    // usable even after the delegatee is revoked or the contract is terminated).
-    // Only callable by owner. `recipient` must be non-zero.
-
-    /// @notice Recover ETH held by this contract to `recipient`.
-    function recoverEther(address recipient, uint256 amount) external;
-
-    /// @notice Recover an ERC-20 balance held by this contract to `recipient`.
-    function recoverERC20(address token, address recipient, uint256 amount) external;
-
-    /// @notice Recover an ERC-721 token held by this contract to `recipient`.
-    function recoverERC721(address token, uint256 tokenId, address recipient) external;
-
-    /// @notice Recover an ERC-1155 balance held by this contract to `recipient`.
-    function recoverERC1155(address token, uint256 tokenId, address recipient, uint256 amount) external;
-
     // --- Pull integration (ERC-1271) ---
 
     /// @notice ERC-1271 signature validation. Returns the ERC-1271 magic value
@@ -251,11 +232,6 @@ interface IDelegationContract {
     event DelegateeNominated(address indexed newDelegatee, uint256 activeFrom);
     event DelegateeRevoked(address indexed revokedDelegatee);
     event Terminated();
-
-    event EtherRecovered(address indexed recipient, uint256 amount);
-    event ERC20Recovered(address indexed token, address indexed recipient, uint256 amount);
-    event ERC721Recovered(address indexed token, address indexed recipient, uint256 tokenId);
-    event ERC1155Recovered(address indexed token, address indexed recipient, uint256 tokenId, uint256 amount);
 }
 ```
 
@@ -371,11 +347,7 @@ The specific cadence for routine rotation is not mandated here; recommended prac
 - A replacement is then assigned with `assignDelegatee(newHotKey)` and becomes effective after its cooldown.
 - After assignment, the operator updates the daemon configuration.
 
-##### Asset Recovery
-
-The `DelegationContract` is not meant to custody assets, but ETH or tokens can still arrive at its address — change from a payable `execute()` call, an accidental transfer, or an airdrop. To avoid stranding them, the owner can rescue them with `recoverEther` / `recoverERC20` / `recoverERC721` / `recoverERC1155`, each sending to an owner-specified, non-zero `recipient`.
-
-Recovery is **owner-gated**, not delegatee-gated, for two reasons. First, the delegatee can *already* move any asset out via `execute(token, transferCalldata)`, so dedicated recovery methods add no new capability for the hot key — they exist to give the **cold owner an independent path** that works even after the delegatee is revoked or the contract is terminated (when `execute()` is disabled). Second, keeping asset movement on the cold key matches the rest of the model: the hot delegatee acts on the protocol, the owner controls value-bearing escape hatches. These methods do not require the contract to implement any token-receiver hook (ERC-721/1155 `onReceived`), and adding them does not make the contract a custodian — they only rescue what happens to land there.
+##### Owner Address Requirements
 
 The owner is the critical security boundary of the delegation model. The principles below apply; the detailed operational requirements — hardware-wallet models, multisig quorums — are maintained in a dedicated "Key Handling Policy" document on the Lido research forum.
 
