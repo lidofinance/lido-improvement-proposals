@@ -270,6 +270,9 @@ Off-chain bot (delegatee)          DelegationContract              Protocol cont
 Reference implementation of the contract side:
 
 ```solidity
+bytes4 internal constant EIP1271_MAGIC_VALUE = 0x1626ba7e;
+bytes4 internal constant EIP1271_INVALID     = 0xffffffff;
+
 function isValidSignature(bytes32 hash, bytes calldata signature)
     external
     view
@@ -278,9 +281,9 @@ function isValidSignature(bytes32 hash, bytes calldata signature)
     address delegatee = getDelegatee();   // effective delegatee, or address(0)
     // Fail closed when there is no effective delegatee (never assigned/revoked/terminated).
     if (delegatee != address(0) && SignatureChecker.isValidSignatureNow(delegatee, hash, signature)) {
-        return IERC1271.isValidSignature.selector;   // 0x1626ba7e
+        return EIP1271_MAGIC_VALUE;
     }
-    return 0xffffffff;
+    return EIP1271_INVALID;
 }
 ```
 
