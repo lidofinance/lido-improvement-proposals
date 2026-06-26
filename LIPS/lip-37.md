@@ -154,6 +154,17 @@ interface IDelegationContract {
     ///         Reverts if the contract is already terminated.
     function terminate() external;
 
+    /// @notice Recover ETH that is not attributable to an in-flight execute()
+    ///         call — e.g. force-sent (selfdestruct), residual, or a stray
+    ///         transfer. execute() refunds only the current call's change, so
+    ///         this stray ETH is never forwarded automatically; withdrawing it
+    ///         requires an explicit owner call, which may send it to any
+    ///         recipient. Only callable by owner; remains callable after
+    ///         termination so stranded ETH can still be rescued. Emits
+    ///         ETHRecovered.
+    /// @param to Recipient of the recovered ETH.
+    function recoverETH(address to) external;
+
     // --- Push integration ---
 
     /// @notice Execute an arbitrary non-delegate call on behalf of this contract.
@@ -161,8 +172,10 @@ interface IDelegationContract {
     ///         Reverts if the contract is terminated.
     ///         Reverts if the target call reverts.
     ///         Forwards msg.value to the target to support payable targets.
-    ///         After the target call returns, any residual ETH provided as a payment 
-    ///         is swept back to the delegatee (msg.sender).
+    ///         After the target call returns, refunds only this call's change
+    ///         — the unspent portion of msg.value, measured as the balance delta
+    ///         over a pre-call baseline — to the delegatee (msg.sender). ETH not
+    ///         attributable to this call is left untouched (see recoverETH).
     /// @param target  Address to call.
     /// @param data    Call data.
     /// @return result Return data from the call.
@@ -232,6 +245,7 @@ interface IDelegationContract {
     event DelegateeNominated(address indexed newDelegatee, uint256 activeFrom);
     event DelegateeRevoked(address indexed revokedDelegatee);
     event Terminated();
+    event ETHRecovered(address indexed to, uint256 amount);
 }
 ```
 
@@ -306,12 +320,13 @@ Off-chain bot (delegatee)          DelegationContract         Protocol contract
         │◄── result (or revert) ───────────│                          │
 ```
 
-`execute()` is `payable` and forwards `msg.value` to the target. This is required to support future permissioned bots that interact with payable protocol functions where a fee must be paid in ETH at call time. After the target call returns, `execute()` sweeps any ETH still held by the contract back to the delegatee, so change refunded by the target is forwarded to the bot rather than stranded on the delegation contract.
+`execute()` is `payable` and forwards `msg.value` to the target. This is required to support future permissioned bots that interact with payable protocol functions where a fee must be paid in ETH at call time. After the target call returns, `execute()` refunds only **this call's** unspent value — the difference between the `msg.value` supplied and the amount the target actually consumed, computed as the balance delta over a pre-call baseline — back to the delegatee (`msg.sender`). Any ETH not attributable to the current call (force-sent via `selfdestruct`, residual from a prior call, or a stray transfer) is **not** swept to the delegatee; it is left untouched and recoverable only by the owner via `recoverETH()`, so stray funds are never auto-credited to the hot key.
 
 **Security assumptions:**
 - The target contract must verify `msg.sender == DelegationContract` is a registered permission holder.
 - The delegatee can call any target with any data; the contract does not restrict the call target. Governance must ensure the `DelegationContract` address holds only the narrowest set of permissions needed.
-- If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegatee. On a *successful* call, any ETH the target refunds to the contract (change) is swept back to the delegatee before `execute()` returns.
+- If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegatee. On a *successful* call, only the current call's change (the unspent portion of `msg.value`) is returned to the delegatee before `execute()` returns; pre-existing or force-sent ETH is excluded from this refund.
+- The refund is bounded to the current call's balance delta, so a (compromised) delegatee cannot use `execute()` to extract ETH that was already sitting on the contract — such funds are recoverable only by the owner via `recoverETH()`.
 
 **When to use:** Any integration where the bot submits transactions that modify on-chain state and the protocol contract checks `msg.sender` for authorization.
 
@@ -335,7 +350,7 @@ The cooldown is set in the constructor and cannot change; it may be 0.
 The owner may call `terminate()` to permanently disable the contract's `execute()` function; it also clears the active delegatee (equivalent to `revokeDelegatee()`) as part of the same call. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
 
 - All delegatee calls to `execute()` revert.
-- All state-changing owner methods (`assignDelegatee()`, `revokeDelegatee()`, and `terminate()` itself) also revert.
+- All state-changing owner methods (`assignDelegatee()`, `revokeDelegatee()`, and `terminate()` itself) also revert. `recoverETH()` is the sole exception: it remains callable so the owner can still rescue ETH stranded on a terminated contract.
 - `getDelegatee()` returns `address(0)`, so any pull-style integrator that resolves the active delegatee through it (to verify a signature) fails closed and does not keep trusting the last delegatee.
 - A new `DelegationContract` must be deployed and the role must be reassigned to the new address.
 
