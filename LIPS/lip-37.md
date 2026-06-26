@@ -61,7 +61,7 @@ The release consists of three coordinated changes:
 
 **Why KDF ships with its adoption scope.** The `DelegationFactory` and `DelegationContract` are inert on their own: without the Oracle and DSM integration they deliver no security benefit. Shipping the contracts together with their adoption scope is what actually closes the hot-key risk in this release rather than deferring it.
 
-**Why a purpose-built own delegation contract rather than reusing an existing solution.** Other delegation frameworks we looked into are far more complex and flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes KDF's guarantees structural — owner can never `execute()` or sign, one active delegatee, immediate revocation with a cooldown-gated assignment, irreversible `terminate()` — keeping the audited surface small.
+**Why a purpose-built own delegation contract rather than reusing an existing solution.** Other delegation frameworks we looked into are far more complex and flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes KDF's guarantees structural — owner can never `execute()` or sign, one active delegate, immediate revocation with a cooldown-gated assignment, irreversible `terminate()` — keeping the audited surface small.
 
 **Why keep cryptography outside the protocol.** All signature verification lives in KDF, so the eventual move to post-quantum signatures means updating only KDF, not the protocol. The protocol just does a generic ERC-1271 check against the delegation contract address and never needs to know how a signature is produced, so a PQ migration stays entirely within KDF.
 
@@ -75,19 +75,19 @@ The release consists of three coordinated changes:
 
 The delegation layer is composed of two contracts:
 
-- **`DelegationFactory`** — a singleton that deploys a fresh `DelegationContract` per instance. The per-instance `owner` and `cooldown` are constructor arguments stored as Solidity `immutable`s; the initial `delegatee` is set in the same constructor.
-- **`DelegationContract`** — a non-upgradeable, minimal on-chain delegation contract. It enforces a one-owner / one-active-delegatee model and supports two integration patterns described below.
+- **`DelegationFactory`** — a singleton that deploys a fresh `DelegationContract` per instance. The per-instance `owner` and `cooldown` are constructor arguments stored as Solidity `immutable`s; the initial `delegate` is set in the same constructor.
+- **`DelegationContract`** — a non-upgradeable, minimal on-chain delegation contract. It enforces a one-owner / one-active-delegate model and supports two integration patterns described below.
 
 ##### Roles
 
-The contract has exactly two trusted entities, **owner** and **delegatee**:
+The contract has exactly two trusted entities, **owner** and **delegate**:
 
 | Role          | Custody                         | Capabilities                                                                                                                                      |
 |---------------|---------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Owner**     | Safe multisig or cold wallet    | Assign, reassign, and revoke the delegatee (`assignDelegatee()` / `revokeDelegatee()`); irreversibly `terminate()` the contract                   |
-| **Delegatee** | Hot key in the off-chain daemon | Call `execute()` to dispatch transactions (`push`); sign messages that integrators verify via the contract's ERC-1271 `isValidSignature` (`pull`) |
+| **Owner**     | Safe multisig or cold wallet    | Assign, reassign, and revoke the delegate (`assignDelegate()` / `revokeDelegate()`); irreversibly `terminate()` the contract                   |
+| **Delegate** | Hot key in the off-chain daemon | Call `execute()` to dispatch transactions (`push`); sign messages that integrators verify via the contract's ERC-1271 `isValidSignature` (`pull`) |
 
-The owner manages the delegatee's lifecycle but can never act *as* the contract. Termination is the escape hatch for owner-key compromise: because `terminate()` is irreversible — it permanently disables `execute()` and clears the delegatee — a still-trusted owner can neutralize the contract entirely.
+The owner manages the delegate's lifecycle but can never act *as* the contract. Termination is the escape hatch for owner-key compromise: because `terminate()` is irreversible — it permanently disables `execute()` and clears the delegate — a still-trusted owner can neutralize the contract entirely.
 
 ##### Contract Interface
 
@@ -99,16 +99,16 @@ interface IDelegationFactory {
     /// @param owner     The contract's owner, set as a constructor immutable.
     ///                  Fixed for the lifetime of the contract; replacing 
     ///                  the owner requires deploying a new contract.
-    /// @param delegatee Initial active delegatee, set in the constructor (and
+    /// @param delegate Initial active delegate, set in the constructor (and
     ///                  effective immediately — the cooldown applies only to
     ///                  later reassignments). Mutable thereafter via
-    ///                  assignDelegatee(). Pass address(0) to deploy with no
-    ///                  delegatee.
-    /// @param cooldown  Seconds a reassigned delegatee waits before becoming
-    ///                  effective (see assignDelegatee). Set as a constructor
+    ///                  assignDelegate(). Pass address(0) to deploy with no
+    ///                  delegate.
+    /// @param cooldown  Seconds a reassigned delegate waits before becoming
+    ///                  effective (see assignDelegate). Set as a constructor
     ///                  immutable; may be 0 to disable the cooldown.
     /// @return instance Address of the newly deployed DelegationContract.
-    function deploy(address owner, address delegatee, uint256 cooldown)
+    function deploy(address owner, address delegate, uint256 cooldown)
         external
         returns (address instance);
 
@@ -116,7 +116,7 @@ interface IDelegationFactory {
     event DelegationContractDeployed(
         address indexed instance,
         address indexed owner,
-        address indexed delegatee,
+        address indexed delegate,
         uint256 cooldown
     );
 }
@@ -124,31 +124,31 @@ interface IDelegationFactory {
 interface IDelegationContract {
     // --- Owner controls ---
 
-    /// @notice Assign (or reassign) the active delegatee.
-    ///         Only callable by owner. The new delegatee becomes effective only
+    /// @notice Assign (or reassign) the active delegate.
+    ///         Only callable by owner. The new delegate becomes effective only
     ///         after the contract's cooldown (`getCooldown()` seconds, or
-    ///         immediately if cooldown is 0). The currently effective delegatee
+    ///         immediately if cooldown is 0). The currently effective delegate
     ///         (if any) stays effective throughout the cooldown and is dropped
     ///         only when the new one activates — so a planned rotation is
-    ///         seamless, with no interval lacking an active delegatee.
+    ///         seamless, with no interval lacking an active delegate.
     ///         Reassigning before the cooldown elapses replaces the pending
-    ///         delegatee and restarts the cooldown; the current one stays
-    ///         effective throughout. To drop a (e.g. compromised) delegatee
-    ///         immediately, use revokeDelegatee().
-    ///         Reverts if delegatee == owner.
+    ///         delegate and restarts the cooldown; the current one stays
+    ///         effective throughout. To drop a (e.g. compromised) delegate
+    ///         immediately, use revokeDelegate().
+    ///         Reverts if delegate == owner.
     ///         Reverts if the contract is terminated.
-    /// @param delegatee Address of the incoming delegatee.
-    function assignDelegatee(address delegatee) external;
+    /// @param delegate Address of the incoming delegate.
+    function assignDelegate(address delegate) external;
 
-    /// @notice Remove the current and pending delegatee. 
+    /// @notice Remove the current and pending delegate. 
     ///         Only callable by owner.
     ///         Reverts if the contract is terminated.
-    function revokeDelegatee() external;
+    function revokeDelegate() external;
 
     /// @notice Terminate the contract, permanently disabling execute(), signature verification via isValidSignature(), and further delegate reassignment via assignDelegate.
     ///         Only callable by owner.
-    ///         Also clears the active delegatee (as revokeDelegatee), so
-    ///         getDelegatee() returns address(0) after termination.
+    ///         Also clears the active delegate (as revokeDelegate), so
+    ///         getDelegate() returns address(0) after termination.
     ///         Intended for emergency use when the owner is suspected compromised.
     ///         Termination is irreversible.
     ///         Reverts if the contract is already terminated.
@@ -168,13 +168,13 @@ interface IDelegationContract {
     // --- Push integration ---
 
     /// @notice Execute an arbitrary non-delegate call on behalf of this contract.
-    ///         Only callable by the current delegatee.
+    ///         Only callable by the current delegate.
     ///         Reverts if the contract is terminated.
     ///         Reverts if the target call reverts.
     ///         Forwards msg.value to the target to support payable targets.
     ///         After the target call returns, refunds only this call's change
     ///         — the unspent portion of msg.value, measured as the balance delta
-    ///         over a pre-call baseline — to the delegatee (msg.sender). ETH not
+    ///         over a pre-call baseline — to the delegate (msg.sender). ETH not
     ///         attributable to this call is left untouched (see recoverETH).
     /// @param target  Address to call.
     /// @param data    Call data.
@@ -188,15 +188,15 @@ interface IDelegationContract {
 
     /// @notice ERC-1271 signature validation. Returns the ERC-1271 magic value
     ///         (0x1626ba7e) if `signature` is a valid signature over `hash`
-    ///         by the contract's current *effective* delegatee; otherwise
+    ///         by the contract's current *effective* delegate; otherwise
     ///         returns 0xffffffff.
-    ///         The delegatee is resolved via getDelegatee(), so validation
-    ///         fails closed when there is no effective delegatee (never
+    ///         The delegate is resolved via getDelegate(), so validation
+    ///         fails closed when there is no effective delegate (never
     ///         assigned, revoked, or terminated → address(0)).
     ///
     ///         NOTE: unlike a raw ECDSA check, this result is state-dependent
     ///         and revocable — it can return valid at one block and invalid at
-    ///         the next (e.g. after the delegatee is rotated, revoked, or the
+    ///         the next (e.g. after the delegate is rotated, revoked, or the
     ///         contract is terminated).
     /// @param hash      Message hash that was signed.
     /// @param signature Opaque signature bytes (ECDSA).
@@ -219,20 +219,20 @@ interface IDelegationContract {
     ///         and generic tooling recognize the controlling party.
     function owner() external view returns (address);
 
-    /// @notice Returns the currently *effective* delegatee, or address(0) if
-    ///         none. After assignDelegatee(), the previously effective delegatee
-    ///         remains the effective one until the new delegatee's cooldown
-    ///         elapses; only then does this return the new delegatee. Returns
-    ///         address(0) when there is no current delegatee (never assigned, or
+    /// @notice Returns the currently *effective* delegate, or address(0) if
+    ///         none. After assignDelegate(), the previously effective delegate
+    ///         remains the effective one until the new delegate's cooldown
+    ///         elapses; only then does this return the new delegate. Returns
+    ///         address(0) when there is no current delegate (never assigned, or
     ///         revoked) and once the contract is terminated.
-    function getDelegatee() external view returns (address);
+    function getDelegate() external view returns (address);
 
-    /// @notice Returns the pending (not-yet-effective) delegatee and the
+    /// @notice Returns the pending (not-yet-effective) delegate and the
     ///         timestamp at which it becomes effective, or (address(0), 0) if
     ///         no assignment is in cooldown.
-    function getPendingDelegatee() external view returns (address delegatee, uint256 activeFrom);
+    function getPendingDelegate() external view returns (address delegate, uint256 activeFrom);
 
-    /// @notice Cooldown in seconds between assigning a delegatee and it
+    /// @notice Cooldown in seconds between assigning a delegate and it
     ///         becoming effective. Set in the constructor (Solidity immutable)
     ///         and unchangeable thereafter.
     function getCooldown() external view returns (uint256);
@@ -242,8 +242,8 @@ interface IDelegationContract {
 
     // --- Events ---
 
-    event DelegateeNominated(address indexed newDelegatee, uint256 activeFrom);
-    event DelegateeRevoked(address indexed revokedDelegatee);
+    event DelegateNominated(address indexed newDelegate, uint256 activeFrom);
+    event DelegateRevoked(address indexed revokedDelegate);
     event Terminated();
     event ETHRecovered(address indexed to, uint256 amount);
 }
@@ -257,12 +257,12 @@ The `DelegationContract` is designed as a **general integration primitive** for 
 
 The `DelegationContract` is itself an **[ERC-1271](https://eips.ethereum.org/EIPS/eip-1271) signer**: it implements `isValidSignature(hash, signature)`. The integrator (protocol) contract treats the `DelegationContract` address as the signing principal and verifies a relayed signature by calling that contract's `isValidSignature(hash, signature)`.
 
-All of the delegation indirection lives inside `isValidSignature`: it resolves the current effective delegatee via `getDelegatee()` and validates the signature against it. This keeps the integrator **delegation-agnostic**. The contract fails closed: with no effective delegatee (never assigned, revoked, or terminated) — `getDelegatee()` is `address(0)`.
+All of the delegation indirection lives inside `isValidSignature`: it resolves the current effective delegate via `getDelegate()` and validates the signature against it. This keeps the integrator **delegation-agnostic**. The contract fails closed: with no effective delegate (never assigned, revoked, or terminated) — `getDelegate()` is `address(0)`.
 
 The integrator must know which `DelegationContract` to check. The address must be relayed alongside the signature, so the signature is bound to a specific delegation contract and the integrator reads the target from the message.
 
 ```
-Off-chain bot (delegatee)          DelegationContract              Protocol contract
+Off-chain bot (delegate)          DelegationContract              Protocol contract
         │                                  │                              │
         │  sign message (hot key)          │                              │
         │─ signature + DelegationContract addr relayed off-chain ────────►│
@@ -278,8 +278,8 @@ Off-chain bot (delegatee)          DelegationContract              Protocol cont
 
 **Security assumptions:**
 - The integrator must treat the `DelegationContract` address as the authorized principal: it checks that the supplied `DelegationContract` is a registered entity **and** that `isValidSignature` returns the magic value (`0x1626ba7e`) for a valid signature.
-- The signing key must match the effective delegatee at the time of on-chain verification. A key rotated (or the contract terminated) after signing but before verification causes `isValidSignature` to reject — failing closed.
-- The fail-closed-on-zero-delegatee guard lives **inside** `isValidSignature` (it returns the failure value rather than verifying against `address(0)`), so integrators cannot accidentally validate a malformed signature against an unassigned delegatee.
+- The signing key must match the effective delegate at the time of on-chain verification. A key rotated (or the contract terminated) after signing but before verification causes `isValidSignature` to reject — failing closed.
+- The fail-closed-on-zero-delegate guard lives **inside** `isValidSignature` (it returns the failure value rather than verifying against `address(0)`), so integrators cannot accidentally validate a malformed signature against an unassigned delegate.
 
 Reference implementation of the contract side:
 
@@ -292,10 +292,10 @@ function isValidSignature(bytes32 hash, bytes calldata signature)
     view
     returns (bytes4)
 {
-    address delegatee = getDelegatee();   // effective delegatee, or address(0)
-    // Fail closed when there is no effective delegatee (never assigned/revoked/terminated).
+    address delegate = getDelegate();   // effective delegate, or address(0)
+    // Fail closed when there is no effective delegate (never assigned/revoked/terminated).
     // SignatureChecker: OpenZeppelin's library (utils/cryptography/SignatureChecker.sol).
-    if (delegatee != address(0) && SignatureChecker.isValidSignatureNow(delegatee, hash, signature)) {
+    if (delegate != address(0) && SignatureChecker.isValidSignatureNow(delegate, hash, signature)) {
         return EIP1271_MAGIC_VALUE;
     }
     return EIP1271_INVALID;
@@ -306,10 +306,10 @@ function isValidSignature(bytes32 hash, bytes calldata signature)
 
 ###### Push Style — Transaction Execution via `execute()`
 
-The delegatee calls `execute(target, data)` on the `DelegationContract`, which forwards the call to the target protocol contract. From the target's perspective, `msg.sender` is the `DelegationContract` address.
+The delegate calls `execute(target, data)` on the `DelegationContract`, which forwards the call to the target protocol contract. From the target's perspective, `msg.sender` is the `DelegationContract` address.
 
 ```
-Off-chain bot (delegatee)          DelegationContract         Protocol contract
+Off-chain bot (delegate)          DelegationContract         Protocol contract
         │                                  │                          │
         │── execute(target, data) ────────►│                          │
         │   [optional msg.value]           │                          │
@@ -320,13 +320,13 @@ Off-chain bot (delegatee)          DelegationContract         Protocol contract
         │◄── result (or revert) ───────────│                          │
 ```
 
-`execute()` is `payable` and forwards `msg.value` to the target. This is required to support future permissioned bots that interact with payable protocol functions where a fee must be paid in ETH at call time. After the target call returns, `execute()` refunds only **this call's** unspent value — the difference between the `msg.value` supplied and the amount the target actually consumed, computed as the balance delta over a pre-call baseline — back to the delegatee (`msg.sender`). Any ETH not attributable to the current call (force-sent via `selfdestruct`, residual from a prior call, or a stray transfer) is **not** swept to the delegatee; it is left untouched and recoverable only by the owner via `recoverETH()`, so stray funds are never auto-credited to the hot key.
+`execute()` is `payable` and forwards `msg.value` to the target. This is required to support future permissioned bots that interact with payable protocol functions where a fee must be paid in ETH at call time. After the target call returns, `execute()` refunds only **this call's** unspent value — the difference between the `msg.value` supplied and the amount the target actually consumed, computed as the balance delta over a pre-call baseline — back to the delegate (`msg.sender`). Any ETH not attributable to the current call (force-sent via `selfdestruct`, residual from a prior call, or a stray transfer) is **not** swept to the delegate; it is left untouched and recoverable only by the owner via `recoverETH()`, so stray funds are never auto-credited to the hot key.
 
 **Security assumptions:**
 - The target contract must verify `msg.sender == DelegationContract` is a registered permission holder.
-- The delegatee can call any target with any data; the contract does not restrict the call target. Governance must ensure the `DelegationContract` address holds only the narrowest set of permissions needed.
-- If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegatee. On a *successful* call, only the current call's change (the unspent portion of `msg.value`) is returned to the delegatee before `execute()` returns; pre-existing or force-sent ETH is excluded from this refund.
-- The refund is bounded to the current call's balance delta, so a (compromised) delegatee cannot use `execute()` to extract ETH that was already sitting on the contract — such funds are recoverable only by the owner via `recoverETH()`.
+- The delegate can call any target with any data; the contract does not restrict the call target. Governance must ensure the `DelegationContract` address holds only the narrowest set of permissions needed.
+- If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegate. On a *successful* call, only the current call's change (the unspent portion of `msg.value`) is returned to the delegate before `execute()` returns; pre-existing or force-sent ETH is excluded from this refund.
+- The refund is bounded to the current call's balance delta, so a (compromised) delegate cannot use `execute()` to extract ETH that was already sitting on the contract — such funds are recoverable only by the owner via `recoverETH()`.
 
 **When to use:** Any integration where the bot submits transactions that modify on-chain state and the protocol contract checks `msg.sender` for authorization.
 
@@ -336,34 +336,34 @@ The owner address is fixed at deployment and **cannot be changed on-chain** — 
 
 Rotating the owner therefore requires deploying a fresh `DelegationContract` and reassigning the role to the new contract. This also prevents silent transfer of committee participation between organizations and avoids legal ambiguity over who is accountable for the seat.
 
-##### Delegatee Assignment and Revocation
+##### Delegate Assignment and Revocation
 
 Assignment is cooldown-gated; revocation is immediate:
 
-- **Assignment** (`assignDelegatee(newHotKey)`) schedules the new delegatee, which becomes effective after the contract's `cooldown` elapses (immediately if the cooldown is 0). **The currently effective delegatee stays active throughout the cooldown** and is dropped only when the new key activates — so `getDelegatee()` returns the old key right up until the new one takes over, and a routine rotation has no gap. Reassigning before the cooldown elapses replaces the pending key and restarts the cooldown, with the current key staying effective throughout. The cooldown is a reaction window: an unexpected assignment (e.g. from a compromised owner) is visible via the `DelegateeNominated` event and `getPendingDelegatee()` for `cooldown` seconds before the new key can act — while the previous key keeps operating the seat — so monitoring and governance can react before any swap takes effect.
-- **Revocation** (`revokeDelegatee()`) is immediate and clears both the current and any pending delegatee, leaving the contract with no delegatee until a new one is assigned and its cooldown elapses.
+- **Assignment** (`assignDelegate(newHotKey)`) schedules the new delegate, which becomes effective after the contract's `cooldown` elapses (immediately if the cooldown is 0). **The currently effective delegate stays active throughout the cooldown** and is dropped only when the new key activates — so `getDelegate()` returns the old key right up until the new one takes over, and a routine rotation has no gap. Reassigning before the cooldown elapses replaces the pending key and restarts the cooldown, with the current key staying effective throughout. The cooldown is a reaction window: an unexpected assignment (e.g. from a compromised owner) is visible via the `DelegateNominated` event and `getPendingDelegate()` for `cooldown` seconds before the new key can act — while the previous key keeps operating the seat — so monitoring and governance can react before any swap takes effect.
+- **Revocation** (`revokeDelegate()`) is immediate and clears both the current and any pending delegate, leaving the contract with no delegate until a new one is assigned and its cooldown elapses.
 
 The cooldown is set in the constructor and cannot change; it may be 0.
 
 ##### Emergency Termination
 
-The owner may call `terminate()` to permanently disable the contract's `execute()` function; it also clears the active delegatee (equivalent to `revokeDelegatee()`) as part of the same call. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
+The owner may call `terminate()` to permanently disable the contract's `execute()` function; it also clears the active delegate (equivalent to `revokeDelegate()`) as part of the same call. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
 
-- All delegatee calls to `execute()` revert.
-- All state-changing owner methods (`assignDelegatee()`, `revokeDelegatee()`, and `terminate()` itself) also revert. `recoverETH()` is the sole exception: it remains callable so the owner can still rescue ETH stranded on a terminated contract.
-- `getDelegatee()` returns `address(0)`, so any pull-style integrator that resolves the active delegatee through it (to verify a signature) fails closed and does not keep trusting the last delegatee.
+- All delegate calls to `execute()` revert.
+- All state-changing owner methods (`assignDelegate()`, `revokeDelegate()`, and `terminate()` itself) also revert. `recoverETH()` is the sole exception: it remains callable so the owner can still rescue ETH stranded on a terminated contract.
+- `getDelegate()` returns `address(0)`, so any pull-style integrator that resolves the active delegate through it (to verify a signature) fails closed and does not keep trusting the last delegate.
 - A new `DelegationContract` must be deployed and the role must be reassigned to the new address.
 
 Termination is intended for scenarios where the owner believes the owner's own address has been compromised and wishes to ensure no further actions can be taken under its authority.
 
 ##### Hot-Key Rotation
 
-For a **planned** rotation the owner calls `assignDelegatee(newHotKey)`. The previous key keeps operating until the new key becomes effective after the cooldown, so the rotation is seamless.
+For a **planned** rotation the owner calls `assignDelegate(newHotKey)`. The previous key keeps operating until the new key becomes effective after the cooldown, so the rotation is seamless.
 
 The specific cadence for routine rotation is not mandated here; recommended practices will be maintained on the Lido research forum and may be revised. Contract-level requirements are:
 
-- On any suspected or confirmed hot-key compromise, the owner must call `revokeDelegatee()` to drop the key **immediately**. 
-- A replacement is then assigned with `assignDelegatee(newHotKey)` and becomes effective after its cooldown.
+- On any suspected or confirmed hot-key compromise, the owner must call `revokeDelegate()` to drop the key **immediately**. 
+- A replacement is then assigned with `assignDelegate(newHotKey)` and becomes effective after its cooldown.
 - After assignment, the operator updates the daemon configuration.
 
 ##### Owner Address Requirements
@@ -386,7 +386,7 @@ This section defines which components are migrated to the delegation model in th
 | `DepositSecurityModule` contract       | Pull (DSM verifies via a standard ERC-1271 `isValidSignature` check against the guardian's `DelegationContract`)                                              |
 | Council daemon                         | Pull (signs messages, publishes its `DelegationContract` address with each signature, DSM verifies)                                                           |
 | Depositor bot                          | Claims the council-provided `(signature, DelegationContract address)` pairs; re-sorts the deposit array by delegation contract address. See DSM section below |
-| Validator ejector (node-operator side) | Off-chain only — must resolve the active delegatee via `getDelegatee()`. See Validator Ejector section below                                                  |
+| Validator ejector (node-operator side) | Off-chain only — must resolve the active delegate via `getDelegate()`. See Validator Ejector section below                                                  |
 
 All components in the table are migrated together.
 
@@ -398,7 +398,7 @@ All components in the table are migrated together.
 
 **Authorization model:** `HashConsensus` and the report processors (`AccountingOracle`, `ValidatorsExitBusOracle`, CM's `FeeOracle`, and CSM's `FeeOracle`) check `msg.sender` against the registered oracle committee member set. After migration, `msg.sender` is the `DelegationContract` address, which governance must have registered as the committee member.
 
-**Daemon configuration:** `DELEGATION_CONTRACT_ADDRESS` environment variable. When set, all oracle contract calls are routed through `DelegationModule`, a Web3py extension that wraps `execute()` dispatch. Startup validation checks: (a) `getDelegatee() == configuredHotKey`, and (b) `delegationContract` address holds oracle committee membership in `HashConsensus`.
+**Daemon configuration:** `DELEGATION_CONTRACT_ADDRESS` environment variable. When set, all oracle contract calls are routed through `DelegationModule`, a Web3py extension that wraps `execute()` dispatch. Startup validation checks: (a) `getDelegate() == configuredHotKey`, and (b) `delegationContract` address holds oracle committee membership in `HashConsensus`.
 
 **Transitional behavior:** When `DELEGATION_CONTRACT_ADDRESS` is unset, calls are sent directly from the hot key EOA as before. This path exists for development, for the migration window, and as a long-term fallback.
 
@@ -426,7 +426,7 @@ function _isValidGuardianSignature(
 ) internal view returns (bool) {
     if (!_isGuardian(guardian)) return false;
     // Every guardian is a DelegationContract: verify via its ERC-1271
-    // isValidSignature, which resolves the effective delegatee and fails
+    // isValidSignature, which resolves the effective delegate and fails
     // closed (returns a non-magic value) if there is none.
     return IERC1271(guardian).isValidSignature(msgHash, signature) == 0x1626ba7e;
 }
@@ -434,8 +434,8 @@ function _isValidGuardianSignature(
 
 **Binding the digest and counting distinct signers.** The legacy EOA scheme got two properties for free that the indirection breaks, and both must be restored explicitly:
 
-1. **The signed digest must be bound to the guardian.** Because the signer (a delegatee) is no longer the same address as the principal being counted (the guardian contract), an unbound signature would validate for *every* guardian contract that currently resolves to that delegatee. The signed digest therefore includes the guardian address. The existing per-action message prefix already binds the chain id, the DSM address, and the action type — `keccak256(ATTEST_MESSAGE, block.chainid, address(this))` — so adding the guardian completes the binding (guardian + DSM + chain id + action + the existing message fields).
-2. **Quorum must count distinct guardians and distinct hot keys.** Both dimensions must be unique within a batch. Deduplicating by guardian address alone is insufficient — two different guardian contracts can share one delegatee, so a single compromised hot key could still count multiple times toward the 4-of-6 quorum. Deduplicating by delegatee alone is also insufficient — it would not stop one guardian from being submitted twice (e.g., if a delegation contract variant supported multiple delegatees). DSM therefore rejects both a repeated **guardian address** and a repeated **delegatee address** (`getDelegatee()`): it requires the batch to be strictly ascending by guardian address (which rejects an unsorted array and any duplicate guardian in a single comparison) and additionally rejects any repeated resolved delegatee across the batch:
+1. **The signed digest must be bound to the guardian.** Because the signer (a delegate) is no longer the same address as the principal being counted (the guardian contract), an unbound signature would validate for *every* guardian contract that currently resolves to that delegate. The signed digest therefore includes the guardian address. The existing per-action message prefix already binds the chain id, the DSM address, and the action type — `keccak256(ATTEST_MESSAGE, block.chainid, address(this))` — so adding the guardian completes the binding (guardian + DSM + chain id + action + the existing message fields).
+2. **Quorum must count distinct guardians and distinct hot keys.** Both dimensions must be unique within a batch. Deduplicating by guardian address alone is insufficient — two different guardian contracts can share one delegate, so a single compromised hot key could still count multiple times toward the 4-of-6 quorum. Deduplicating by delegate alone is also insufficient — it would not stop one guardian from being submitted twice (e.g., if a delegation contract variant supported multiple delegates). DSM therefore rejects both a repeated **guardian address** and a repeated **delegate address** (`getDelegate()`): it requires the batch to be strictly ascending by guardian address (which rejects an unsorted array and any duplicate guardian in a single comparison) and additionally rejects any repeated resolved delegate across the batch:
 
 ```solidity
 // Digest now binds the guardian; the prefix already binds chainId/DSM/action.
@@ -450,7 +450,7 @@ function _hashDepositMessage(address guardian, /* ...existing fields... */)
 
 // The hot key behind a guardian, which must also be unique within a batch.
 function _effectiveSigner(address guardian) internal view returns (address) {
-    return IDelegationContract(guardian).getDelegatee();
+    return IDelegationContract(guardian).getDelegate();
 }
 
 // The loop below runs inside _verifyAttestSignatures (the signature verification path).
@@ -467,7 +467,7 @@ for (uint256 i = 0; i < sortedGuardianSignatures.length; ++i) {
     if (gs.guardian <= prevGuardian) revert GuardiansNotSortedOrDuplicate();
     prevGuardian = gs.guardian;
 
-    // Distinct hot keys: no resolved delegatee may repeat across the batch.
+    // Distinct hot keys: no resolved delegate may repeat across the batch.
     // The guardian set is small (quorum is 4-of-6), so the nested scan is cheap.
     address signer = _effectiveSigner(gs.guardian);
     for (uint256 j = 0; j < i; ++j) {
@@ -477,7 +477,7 @@ for (uint256 i = 0; i < sortedGuardianSignatures.length; ++i) {
 }
 ```
 
-Strictly-ascending-by-guardian rejects both an unsorted array and any duplicate guardian in a single comparison; the nested scan then rejects any repeated resolved delegatee, covering the case where two distinct guardian contracts resolve to the same hot key. Each `signer` is non-zero, because `_isValidGuardianSignature` has already rejected a guardian with no effective delegatee. The submitter must sort the batch by **guardian address** to satisfy the ascending check.
+Strictly-ascending-by-guardian rejects both an unsorted array and any duplicate guardian in a single comparison; the nested scan then rejects any repeated resolved delegate, covering the case where two distinct guardian contracts resolve to the same hot key. Each `signer` is non-zero, because `_isValidGuardianSignature` has already rejected a guardian with no effective delegate. The submitter must sort the batch by **guardian address** to satisfy the ascending check.
 
 **Affected DSM entry points:** each `Signature` / `Signature[]` argument is extended to carry the guardian address as above:
 
@@ -511,7 +511,7 @@ function unvetSigningKeys(
 ) external;
 ```
 
-**Direct guardian calls.** `pauseDeposits` and `unvetSigningKeys` also support a path where a guardian calls DSM **directly**, authorizing the action via `msg.sender` instead of a relayed signature. Under delegation this path must accept the `DelegationContract` as `msg.sender` — i.e. the delegatee dispatches the call through the contract's `execute()` (push), so DSM sees `msg.sender == DelegationContract` and authorizes it as the registered guardian. In other words, these two methods support both integration styles: pull (relayed `GuardianSignature` verified via the guardian's ERC-1271 `isValidSignature`) and push (`msg.sender` is the guardian's `DelegationContract`). `depositBufferedEther` is signature-only and has no direct path.
+**Direct guardian calls.** `pauseDeposits` and `unvetSigningKeys` also support a path where a guardian calls DSM **directly**, authorizing the action via `msg.sender` instead of a relayed signature. Under delegation this path must accept the `DelegationContract` as `msg.sender` — i.e. the delegate dispatches the call through the contract's `execute()` (push), so DSM sees `msg.sender == DelegationContract` and authorizes it as the registered guardian. In other words, these two methods support both integration styles: pull (relayed `GuardianSignature` verified via the guardian's ERC-1271 `isValidSignature`) and push (`msg.sender` is the guardian's `DelegationContract`). `depositBufferedEther` is signature-only and has no direct path.
 
 **No EOA-guardian path.** The redeployed DSM does not retain the legacy ECDSA-against-an-EOA verification: every registered guardian must be a `DelegationContract`. There is no migration-window straddle inside a single DSM.
 
@@ -521,13 +521,13 @@ function unvetSigningKeys(
 
 **Pattern:** Pull (the daemon signs; DSM verifies via a standard ERC-1271 check against the guardian's `DelegationContract`).
 
-The council daemon produces ECDSA signatures over the DSM message using the **delegatee hot key**. The digest now **binds the daemon's own guardian address** (its `DelegationContract`) in addition to the existing message fields, so the daemon signs the guardian-bound message.
+The council daemon produces ECDSA signatures over the DSM message using the **delegate hot key**. The digest now **binds the daemon's own guardian address** (its `DelegationContract`) in addition to the existing message fields, so the daemon signs the guardian-bound message.
 
-**Required change to the council daemon:** Sign with the delegatee private key, set `DELEGATION_CONTRACT_ADDRESS`, and publish that `DelegationContract` address together with each signature.
+**Required change to the council daemon:** Sign with the delegate private key, set `DELEGATION_CONTRACT_ADDRESS`, and publish that `DelegationContract` address together with each signature.
 
 **Required change to the depositor bot:** The bot relays the council-provided `(DelegationContract address, signature)` pairs to DSM as-is. Two behavioral changes are required:
 
-1. **Filtering (on receival):** accept an incoming message only if its signer is the **current delegatee** of the referenced guardian's `DelegationContract` (resolved via `getDelegatee()`), instead of matching against a delegation-contract address. Messages signed by a rotated-out key are dropped.
+1. **Filtering (on receival):** accept an incoming message only if its signer is the **current delegate** of the referenced guardian's `DelegationContract` (resolved via `getDelegate()`), instead of matching against a delegation-contract address. Messages signed by a rotated-out key are dropped.
 2. **Ordering (on submission):** when assembling `depositBufferedEther`, sort the signature array by **guardian address**, matching DSM's strictly-ascending-by-guardian check.
 
 ---
@@ -536,7 +536,7 @@ The council daemon produces ECDSA signatures over the DSM message using the **de
 
 The **validator ejector** is the off-chain daemon run by each node operator that watches `ValidatorsExitBusOracle` (VEBO) — the oracle that publishes which validators must exit — and broadcasts the corresponding signed voluntary-exit messages to the consensus layer.
 
-To accept those messages the ejector keeps an **allowlist** of trusted oracle signing addresses. Oracle messages are always signed by the **delegatee EOA**, never by the `DelegationContract`, so the allowlist must contain the **delegatee EOA** and be refreshed to the new EOA whenever the delegatee is rotated.
+To accept those messages the ejector keeps an **allowlist** of trusted oracle signing addresses. Oracle messages are always signed by the **delegate EOA**, never by the `DelegationContract`, so the allowlist must contain the **delegate EOA** and be refreshed to the new EOA whenever the delegate is rotated.
 
 ---
 
@@ -544,13 +544,13 @@ To accept those messages the ejector keeps an **allowlist** of trusted oracle si
 
 Migration is designed to be zero-downtime. All preparatory steps are completed off the critical path, leaving a single irreversible governance vote that flips every prepared seat to delegation at once.
 
-1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(ownerAddress, hotKey, cooldown)` — the owner being a Safe multisig, fixed for the contract's lifetime (see Owner Immutability in Part 1); the active delegatee (its existing hot key) set in the same transaction; and a `cooldown` of **1 hour** for both Oracle and DSM contracts (reduced or 0 on testnet). (Passing `address(0)` for the delegatee and assigning it later via `assignDelegatee()` is also supported.)
+1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(ownerAddress, hotKey, cooldown)` — the owner being a Safe multisig, fixed for the contract's lifetime (see Owner Immutability in Part 1); the active delegate (its existing hot key) set in the same transaction; and a `cooldown` of **1 hour** for both Oracle and DSM contracts (reduced or 0 on testnet). (Passing `address(0)` for the delegate and assigning it later via `assignDelegate()` is also supported.)
 2. **Publish and verify addresses (operators)**: each operator publishes its `DelegationContract` and owner addresses on the Lido research forum, so the DAO and other operators can verify them ahead of the vote.
-3. **Prepare daemons for rotation (operators)**: each operator stages the delegatee key and the `DELEGATION_CONTRACT_ADDRESS` configuration in its Oracle and Council daemons, so they are ready to operate via the delegation contract the moment the seat is reassigned. No key material changes, and the daemons keep operating from the hot EOA until the vote lands.
-4. **Set up monitoring (Lido team)**: the Lido team registers every delegation contract in the monitoring infrastructure and begins watching the owner and delegatee addresses for unexpected activity, so anomalies are caught both before and after the seat reassignment.
+3. **Prepare daemons for rotation (operators)**: each operator stages the delegate key and the `DELEGATION_CONTRACT_ADDRESS` configuration in its Oracle and Council daemons, so they are ready to operate via the delegation contract the moment the seat is reassigned. No key material changes, and the daemons keep operating from the hot EOA until the vote lands.
+4. **Set up monitoring (Lido team)**: the Lido team registers every delegation contract in the monitoring infrastructure and begins watching the owner and delegate addresses for unexpected activity, so anomalies are caught both before and after the seat reassignment.
 5. **Governance vote**: a single DAO vote reassigns each Oracle committee and DSM guardian seat from the operator's hot EOA to its `DelegationContract` address — a `HashConsensus` member update for oracles, a `DepositSecurityModule` guardian replacement for guardians; the pre-configured daemons begin routing through the delegation contract without interruption.
 
-Until the governance vote in step 5 executes, operators continue to run as EOA principals on the existing (pre-migration) contracts, which keeps them online throughout preparation. After the vote, each operator confirms the switchover via `getDelegatee()` and a successful report or guardian message in the following frame, and may rotate the hot key at any time via `assignDelegatee()` with no further governance vote.
+Until the governance vote in step 5 executes, operators continue to run as EOA principals on the existing (pre-migration) contracts, which keeps them online throughout preparation. After the vote, each operator confirms the switchover via `getDelegate()` and a successful report or guardian message in the following frame, and may rotate the hot key at any time via `assignDelegate()` with no further governance vote.
 
 ### Deployment Summary
 
