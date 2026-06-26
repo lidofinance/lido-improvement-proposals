@@ -161,8 +161,8 @@ interface IDelegationContract {
     ///         Reverts if the contract is terminated.
     ///         Reverts if the target call reverts.
     ///         Forwards msg.value to the target to support payable targets.
-    ///         After the target call returns, any residual ETH balance on
-    ///         this contract is swept back to the delegatee (msg.sender).
+    ///         After the target call returns, any residual ETH provided as a payment 
+    ///         is swept back to the delegatee (msg.sender).
     /// @param target  Address to call.
     /// @param data    Call data.
     /// @return result Return data from the call.
