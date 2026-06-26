@@ -145,7 +145,7 @@ interface IDelegationContract {
     ///         Reverts if the contract is terminated.
     function revokeDelegatee() external;
 
-    /// @notice Terminate the contract, permanently disabling execute().
+    /// @notice Terminate the contract, permanently disabling execute(), signature verification via isValidSignature(), and further delegate reassignment via assignDelegate.
     ///         Only callable by owner.
     ///         Also clears the active delegatee (as revokeDelegatee), so
     ///         getDelegatee() returns address(0) after termination.
