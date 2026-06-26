@@ -280,6 +280,7 @@ function isValidSignature(bytes32 hash, bytes calldata signature)
 {
     address delegatee = getDelegatee();   // effective delegatee, or address(0)
     // Fail closed when there is no effective delegatee (never assigned/revoked/terminated).
+    // SignatureChecker: OpenZeppelin's library (utils/cryptography/SignatureChecker.sol).
     if (delegatee != address(0) && SignatureChecker.isValidSignatureNow(delegatee, hash, signature)) {
         return EIP1271_MAGIC_VALUE;
     }
