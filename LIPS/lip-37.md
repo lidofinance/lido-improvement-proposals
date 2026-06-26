@@ -31,7 +31,7 @@ Today each role handles its signing keys in its own one-off way, and rotating an
 KDA improvements unlock:
 
 - **Routine rotation as hygiene.** Periodic hot-key rotation limits the value of any single leaked key and shrinks the window in which an undetected compromise stays useful — a standard operational practice that the governance-gated path makes impractical today.
-- **Owners’ setup** Owners increasingly prefer a multisig (or hard-wallet) over a bare EOA for stronger custody.
+- **Owners’ setup.** Owners increasingly prefer a multisig (or hard-wallet) over a bare EOA for stronger custody.
 - **Future signing-scheme migration.** The signing schemes KDF relies on are not post-quantum safe, and in the future the protocol might need to support such verification. Routing all signature verification through KDF means such a migration needs no protocol change, only a KDF upgrade itself.
 
 ### Hot-key operational risk for Oracle and Council operators
