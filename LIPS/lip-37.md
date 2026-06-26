@@ -228,8 +228,12 @@ interface IDelegationContract {
     function getDelegate() external view returns (address);
 
     /// @notice Returns the pending (not-yet-effective) delegate and the
-    ///         timestamp at which it becomes effective, or (address(0), 0) if
-    ///         no assignment is in cooldown.
+    ///         timestamp at which it becomes effective, or (address(0), 0) when
+    ///         there is no such pending assignment. Derived from the current
+    ///         time: once the cooldown has elapsed (block.timestamp >=
+    ///         activeFrom) the scheduled delegate is already effective, so it is
+    ///         no longer reported here — this returns (address(0), 0) and
+    ///         getDelegate() returns that delegate instead.
     function getPendingDelegate() external view returns (address delegate, uint256 activeFrom);
 
     /// @notice Cooldown in seconds between assigning a delegate and it
@@ -340,7 +344,7 @@ Rotating the owner therefore requires deploying a fresh `DelegationContract` and
 
 Assignment is cooldown-gated; revocation is immediate:
 
-- **Assignment** (`assignDelegate(newHotKey)`) schedules the new delegate, which becomes effective after the contract's `cooldown` elapses (immediately if the cooldown is 0). **The currently effective delegate stays active throughout the cooldown** and is dropped only when the new key activates — so `getDelegate()` returns the old key right up until the new one takes over, and a routine rotation has no gap. Reassigning before the cooldown elapses replaces the pending key and restarts the cooldown, with the current key staying effective throughout. The cooldown is a reaction window: an unexpected assignment (e.g. from a compromised owner) is visible via the `DelegateNominated` event and `getPendingDelegate()` for `cooldown` seconds before the new key can act — while the previous key keeps operating the seat — so monitoring and governance can react before any swap takes effect.
+- **Assignment** (`assignDelegate(newHotKey)`) schedules the new delegate, which becomes effective after the contract's `cooldown` elapses (immediately if the cooldown is 0). **The currently effective delegate stays active throughout the cooldown** and is dropped only when the new key activates — so `getDelegate()` returns the old key right up until the new one takes over, and a routine rotation has no gap. Activation is **not** a separate transaction: there is no stored "active" flag flipped at `activeFrom`. Instead the schedule (`pending`, `activeFrom`) is kept in storage and the views resolve the effective key from the current time — `getDelegate()` returns the scheduled key once `block.timestamp >= activeFrom`, and `getPendingDelegate()` stops reporting it at the same instant. Reassigning *before* the cooldown elapses replaces the pending key and restarts the cooldown, with the current key staying effective throughout. Reassigning *after* it has matured first **settles** the matured key as the current delegate (the next state-changing call folds the scheduled key into `current` before applying its own change), so a later rotation keeps the matured key effective during the new cooldown and never reverts to an earlier key. The cooldown is a reaction window: an unexpected assignment (e.g. from a compromised owner) is visible via the `DelegateNominated` event and `getPendingDelegate()` for `cooldown` seconds before the new key can act — while the previous key keeps operating the seat — so monitoring and governance can react before any swap takes effect.
 - **Revocation** (`revokeDelegate()`) is immediate and clears both the current and any pending delegate, leaving the contract with no delegate until a new one is assigned and its cooldown elapses.
 
 The cooldown is set in the constructor and cannot change; it may be 0.
