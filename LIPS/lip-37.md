@@ -31,7 +31,7 @@ Today each role handles its signing keys in its own one-off way, and rotating an
 KDA improvements unlock:
 
 - **Routine rotation as hygiene.** Periodic hot-key rotation limits the value of any single leaked key and shrinks the window in which an undetected compromise stays useful — a standard operational practice that the governance-gated path makes impractical today.
-- **Owners’ setup** Owners increasingly prefer a multisig (or hard-wallet) over a bare EOA for stronger custody.
+- **Owners’ setup.** Owners increasingly prefer a multisig (or hard-wallet) over a bare EOA for stronger custody.
 - **Future signing-scheme migration.** The signing schemes KDF relies on are not post-quantum safe, and in the future the protocol might need to support such verification. Routing all signature verification through KDF means such a migration needs no protocol change, only a KDF upgrade itself.
 
 ### Hot-key operational risk for Oracle and Council operators
@@ -145,7 +145,7 @@ interface IDelegationContract {
     ///         Reverts if the contract is terminated.
     function revokeDelegatee() external;
 
-    /// @notice Terminate the contract, permanently disabling execute().
+    /// @notice Terminate the contract, permanently disabling execute(), signature verification via isValidSignature(), and further delegate reassignment via assignDelegate.
     ///         Only callable by owner.
     ///         Also clears the active delegatee (as revokeDelegatee), so
     ///         getDelegatee() returns address(0) after termination.
@@ -161,8 +161,8 @@ interface IDelegationContract {
     ///         Reverts if the contract is terminated.
     ///         Reverts if the target call reverts.
     ///         Forwards msg.value to the target to support payable targets.
-    ///         After the target call returns, any residual ETH balance on
-    ///         this contract is swept back to the delegatee (msg.sender).
+    ///         After the target call returns, any residual ETH provided as a payment 
+    ///         is swept back to the delegatee (msg.sender).
     /// @param target  Address to call.
     /// @param data    Call data.
     /// @return result Return data from the call.
