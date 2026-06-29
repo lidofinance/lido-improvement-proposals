@@ -1,11 +1,11 @@
 ---
 lip: 33
 title: Community Staking Module v3 and Curated Module v2
-status: Proposed
+status: Approved
 author: Dmitry Gusakov (@dgusakov), Sergey Khomutinin (@skhomuti), Dmitry Chernukhin (@madlabman), Vladimir Gorkavenko (@vgorkavenko)
 discussions-to: https://research.lido.fi/t/community-staking-module/5917, https://research.lido.fi/t/future-of-the-curated-module-cmv2-landscape/10929
 created: 2026-03-18
-updated: 2026-03-27
+updated: 2026-06-29
 ---
 
 # LIP-33. Community Staking Module v3 and Curated Module v2
