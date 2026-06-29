@@ -5,7 +5,7 @@ status: Approved
 author: Vasiliy Shapovalov, Vitaly Galaichuk, Jen Kopytina, Alexander Belokon, adcv
 discussions-to: https://research.lido.fi/t/liquid-buybacks-nest-execution-with-ldo-wsteth-liquidity/10894
 created: 2026-04-20
-updated: 2026-06-27
+updated: 2026-06-29
 ---
 
 ## Simple Summary
@@ -35,14 +35,16 @@ NEST encodes a governance commitment: when protocol surplus conditions are met, 
 
 ### System Architecture
 
-NEST is implemented as two cooperating but independently operable contracts — the BuybackAllocator (budget allocation) and the BuybackExecutor (trade execution and liquidity provisioning). They utilize existing contracts like Stonks v2 and OracleRouter, as well as the governance infrastructure.
+NEST is implemented as two cooperating contracts — the `BuybackAllocator` (budget allocation) and the `BuybackExecutor` (trade execution and liquidity provisioning). They utilize existing contracts like Stonks v2 and OracleRouter, as well as the governance infrastructure.
 
 The system operates in two governance-controlled modes:
 
-1. **LP mode** — acquired LDO is paired with wstETH and deposited into a Curve LDO/wstETH TwoCrypto-NG pool; LP tokens are retained by the BuybackExecutor as DAO-owned liquidity.
+1. **LP mode** — acquired LDO is paired with wstETH and deposited into a Curve LDO/wstETH TwoCrypto-NG pool; LP tokens are retained by the `BuybackExecutor` as DAO-owned liquidity.
 2. **Treasury-only mode** — acquired LDO is delivered directly to the Aragon Agent treasury.
 
-The active mode is derived from the settlement receiver of the executor's active Stonks instance: when the receiver is the executor, LP mode is active; when it is the treasury, treasury-only mode is active. Switching between modes means pointing the executor at a different Stonks instance via `setStonksAndOperatingMode` and requires a full DAO vote.
+The active mode is derived from the active Stonks instance's receiver: the executor for LP mode, the treasury for treasury-only mode. Switching modes means pointing the executor at a different Stonks via `setStonksAndOperatingMode`, which requires a full DAO vote.
+
+`setStonksAndOperatingMode` **does not** enforce that no Stonks order is in flight: it sweeps an expired tracked order back to the previous Stonks, but a still-live order survives the switch and is **abandoned**, emitting `OrderAbandoned`. Anyone may call its `recoverTokenFrom` after expiry to return the stETH to the previous Stonks. Operationally, allocation should be paused and any live order recovered before switching modes.
 
 This LIP proposes deploying NEST in **LP mode as the initial operating configuration**. Treasury-only mode is available as a governance-controlled fallback that could be enabled by a subsequent DAO vote without redeploying the core contracts.
 
@@ -50,37 +52,51 @@ This LIP proposes deploying NEST in **LP mode as the initial operating configura
 
 #### `BuybackAllocator`
 
-Central budget engine of the system. Holds the funded stETH and a set of revenue source addresses, aggregates their cumulative revenue, evaluates eligibility, enforces daily and yearly caps, and pays out stETH to a single executor via `allocate()`. Activated once via `activate()`. Exposes `resetAccounting()` and governance setters. Order creation, trading, and Stonks/Order management live in the `BuybackExecutor`.
+Central budget engine of the system. Holds the funded stETH and a set of revenue source addresses, aggregates their cumulative revenue, evaluates eligibility, enforces daily and yearly caps, and pays out stETH to a single executor via `allocate()`. Activated once via `activate()`. Exposes `activate()` and governance setters. Order creation, trading, and Stonks/Order management live in the `BuybackExecutor`.
 
 #### `RevenueSource` (abstract)
 
 Common interface for revenue tracking implementations. Each source exposes a single read, `getCumulativeRevenueUSD()`, returning its monotonic, ever-growing total revenue in USD. The allocator sums these on demand and diffs them over time to derive accrued revenue. A source advertises `IRevenueSource` via ERC-165 to be registrable.
 
+A registrable source must be:
+
+- **monolithic**: a single contract is the only reporter of its revenue stream, with no splitting or migration across contracts, since the allocator tracks each stream by diffing one address's cumulative total;
+- **always-alive**: `getCumulativeRevenueUSD()` must not revert in normal operation (see [Revenue Reporting Integrity](#revenue-reporting-integrity) for how liveness failures are handled);
+- **fully settled before activation or registration**: `activate()` and `addRevenueSource()` snapshot the source's current cumulative total into the revenue baseline, so only growth past that snapshot becomes spendable surplus. Revenue not yet folded into the cumulative figure at snapshot time would later surface as an unintended windfall, so flush it via `convertPendingRevenueToUSD()` before activating or registering.
+
 #### `StakingRevenueSource`
 
-Captures staking revenue from protocol rebases in two stages. After each rebase, `TokenRateNotifier` calls `pushTokenRate` with the rebase payload; the source takes the treasury's slice of the fees minted that rebase — `sharesMintedAsFees × treasuryFee / (modulesFee + treasuryFee)`, converted to stETH at the post-rebase rate — and adds it to a pending bucket. It never touches the oracle on this path, so a price-feed outage cannot revert a rebase.
+Captures staking revenue from protocol rebases in two stages. After each rebase, `TokenRateNotifier` calls `pushTokenRate()` with the rebase payload. The source takes the treasury's slice of the fee shares minted in that rebase, given by the formula:
+`treasuryShares = sharesMintedAsFees × treasuryFee / (modulesFee + treasuryFee)`,
+converts it to stETH at the post-rebase rate, and adds the result to a pending bucket. It never touches the oracle on this path, so a price-feed outage cannot revert a rebase.
 
-A separate permissionless `convertPendingRevenueToUSD()` converts the pending stETH bucket to USD via the OracleRouter and appends it to the cumulative total; if the oracle is unavailable the conversion waits and retries, so revenue is deferred, not lost.
+A separate permissionless `convertPendingRevenueToUSD()` converts the pending stETH bucket to USD via the `OracleRouter` and appends it to the cumulative total; if the oracle is unavailable the conversion waits and retries, so revenue is deferred, not lost.
 
 Authorization for the rebase callback is checked live against `LidoLocator.postTokenRebaseReceiver()`, and replays are rejected by a strictly-increasing report timestamp.
 
-`StakingRevenueSource` is the only revenue source integrated at launch. The modular `RevenueSource` interface and the allocator's source set provide the extension path for future revenue streams. Each new source requires a dedicated contract and a governance vote for deployment and registration.
+`StakingRevenueSource` is the only revenue source implemented at launch. The modular `RevenueSource` interface and the allocator's source set provide the extension path for future revenue streams. Each new source requires a dedicated contract and a governance vote for deployment and registration.
 
 #### `BuybackExecutor`
 
-Receives stETH from the BuybackAllocator and settled LDO directly from CoW Swap. Forwards stETH to Stonks v2 to create CoW Swap orders for the LDO purchase — the full amount in treasury-only mode, half in LP mode, keeping the other half as stETH and wrapping it to wstETH at deposit time. In LP mode, deposits the balanced LDO/wstETH pair into the Curve pool and retains the minted LP tokens with managed withdrawal to the treasury. Tracks and sweeps expired orders, and exposes pass-through functions for Stonks management accessible by the Treasury Management Committee (TMC) and Emergency Committee.
+Receives stETH from the `BuybackAllocator` and, in LP mode, settled LDO directly from CoW Swap. In treasury-only mode the bought LDO settles straight to the treasury and bypasses this contract. `BuybackExecutor` forwards stETH to Stonks v2 to create CoW Swap orders for the LDO purchase — the full amount in treasury-only mode, half in LP mode, keeping the other half as stETH and wrapping it to wstETH at deposit time. In LP mode, deposits the balanced LDO/wstETH pair into the Curve pool and retains the minted LP tokens with managed withdrawal to the treasury. Tracks and sweeps expired orders, and exposes pass-through functions for Stonks management gated by `EMERGENCY_ROLE`.
 
 ### Modified Existing Contracts
 
 #### `Stonks v2`
 
-Stonks v2 Specification can be found [here](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw). The NEST implementation uses Stonks v2 as the CoW Swap integration layer for order creation and settlement. The BuybackExecutor interacts with Stonks v2 to create orders with the appropriate parameters and to manage order lifecycle events. At launch a single Stonks instance is deployed with the receiver set to the executor (LP mode); switching to treasury-only mode deploys a new Stonks instance with the receiver set to the treasury.
+Stonks v2 Specification can be found [here](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw). The NEST implementation uses Stonks v2 as the CoW Swap integration layer for order creation and settlement. The `BuybackExecutor` interacts with Stonks v2 to create orders with the appropriate parameters and to manage order lifecycle events. At launch a single Stonks instance is deployed with the receiver set to the executor (LP mode); switching to treasury-only mode deploys a new Stonks instance with the receiver set to the treasury.
 
 The existing contracts will be updated to support a configurable settlement receiver address. A new `receiver` field is added to the constructor's `InitParams` struct. If set to `address(0)`, it defaults to `AGENT`, preserving backward compatibility for non-NEST deployments. The stored receiver is passed through to each Order during initialization.
 
 #### `Order`
 
 Updated to support a configurable CoW Swap settlement receiver. The `initialize` function accepts a `receiver_` parameter written into `GPv2Order.Data.receiver` in place of the previously hardcoded `AGENT` address.
+
+#### `TokenRateNotifier`
+
+`StakingRevenueSource` depends on the `TokenRateNotifier` contract registered at `LidoLocator.postTokenRebaseReceiver()`, and it expects the **args-bearing observer flavor**: `addObserver` must ERC-165-detect `ITokenRatePusherWithArgs`, and the notifier must forward the full `handlePostTokenRebase` payload, including `reportTimestamp` and `sharesMintedAsFees` to its observers' `pushTokenRate(...)` callback.
+
+The current `TokenRateNotifier` propagates only an arg-less rate push and does not forward this payload, so the system requires upgraded `TokenRateNotifier` that performs the ERC-165 detection and full-payload forwarding to be deployed and wired as `postTokenRebaseReceiver` before `StakingRevenueSource` can record any revenue.
 
 ---
 
@@ -95,48 +111,57 @@ On each allocation the executor sets aside stETH still committed in the pipeline
 
 #### Eligibility Gates
 
-**`allocate()` skips (non-reverting; emit `AllocationSkipped`):** not activated, oracle price unavailable, stETH price below floor, no available budget (allowance or a cap exhausted), payout below the per-call minimum.
+**`allocate()` reverts** if the contract is not activated (`whenActivated` modifier).
+
+**`allocate()` skips (non-reverting; emit `AllocationSkipped`):** oracle price unavailable, stETH price below floor, no spendable budget (`budgetUSD` non-positive), a daily or yearly cap window exhausted, payout below the per-call minimum.
 
 **`placeOrder()` preconditions (revert on failure):** executor pause, no live tracked order, Stonks balance at or above the minimum order size.
 
 #### Surplus Mechanics
 
-Revenue surplus accumulates cumulatively against a baseline set at activation and a clock-based reserve. A configured share of the all-time surplus is the all-time spending allowance; buybacks are only allowed while that allowance exceeds what has already been spent.
+The allocator keeps a single signed running budget, `budgetUSD`. Each state-touching call begins with a checkpoint: it adds the surplus earned since the previous checkpoint to `budgetUSD`, then re-anchors the revenue baseline and the reserve clock to the present moment. Because the budget is accumulated incrementally this way, past payouts and the parameter values in effect during each interval stay permanently folded into `budgetUSD` — nothing is recomputed retroactively. A release then spends only the non-negative part of `budgetUSD`; a negative budget spends nothing and is carried in storage until later surplus lifts it back above zero.
 
 ```
-surplus      = Σ cumulativeRevenueUSD − revenueBaselineUSD − reserveCumulative
-allowance    = max(0, surplus) × surplusShareBP / 10000
-spendableUSD = allowance − totalSpentUSD
+delta       = (Σ cumulativeRevenueUSD − lastTotalRevenueUSD − reserveAccrued) × surplusShareBP / 10000
+budgetUSD  += delta                                          (signed; may go negative)
+spendable   = max(0, budgetUSD)                              (then clamped, below)
 ```
 
 Execution requires all of the following:
 
 1. The allocator is activated.
 2. The oracle returns a stETH/USD price.
-3. `stEthPriceUSD ≥ minStEthPriceUSD` — the price floor, inactive when `0`.
-4. Spendable budget remains after the allowance, cap, and balance clamps.
+3. `stEthPriceUSD ≥ minStEthPriceUSD` — the price floor, inactive when `minStEthPriceUSD` is set `0`.
+4. The non-negative part of `budgetUSD` is positive after the cap and balance clamps.
 
-`reserveCumulative` grows by `reserveDailyRateUSD` for each elapsed day since activation. `spendableUSD` is clamped by the unused daily and yearly cap windows, the held stETH balance, and a per-call minimum. In LP mode the executor sells half of the forwarded stETH for LDO and pairs the other half as wstETH; in treasury-only mode the full amount is swapped for LDO.
+The reserve in `delta` depends only on elapsed days, not on how often `allocate()` runs. A checkpoint moves the reserve clock to the next UTC-day boundary. After that, the reserve adds one `reserveDailyRateUSD` when the day starts and one more for each full day that follows. Partial days add nothing. `activate()` is the one exception: it anchors to the activation day, so that day is charged instead of skipped.
+
+The resulting spendable amount is then clamped by the unused daily and yearly cap windows, the held stETH balance, and the per-call minimum.
+
+In LP mode the executor sells half of the free stETH for LDO and keeps the other half to pair as wstETH; in treasury-only mode the full amount is swapped for LDO.
 
 **Transition behaviors:**
 
-- **Surplus to deficit**: when the reserve outpaces revenue, surplus shrinks and `spendableUSD` falls to zero; buybacks pause until new revenue rebuilds surplus.
-- **Deficit to surplus**: as revenue recovers, surplus grows back above the reserve and buybacks resume automatically.
-- **Share changes**: `surplusShareBP` is applied to the entire surplus history on every call, so a change takes effect across accrued surplus; pair it with `resetAccounting()` to scope it to future revenue only.
+- **Surplus to deficit**: when the reserve outpaces revenue, `delta` goes negative and `budgetUSD` falls, possibly below zero; a negative budget spends nothing and is held in storage until later surplus lifts it back above zero.
+- **Deficit to surplus**: as revenue recovers, positive `delta` rebuilds `budgetUSD` and buybacks resume automatically once it crosses back above zero.
+- **Share and rate changes**: `setSurplusShareBP` and `setReserveDailyRateUSD` checkpoint the budget at the old value first, so a new share or rate applies only to revenue and days after the call. Budget already banked in `budgetUSD` is unaffected; there is no retroactive reapplication and no reset lever.
 
 ---
 
 ### Liquidity Provisioning
 
-The BuybackExecutor receives settled LDO from CoW Swap and holds the stETH kept aside for pairing. Liquidity provisioning runs as a separate permissionless flow after trade settlement.
+The `BuybackExecutor` receives settled LDO from CoW Swap and holds the stETH kept aside for pairing. Liquidity provisioning runs as a separate permissionless flow after trade settlement.
 
 `addLiquidity()` flow:
 
-1. Read LDO and stETH balances; revert if either is zero.
-2. Convert both to USD via the OracleRouter; revert if any price feed is stale or unavailable.
-3. Take the minimum of the two USD values and compute balanced token amounts corresponding to that minimum.
-4. Wrap the stETH portion to wstETH and deposit the LDO/wstETH pair into the Curve pool.
-5. Retain minted LP tokens in the executor.
+1. Revert if the system is not in LP mode.
+2. Read LDO and stETH balances; revert if either is zero.
+3. Convert both to USD via the OracleRouter; revert if any price feed is stale or unavailable.
+4. Check the pool price divergence gate: revert if the pool EMA diverges from the oracle ratio beyond `poolPriceDivergenceToleranceBps` (bypassed during bootstrap; see [Pool Skew Protection](#pool-skew-protection)).
+5. Take the minimum of the two USD values and compute balanced token amounts corresponding to that minimum.
+6. Apply the per-call deposit bounds: revert if the balanced pair's USD value is below `minDepositValueUsd`; scale both sides down proportionally if it exceeds `maxDepositValueUsd`.
+7. Wrap the stETH portion to wstETH and deposit the LDO/wstETH pair into the Curve pool.
+8. Retain minted LP tokens in the executor.
 
 Excess tokens on the larger side remain in the executor for the next `addLiquidity()` cycle. The Curve LDO/wstETH pool starts with zero balance and scales naturally as orders settle — no upfront seeding is required.
 
@@ -152,8 +177,9 @@ The pool launches with zero liquidity. Applying the divergence check before the 
 
 Protection scheme:
 
-1. **Pool price divergence gate** compares the Curve pool's internal EMA price from `price_oracle()` against the OracleRouter LDO/wstETH price. If divergence exceeds `poolPriceDivergenceToleranceBps`, the deposit reverts. This is a structural check independent of deposit size.
-2. Because the pool EMA moves across blocks it resists in-block manipulation, so the Curve deposit relies on this gate for sandwich resistance rather than a per-deposit slippage parameter.
+1. **Pool price divergence gate** compares the Curve pool's internal EMA price from `price_oracle()` — which reports LDO per wstETH and is converted to an LDO/stETH ratio via `wstETH.stEthPerToken()` — against the OracleRouter's LDO/stETH price. If divergence exceeds `poolPriceDivergenceToleranceBps`, the deposit reverts. This is a structural check independent of deposit size.
+2. Because the pool EMA moves across blocks it resists in-block manipulation, so the Curve deposit relies on this gate for sandwich resistance rather than a per-deposit slippage parameter. The `add_liquidity` call itself passes a minimum-LP-out of `1` (no effective slippage floor), so the divergence gate is the _sole_ protection against an unfavorable deposit ratio.
+3. **The bootstrap window has neither protection.** While pool TVL is below `poolBootstrapMinTvlUsd` the divergence gate is bypassed (see [Pool Bootstrap](#pool-bootstrap)), and the deposit already carries no slippage floor — so a bootstrap deposit runs with no divergence gate and no slippage guard. This is the least-protected window, accepted because a shallow pool's stale EMA cannot converge without the very deposits the gate would otherwise block. The gate evaluates pre-deposit pool TVL, so `poolBootstrapMinTvlUsd` together with the per-call `maxDepositValueUsd` bounds the unguarded exposure: it is the threshold plus at most one capped deposit, after which the gate engages.
 
 #### Partial and Unfilled Orders
 
@@ -170,14 +196,14 @@ wstETH is minted only at deposit time, so the executor never holds idle wstETH. 
 
 ### Off-chain Keeper
 
-A keeper bot polls the BuybackAllocator and BuybackExecutor via view functions on a schedule (e.g., every 15 minutes):
+A keeper bot polls the `BuybackAllocator` and `BuybackExecutor` via view functions on a schedule (e.g., every 15 minutes):
 
 1. Call `convertPendingRevenueToUSD()` to settle pending staking revenue when the oracle is healthy.
 2. Check `spendable()` → call `allocate()` if eligible.
 3. Check `getPlacementStatus()` → call `placeOrder()` if eligible.
 4. Check `canAddLiquidity()` → call `addLiquidity()` if eligible.
 
-All functions are permissionless and idempotent; failed calls are retried on the next cycle. The keeper is integrated into the existing `MotionEnacterBot`, reusing existing infrastructure.
+All functions are permissionless and retryable when preconditions are unmet; skipped or failed calls are retried on the next cycle. The keeper is integrated into the existing off-chain service, reusing that infrastructure.
 
 CoW Protocol requires a matching off-chain order payload submitted to its API before solvers can discover and fill an order. The keeper monitors for order-creation events, constructs the payload, and posts it to the CoW Protocol API. If submission fails, the order remains unfilled until expiry and standard recovery flows apply.
 
@@ -202,7 +228,7 @@ CoW Protocol requires a matching off-chain order payload submitted to its API be
 | **Revenue Sources**   | `revenueSources`                                  | Array of active revenue source addresses                                                                                                                                    |
 | **Active Stonks**     | `stonks`                                          | The active Stonks instance; the operating mode is derived from its receiver.                                                                                                |
 
-All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with validation on write. Like the rest of DAO treasury operations, this is not under Dual Governance. Invalid configuration reverts and preserves the previous valid state.
+All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with validation on write where applicable (the `reserveDailyRateUSD` and `minStEthPriceUSD` setters intentionally accept any value, including `0`). Like the rest of DAO treasury operations, this is not under Dual Governance. Invalid configuration reverts and preserves the previous valid state.
 
 ### Proposed Initial Values
 
@@ -213,17 +239,18 @@ All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with va
 | `surplusShareBP`                  | `5000` (50%)                    | 50% of surplus allocated to NEST. In LP mode: half of that budget goes to the LDO purchase leg, half to the wstETH pairing leg. |
 | `dailyCapUSD`                     | `$50,000`                       | Primary active safety limiter                                                                                                   |
 | `yearlyCapUSD`                    | `$10,000,000`                   | Annual ceiling                                                                                                                  |
+| `minSpendPerCallUSD`              | published before the vote       | Mandatory non-zero; constructor enforces `> 0` and `≤ dailyCapUSD`                                                              |
 | pool guards, order/deposit bounds | published before the vote       | Pool- and sizing-dependent; finalized with the pool parameters                                                                  |
 
 ### Roles and Authority
 
-| Role                 | Held By                             | Key Powers                                                                                                                                                           |
-| -------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DEFAULT_ADMIN_ROLE` | Aragon Voting                       | Full configuration control on both contracts, `activate` / `resetAccounting` / `setExecutor` / `setStonksAndOperatingMode`, role management. Requires full DAO vote. |
-| `MANAGER_ROLE`       | Treasury Management Committee (TMC) | Asset recovery, LP token management (`removeLiquidityAndRecoverToTreasury`, `recoverERC20`), propose EasyTrack motions to fund the allocator with stETH.             |
-| `EMERGENCY_ROLE`     | Emergency Committee / Multisig, TMC | Pause/unpause the executor and Stonks creation/signatures. Cannot modify configuration.                                                                              |
-| `ALLOCATOR_ROLE`     | `BuybackAllocator`                  | Calls the executor's allocation hook. Granted to the allocator at deployment.                                                                                        |
-| —                    | Permissionless Callers              | `allocate()`, `placeOrder()`, `addLiquidity()`, `convertPendingRevenueToUSD()`                                                                                       |
+| Role                 | Held By                             | Key Powers                                                                                                                                               |
+| -------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEFAULT_ADMIN_ROLE` | Aragon Voting                       | Full configuration control on both contracts, `activate` / `setExecutor` / `setStonksAndOperatingMode`, role management. Requires full DAO vote.         |
+| `MANAGER_ROLE`       | Treasury Management Committee (TMC) | Asset recovery, LP token management (`removeLiquidityAndRecoverToTreasury`, `recoverERC20`), propose EasyTrack motions to fund the allocator with stETH. |
+| `EMERGENCY_ROLE`     | Emergency Committee / Multisig, TMC | Pause/unpause the executor and Stonks creation/signatures. Cannot modify configuration.                                                                  |
+| `ALLOCATOR_ROLE`     | `BuybackAllocator`                  | Calls the executor's allocation hook. Granted to the allocator at deployment.                                                                            |
+| —                    | Permissionless Callers              | `allocate()`, `placeOrder()`, `addLiquidity()`, `convertPendingRevenueToUSD()`                                                                           |
 
 At construction the deploying admin holds `DEFAULT_ADMIN_ROLE`; `MANAGER_ROLE`, `EMERGENCY_ROLE`, and `ALLOCATOR_ROLE` are granted explicitly as part of the deployment governance vote. EasyTrack is used exclusively for funding operations (stETH transfers to the allocator). All parameter changes require a full Aragon Voting DAO vote.
 
@@ -237,11 +264,11 @@ Independent pause domains, each stoppable without affecting the others:
 
 1. **BuybackExecutor pause** — stops `addLiquidity()`, `placeOrder()`, and the allocation hook; because `allocate()` calls the hook in the same transaction, pausing the executor also halts allocation. Assets accumulate safely.
 2. **Stonks creation/signature pauses** — stops new order creation or freezes settlement of existing orders independently.
-3. **OracleRouter pause** — stops price queries, causing allocation and liquidity provisioning to skip or revert.
+3. **OracleRouter feed deactivation** — price queries can be stopped by deactivating a token's feed (or when a feed is stale/unavailable), causing allocation and liquidity provisioning to skip or revert. The OracleRouter has no global pause; availability is controlled per token via its feed configuration.
 
 Asset recovery is available at all times and is not subject to pause. Recovery to the treasury sends the token as held; `removeLiquidityAndRecoverToTreasury` unwraps withdrawn wstETH to stETH.
 
-**Accounting reset:** If cumulative buyback accounting becomes untenable — for example, after a prolonged downturn where accumulated deficit would block buybacks indefinitely — governance can call `resetAccounting` to re-baseline the surplus to zero, forfeiting any unspent allowance. The next accounting cycle starts fresh. Requires a full DAO vote (`DEFAULT_ADMIN_ROLE`).
+**Prolonged deficit:** There is no manual accounting-reset lever. If a prolonged downturn drives `budgetUSD` negative, the allocator simply spends nothing and holds the negative budget in storage until later surplus lifts it back above zero; buybacks resume automatically. Governance can raise `surplusShareBP` or lower `reserveDailyRateUSD` to speed recovery, but these apply only to revenue and days after the change (`DEFAULT_ADMIN_ROLE`, full DAO vote); already-banked budget is never re-based or clawed back.
 
 ---
 
@@ -259,7 +286,7 @@ The cumulative surplus mechanism provides natural ETH-price sensitivity without 
 
 ### $50,000 Daily Cap as Primary Safety Limiter
 
-The daily cap is the primary active safety guardrail. Historically, very few days produce surplus exceeding $50k. In the event of oracle corruption or bad revenue inputs, the cap ensures maximum exposure over a ~6-day governance response window is bounded at ~$300k. The cap is independently configurable and can be raised by governance as surplus and on-chain liquidity grow.
+The daily cap is the primary active safety guardrail. Historically, very few days produce surplus exceeding $50k. The cap bounds the USD spend computed at the oracle price each day, so against bad revenue inputs it holds exposure over a ~6-day governance response window to ~$300k. Because that USD budget is converted to stETH at the oracle price, a corrupted stETH/USD feed can still release more real value than the nominal cap implies; the `minStEthPriceUSD` floor (disabled at launch, see below) is the local mitigation and is retained for that purpose. The cap is independently configurable and can be raised by governance as surplus and on-chain liquidity grow.
 
 ### Zero-seed Pool Launch
 
@@ -287,27 +314,29 @@ Expired and unfilled orders are retried through a bounded recovery flow rather t
 
 ### Oracle Manipulation
 
-Price feeds (ETH/USD, stETH/USD via two-hop, LDO/ETH) are sourced from Chainlink via the shared OracleRouter. All feeds are validated for staleness and answer validity independently. The daily cap bounds maximum exposure per day to $50k regardless of oracle accuracy. The OracleRouter can be paused independently for rapid incident response.
+Price feeds (ETH/USD, stETH/USD via two-hop, and LDO/USD via OracleRouter configuration, which may resolve directly or bridge through ETH) are sourced from Chainlink via the shared OracleRouter. All feeds are validated for staleness and answer validity independently. The daily cap bounds the USD spend computed at the oracle price each day to $50k; because that USD budget is converted to stETH at the same oracle price, the cap fully bounds bad-revenue inputs but only partially bounds stETH/USD oracle corruption, for which `minStEthPriceUSD` is the local mitigation. Individual OracleRouter feeds can be deactivated independently for rapid incident response.
 
 ### Permissionless Execution Risk
 
-`allocate()` and `placeOrder()` are callable by anyone. Budgets and `minBuyAmount` use on-chain oracle prices at call time; slippage protection is the Stonks-side margin. Daily and yearly caps enforce hard spending bounds regardless of oracle precision.
+`allocate()` and `placeOrder()` are callable by anyone. Budgets and `minBuyAmount` use on-chain oracle prices at call time; slippage protection is the Stonks-side margin. Daily and yearly caps enforce hard spending bounds at the oracle price.
 
 ### Revenue Reporting Integrity
 
 `StakingRevenueSource`'s rebase callback is authorized live against `LidoLocator.postTokenRebaseReceiver()`, and replays are rejected by a strictly-increasing report timestamp. USD conversion is deferred to a retryable permissionless call, so a price-feed outage defers rather than loses revenue.
 
+**Source liveness.** `allocate()` and its checkpoints sum revenue through a per-source `try/catch`, so a source that reverts is skipped — it contributes zero for that call rather than bricking allocation — and resumes contributing once it recovers. The strict, non-guarded read is used only by the admin paths `activate()`, `addRevenueSource()`, and `removeRevenueSource()`. A source that reverts permanently therefore blocks activation, cannot be added, and **cannot be removed** — removal subtracts the source's current cumulative total from the baseline, which reverts if the source reverts. Unregistering a permanently-broken source requires its `getCumulativeRevenueUSD()` to be made callable again (returning any value) first.
+
 ### Slashing Events
 
-Revenue tracks the fees actually minted each rebase. During a downturn or slashing recovery, less revenue accrues while the clock-based reserve keeps growing, so surplus shrinks and buybacks pause automatically until revenue rebuilds surplus. Governance can reset accounting if accumulated deficit becomes indefinitely blocking.
+Revenue tracks the fees actually minted each rebase. During a downturn or slashing recovery, less revenue accrues while the clock-based reserve keeps growing, so the budget shrinks and buybacks pause automatically until revenue rebuilds it. A deeply negative budget self-heals only as surplus returns (there is no manual reset), so the pause is proportional to how long revenue stays below the reserve.
 
 ### No asset custody
 
-All purchased assets remain DAO-owned throughout the execution path. stETH flows only through the controlled pipeline: Aragon Agent → BuybackAllocator → BuybackExecutor → Stonks → Order → BuybackExecutor (LP mode) or Aragon Agent (treasury-only mode). No unauthorized exit path exists for sell-side stETH.
+All purchased assets remain DAO-owned throughout the execution path. Sell-side stETH flows only through the controlled pipeline: Aragon Agent → `BuybackAllocator` → `BuybackExecutor` → `Stonks` → `Order`; an expired order's residual stETH recovers from the Order back to its Stonks. Bought LDO settles from CoW Swap to the configured receiver — the `BuybackExecutor` in LP mode, or the Aragon Agent treasury in treasury-only mode. No unauthorized exit path exists for sell-side stETH.
 
 ### Emergency Response Time
 
-Independent pause domains allow targeted response without halting the full system. The Emergency Committee can pause without a full DAO vote. Asset recovery functions are always available and not subject to pause. At a $50k daily cap, the maximum exposure over a 6-day governance response window is ~$300k.
+Independent pause domains allow targeted response without halting the full system. The Emergency Committee can pause without a full DAO vote. Asset recovery functions are always available and not subject to pause. At a $50k daily cap, the maximum exposure over a 6-day governance response window is ~$300k in oracle-denominated USD.
 
 ### Missing Lido AccountingOracle reports
 
