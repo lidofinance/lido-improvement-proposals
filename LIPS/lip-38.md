@@ -79,3 +79,18 @@ The trade-offs are:
 
 The Ejector cannot process PWRs, the new system expects a low FWR volume, and historical mainnet data shows that EIP-7002 fee spikes are short-lived and resolve before VEBO could react. With a declining validator count and no planned reduction in EIP-7002 throughput, PWR pricing should stay favorable. The Ejector is therefore demoted to a **fallback** role, used only when partial withdrawals are turned off via `setPartialWithdrawals(bool)` (FWR-only operation).
 
+### Technical Specification
+
+The design splits cleanly along the oracle boundary:
+
+- **Off-chain Oracle** owns all *ordering* logic — which module, which Node Operator, and which validator keys (with what amounts) should exit next, and all active-rebalancing decision-making. It produces the per-report list of withdrawal requests.
+- **On-chain** protocol side — a thin set of primitives that:
+    - ingests the Oracle report and appends its requests to a single FIFO queue;
+    - exposes a permissionless handle to push queued requests to the EIP-7002 contract;
+    - enforces the exit limits (VEBO rate limit on balance exit and TWG rate limit on requests count);
+    - enforces the configurable rebalancing bounds (rate limit, thresholds);
+    - holds partial withdrawal requests off/on switch (full withdrawal requests only mode);
+    - verifies that partial withdrawals target `0x02` validators;
+
+This separation keeps all economic and prioritization policy in upgradeable off-chain code, while the on-chain layer stays a thin, auditable set of primitives and limits.
+
