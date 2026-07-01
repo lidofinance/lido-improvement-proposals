@@ -60,3 +60,22 @@ Today, stake redistribution across Node Operators and modules happens only throu
 
 A **`setPartialWithdrawals(bool)` switch** can turn partial withdrawals off, making VEBO emit FWRs only; `ExitRequested` events are emitted for all FWRs so a simplified Ejector can fulfill them via voluntary exits without EIP-7002 fees.
 
+### Rationale
+
+#### Single FIFO queue
+
+Withdrawal requests (both PWRs and FWRs) are stored in a single FIFO queue and processed in submission order. We chose this model because:
+
+- **Simplicity.** A single queue is simple to iterate on-chain, with no need to manage concurrency.
+- **Permissionless safety.** VEBO fully controls ordering and concurrency, which protects against permissionless interference and mitigates FWR-replay DDoS.
+
+The trade-offs are:
+
+- **No skipping.** Items must be executed in order; an item that is no longer valid still must be executed to process order further. We deliberately do not add an item-skipping mechanism: EIP-7002 requests are cheap, so executing a now-invalid request wastes only a negligible fee, which is not worth the extra on-chain complexity.
+- **No execution-order choice.** Because order is fixed, there is no room for execution-time optimization (e.g. minimizing FWR sweep delay). This is acceptable because we expect to use mostly PWRs, so no sweep optimization is needed.
+- **PWR/FWR concurrency.** PWRs and FWRs share one queue and contend for the same EIP-7002 throughput; this concurrency will be mitigated within VEBO (in how it orders and batches requests).
+
+#### Deprecating the Ejector as the primary tool
+
+The Ejector cannot process PWRs, the new system expects a low FWR volume, and historical mainnet data shows that EIP-7002 fee spikes are short-lived and resolve before VEBO could react. With a declining validator count and no planned reduction in EIP-7002 throughput, PWR pricing should stay favorable. The Ejector is therefore demoted to a **fallback** role, used only when partial withdrawals are turned off via `setPartialWithdrawals(bool)` (FWR-only operation).
+
