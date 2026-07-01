@@ -1,0 +1,49 @@
+---
+lip: 38
+title: "VEBO-7002 — Withdrawal-Based Exits and Active Rebalancing"
+status: WIP
+author: Raman Siamionau (@F4ever)
+discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
+created: 2026-06-26
+---
+
+## Simple Summary
+
+This proposal redesigns the Validators Exit Bus Oracle (VEBO) around EIP-7002 execution-layer withdrawal requests and introduces **Active Rebalancing** — a mechanism that lets the protocol redistribute stake across Node Operators without waiting for organic inflows and outflows.
+
+1. **VEBO-7002** — instead of relying on Node-Operator-supplied pre-signed exit messages and the Ejector as the primary exit tool, VEBO uses EIP-7002 partial withdrawal requests (PWRs) and full withdrawal requests (FWRs) as the primary exit mechanism. This enables precise, partial stake exits from `0x02` validators, reduces unproductive stake time, shortens and sharpens withdrawal finalization, and simplifies the protocol by removing several legacy components.
+2. **Active Rebalancing** — a controlled, rate-limited way for the protocol to forcibly move stake toward a target distribution by requesting additional withdrawals from over-target Community Module v2 (CMv2) operators, reusing the same withdrawal-based flow introduced by VEBO-7002.
+
+## Abstract
+
+We propose to rework the Validators Exit Bus Oracle ("VEBO-7002") across its on-chain and off-chain parts.
+
+**On-chain**, we add a **FIFO queue** to the VEBO that stores EIP-7002-based withdrawal requests (partial and full) submitted by the Oracle report, together with a **permissionless handle** that anyone can call to trigger and execute queued requests one by one via the EIP-7002 withdrawal-request contract. A `setPartialWithdrawals` switch lets the protocol turn partial withdrawals off, reverting to FWR-only operation (that could be fulfilled through a Validator Ejector) under extreme EIP-7002 fee conditions.
+
+**Off-chain**, we rework the exit-ordering logic so it selects not only which validators to exit but also the withdrawal amount per validator. This adds support for **partial withdrawal requests** — preferring PWRs against `0x02` validators and falling back to FWRs where PWRs are not applicable — and for **Active Rebalancing**: additional, rate-limited exits against CMv2 operators whose `currentStake` exceeds their `targetStake`, moving the module toward its target distribution.
+
+This redesign also removes components made redundant by the new flow: late-exit penalties and proofs to trigger full withdrawal requests.
+
+## Motivation
+
+### Limitations of the current VEBO
+
+The current VEBO depends on Node Operators uploading pre-signed validator exit messages, and on the Ejector software to broadcast those exits. This design has structural limitations:
+
+- **Full exits only.** The flow exclusively supports full validator exits. Partial withdrawals — increasingly the right tool after EIP-7251 (MaxEB) and `0x02` credentials — are not currently available.
+- **Limited upload capacity.** Only a fraction of pre-signed exit messages can be uploaded per Node Operator, to bound the blast radius if an operator's signing infrastructure is compromised. This caps how aggressively exits can be requested.
+- **Operational overhead.** Every Node Operator must run and secure dedicated Ejector software, and the protocol must verify that they do.
+- **Coarse exit optimization.** Because only specific pre-signed keys can be requested, optimizing exit order (e.g. to minimize sweep delay or to target precise amounts of stake) is difficult.
+
+### Why withdrawal-based exits
+
+EIP-7002 lets the protocol trigger withdrawals from the execution layer using validators' `0x02` withdrawal credentials, without holding pre-signed messages. Building VEBO around PWRs and FWRs:
+
+- Allows **precise stake exit** from `0x02` validators in CMv2 using partial withdrawals, leaving the validator active.
+- **Eliminates unproductive stake time** — ETH keeps earning until the moment a withdrawal is actually triggered, instead of sitting idle behind a queued full exit.
+- Enables **full exits** via EIP-7002 without unfolding a VEBO report.
+
+### Why active rebalancing
+
+Today, stake redistribution across Node Operators and modules happens only through organic inflows (new deposits) and outflows (withdrawal demand). When a module or an individual operator drifts above its target stake, there is no protocol-level lever to correct it on a controlled schedule. For CMv2 we need a mechanism that can deliberately move the module toward its target distribution while staying compatible with the regular withdrawal and deposit flow. The withdrawal-based VEBO-7002 flow makes such a mechanism natural to express: rebalancing is simply additional, rate-limited exit demand against over-target operators.
+
