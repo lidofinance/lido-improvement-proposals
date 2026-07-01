@@ -47,3 +47,16 @@ EIP-7002 lets the protocol trigger withdrawals from the execution layer using va
 
 Today, stake redistribution across Node Operators and modules happens only through organic inflows (new deposits) and outflows (withdrawal demand). When a module or an individual operator drifts above its target stake, there is no protocol-level lever to correct it on a controlled schedule. For CMv2 we need a mechanism that can deliberately move the module toward its target distribution while staying compatible with the regular withdrawal and deposit flow. The withdrawal-based VEBO-7002 flow makes such a mechanism natural to express: rebalancing is simply additional, rate-limited exit demand against over-target operators.
 
+## Specification
+
+### Overview
+
+1. **Off-chain Oracle computes exit demand in three sequential phases.**
+    - Phase 1 — cover regular **withdrawal-queue demand**.
+    - Phase 2 — issue **forced validator exits**.
+    - Phase 3 — add **active rebalancing** within CMv2. Phase 3 is optional and can be switched off (leaving only Phases 1–2).
+2. **The Oracle reports the ordered requests on-chain, where they are appended to a single FIFO queue in the VEBO.**
+3. **Anyone can execute items in the queue.** A permissionless handle pops queued items one by one and submits them to the EIP-7002 predeploy as partial (PWR) or full (FWR) withdrawal requests, paying the per-request fee.
+
+A **`setPartialWithdrawals(bool)` switch** can turn partial withdrawals off, making VEBO emit FWRs only; `ExitRequested` events are emitted for all FWRs so a simplified Ejector can fulfill them via voluntary exits without EIP-7002 fees.
+
