@@ -92,5 +92,20 @@ The design splits cleanly along the oracle boundary:
     - holds partial withdrawal requests off/on switch (full withdrawal requests only mode);
     - verifies that partial withdrawals target `0x02` validators;
 
-This separation keeps all economic and prioritization policy in upgradeable off-chain code, while the on-chain layer stays a thin, auditable set of primitives and limits.
+#### Off-chain Oracle: ordering and rebalancing logic
+
+Per report, the Oracle produces the ordered list of withdrawal requests. It runs the exit-order iterator ([`exit_order_iterator.py`](https://github.com/lidofinance/lido-oracle/blob/f352b8552b717ebf8ecaf3bd0f5cf6785909ec17/src/services/exit_order_iterator.py#L106)) — generalized from "pick the next validators to fully exit" to "pick the next validators and the amount (PWR/FWR) to withdraw" — across **three sequential phases**, each with its own demand source.
+
+##### Shared iterator mechanics
+
+All three phases reuse the same machinery. Two governance-tunable parameters drive it, both stored in the `OracleDaemonConfig` smart contract so they can be changed without an Oracle release:
+
+- **`EXIT_ITERATION_CHUNK`** (default **32 ETH**) — the fixed unit of demand the iterator allocates per step.
+- **`MIN_PARTIAL_WITHDRAWAL`** (default **8 ETH**) — the minimum withdrawable balance a validator must have above the effective-balance floor to serve a PWR, and the lower bound of any single PWR.
+
+**Iteration granularity.** The iterator walks exit demand in fixed `EXIT_ITERATION_CHUNK` (32 ETH) steps: each iteration allocates one chunk of demand to the top-ranked operator (and one of its validators), then re-ranks. This keeps the ordering balanced across operators and maps naturally onto withdrawal sizing — a chunk becomes a PWR of up to `EXIT_ITERATION_CHUNK` from a `0x02` validator, or an FWR.
+
+**PWR vs. FWR threshold.** A validator can only serve a PWR if it has enough balance above the effective-balance floor to give up. If **no** validator has more than `MIN_PARTIAL_WITHDRAWAL` (8 ETH) of withdrawable balance above the floor, a **full withdrawal request** is used against the top-ranked validator instead. Otherwise a partial withdrawal is taken from that validator, bounded to the `[MIN_PARTIAL_WITHDRAWAL, EXIT_ITERATION_CHUNK]` (8–32 ETH) range per validator.
+
+**Per-report exit limit.** The iterator stops accumulating requests once the report's cumulative exited balance (`max_current_exit_balance`) reaches the per-report exit limit. This limit is shared across all three phases: Phase 1 draws against it first, and Phases 2–3 consume whatever remains.
 
