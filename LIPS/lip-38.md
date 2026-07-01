@@ -128,3 +128,29 @@ After WQ demand is covered, the iterator satisfies any **forced-exit obligations
 1. **Forced-exit deviation** — operators over a force-exit limit first, by how far `currentValidators − targetValidators` exceeds the threshold.
 2. **Lowest validator index** — within an operator, ascending validator index.
 
+##### Phase 3 — Active rebalancing
+
+This phase applies **only to the CMv2 staking module** and adds exit demand against operators drifting above their target stake, pushing the module back toward its target distribution.
+
+**Configuration.** All Phase 4 parameters live as keys in the existing **`OracleDaemonConfig`** key-value store.
+
+| `OracleDaemonConfig` key                | Type        | Meaning                                                                                     |
+|-----------------------------------------|-------------|---------------------------------------------------------------------------------------------|
+| `ACTIVE_REBALANCING_ENABLED`            | bool        | Global on/off for Phase 3.                                                                  |
+| `ACTIVE_REBALANCING_RATE_LIMIT`         | uint (ETH)  | Max stake exitable for rebalancing per VEBO report.                                         |
+| `ACTIVE_REBALANCING_OPERATOR_EXCESS_BP` | uint (bp)   | Operator-level trigger: `currentStake` over `targetStake` as a share of `targetStake`.      |
+| `ACTIVE_REBALANCING_GRACE_PERIOD`       | uint (days) | Grace period before a new operator can affect the module's stake balance used to rebalance. |
+
+**Trigger.** Phase 3 runs only if `ACTIVE_REBALANCING_ENABLED` is set. 
+
+A **new-operator grace period** applies: operators created and whose first key activated less than `ACTIVE_REBALANCING_GRACE_PERIOD` days ago cannot *affect* rebalancing calculations, but remain eligible to *receive* redistributed deposits via the normal deposit allocation.
+
+**Bounds.** The total rebalancing stake added to the report is capped at `ACTIVE_REBALANCING_RATE_LIMIT`.
+
+**Ordering.** When it runs, the iterator ranks over-target CMv2 operators by, in order:
+
+1. **Target-stake deviation** — an operator is over-target when its `currentStake` exceeds `targetStake × (1 + ACTIVE_REBALANCING_OPERATOR_EXCESS_BP)`; eligible operators furthest **above** that threshold rank first.
+2. **Already-requested validators** — validators with PWR demand already allocated **within this report** rank first, concentrating exited balance into as few validators as possible.
+3. **Biggest validator first** — prefer the largest-balance validator so exits stay partial and keep the validator active.
+4. **Lowest validator index** — within an operator, ascending validator index.
+
