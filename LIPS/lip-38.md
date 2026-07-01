@@ -109,3 +109,22 @@ All three phases reuse the same machinery. Two governance-tunable parameters dri
 
 **Per-report exit limit.** The iterator stops accumulating requests once the report's cumulative exited balance (`max_current_exit_balance`) reaches the per-report exit limit. This limit is shared across all three phases: Phase 1 draws against it first, and Phases 2–3 consume whatever remains.
 
+##### Phase 1 — Cover withdrawal-queue demand
+
+Phase 1 covers the current **withdrawal-queue (WQ) demand**, issuing PWR-first instead of full exits. It walks that demand in `EXIT_ITERATION_CHUNK` steps, ranking validator at each step by, in order:
+
+1. **Forced-exit deviation** — operators over a force-exit limit first, by how far `currentValidators − targetValidators` exceeds the threshold.
+2. **Soft-exit deviation** — same idea for soft-exit limits, after forced exits.
+3. **Module share-rate deviation** — modules above their `priority_exit_share_threshold` (relative to total protocol balance) get elevated priority.
+4. **Target-stake deviation** — operators furthest **above** their target stake exit first, where `targetStake = moduleStake × operatorWeight / moduleTotalWeight`.
+5. **Already-requested validators** — validators that already have PWR demand allocated to them **within this report** rank first, but only while their remaining balance stays above `MIN_ACTIVATION_BALANCE`. This concentrates exited balance into as few validators as possible, minimizing the number of distinct PWRs by taking more balance out of one validator before moving to the next.
+6. **Biggest validator first** — among the operator's validators, prefer the one with the **largest balance**. This maximizes the balance a single PWR can extract while leaving the validator active, favoring partial over full withdrawals.
+7. **Lowest validator index** — within an operator, ascending validator index.
+
+##### Phase 2 — Forced validator exits
+
+After WQ demand is covered, the iterator satisfies any **forced-exit obligations**.
+
+1. **Forced-exit deviation** — operators over a force-exit limit first, by how far `currentValidators − targetValidators` exceeds the threshold.
+2. **Lowest validator index** — within an operator, ascending validator index.
+
