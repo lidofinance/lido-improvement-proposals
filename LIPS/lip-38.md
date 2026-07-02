@@ -106,6 +106,8 @@ All three phases reuse the same machinery. Two governance-tunable parameters dri
 
 **PWR vs. FWR threshold.** A validator can only serve a PWR if it has enough balance above the effective-balance floor to give up. If **no** validator has more than `MIN_PARTIAL_WITHDRAWAL` (8 ETH) of withdrawable balance above the floor, a **full withdrawal request** is used against the top-ranked validator instead. Otherwise a partial withdrawal is taken from that validator, bounded to the `[MIN_PARTIAL_WITHDRAWAL, EXIT_ITERATION_CHUNK]` (8–32 ETH) range per validator.
 
+**No FWR over an unprocessed PWR.** The Oracle MUST NOT issue an FWR for a validator that still has an unprocessed PWR (in the FIFO queue or not yet observed as processed on the CL). The consensus layer rejects a full withdrawal request while a partial one for the same validator is pending, so such an FWR would be wasted and need re-requesting. The iterator therefore excludes validators with in-flight PWRs from FWR selection and only escalates a validator from PWR to FWR in a later report, once the PWR has cleared. See [Security Considerations](#security-considerations).
+
 **Per-report exit limit.** The iterator stops accumulating requests once the report's cumulative exited balance (`max_current_exit_balance`) reaches the per-report exit limit. This limit is shared across all three phases: Phase 1 draws against it first, and Phases 2–3 consume whatever remains.
 
 ##### Phase 1 — Cover withdrawal-queue demand
@@ -238,7 +240,7 @@ interface IValidatorsExitBusOracle7002 {
 
 The FIFO queue, the report `dataFormat` with `amount`, and the `processExitRequests` / `submitReportData` / `setPartialWithdrawals` surface are described in Flows 1–2 above.
 
-The `setPartialWithdrawals` toggle is the FWR-only fallback: when **off**, the contract accepts FWRs only, `ExitRequested` still fires for every FWR so a Validator Ejector can fulfill them via voluntary exits without EIP-7002 fees. This is the safe mode under sustained extreme EIP-7002 fees.
+The `setPartialWithdrawals` toggle is the FWR-only fallback: when **off**, the contract accepts FWRs only, `ExitRequested` still fires for every FWR so a Validator Ejector can fulfill them via voluntary exits without EIP-7002 fees. This is the safe mode under sustained extreme EIP-7002 fees. While it is off, the off-chain VEBO **must not count any queued-but-unexecuted PWRs** as covering WQ demand when computing the next report.
 
 On `submitReportData`, VEBO-7002 **MUST validate that every record with `amount > 0` (a PWR) targets a `0x02` (compounding-credentials) validator**.
 
@@ -289,3 +291,44 @@ The WithdrawalVault already supports EIP-7002 partial withdrawals (variable `amo
 
 Register the new TWG implementation address so the rest of the protocol resolves them after the upgrade, and **remove the `ValidatorExitDelayVerifier` entry**.
 
+##### `OracleDaemonConfig`
+
+This release **adds the following keys** to the contract (iterator params, see [Shared iterator mechanics](#shared-iterator-mechanics); active-rebalancing keys, see [Phase 3 — Active rebalancing](#phase-3--active-rebalancing)):
+
+| Key                                     | Type        | Default | Meaning                                                                                   |
+|-----------------------------------------|-------------|---------|-------------------------------------------------------------------------------------------|
+| `EXIT_ITERATION_CHUNK`                  | uint (ETH)  | 32      | Fixed unit of demand the iterator allocates per step.                                     |
+| `MIN_PARTIAL_WITHDRAWAL`                | uint (ETH)  | 8       | Min withdrawable balance above the floor for a validator to serve a PWR; PWR lower bound. |
+| `ACTIVE_REBALANCING_ENABLED`            | bool        | false   | Global on/off for Phase 3.                                                                |
+| `ACTIVE_REBALANCING_RATE_LIMIT`         | uint (ETH)  | —       | Max stake exitable for rebalancing per VEBO report.                                       |
+| `ACTIVE_REBALANCING_OPERATOR_EXCESS_BP` | uint (bp)   | —       | Operator-level trigger: `currentStake` over `targetStake` as a share of `targetStake`.    |
+| `ACTIVE_REBALANCING_GRACE_PERIOD`       | uint (days) | —       | Grace period before a new operator can affect the module's stake balance.                 |
+
+#### EasyTrack factories
+
+TODO
+The EasyTrack factories that interact with VEBO (e.g. the VEBO-bypass exit flow) are affected by the new report format and withdrawal-based flow. They can either be **removed** (if no longer needed after the CMv1/SDVT sunset) or **adapted** to the new VEBO-7002 report format.
+
+## Security Considerations
+
+- **Permissionless interference / DDoS.** The single FIFO queue keeps concurrency entirely under VEBO control and avoids FWR-replay attack surface.
+- **PWR/FWR concurrency on one validator.** The consensus layer rejects a full withdrawal request while the validator still has an unprocessed partial withdrawal request. So if VEBO issues a PWR and then an FWR for the same validator, the FWR is rejected by the CL and must be re-requested later. To avoid this waste, **VEBO MUST NOT issue an FWR for a validator that still has an unprocessed PWR** — it should wait until the PWR is processed (or only ever escalate a validator from PWR to FWR across separate reports once the PWR has cleared).
+- **Balance-denominated TWG limit.** Changing the TWG rate limiter to bound extracted balance (instead of request count) caps how much stake can leave per frame, so a stream of large partial withdrawals cannot exceed the intended ETH-denominated limit. Note this makes FWRs the expensive request against the limit: an FWR consumes the validator's full max effective balance (up to 2048 ETH for `0x02`) from the frame budget, so a burst of FWRs can exhaust the TWG limit far faster than PWRs.
+- **EIP-7002 fee risk.** Organic-usage modeling shows fee escalation is a minimal credible risk at realistic batch sizes; turning `setPartialWithdrawals` off (FWR-only operation) provides a safe path under sustained extreme fees.
+- **Migration safety.** The explicit enable/disable control ensures active rebalancing cannot interfere with migration sequencing.
+- **Grace period.** Gating *triggering* (but not *receiving*) for new operators prevents newly onboarded operators from inducing immediate rebalancing pressure.
+
+## Failure Modes
+
+- **EIP-7002 fee spike** — mitigation: turn `setPartialWithdrawals` off for FWR-only operation; monitor execution-layer withdrawal-request fees. When `setPartialWithdrawals` is off, the VEBO demand-prediction phase (covering WQ requests) **must not count any queued-but-unexecuted PWRs** as covering demand — those PWRs may not be executed, so the demand they would have covered is re-covered by FWRs in the report.
+- **No-op / doomed requests** (validator already exiting, slashed, or otherwise unaffected by the request) — there is **no dismissal mechanism**: every queued request MUST still be executed to advance the FIFO, even if it takes no effect on the CL.
+
+## Copyright
+
+```my monkey
+   w  c(..)o w
+    \__(-)__/
+       /\
+      /  \
+     w   w
+```
