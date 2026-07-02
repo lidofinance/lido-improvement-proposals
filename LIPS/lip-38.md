@@ -182,3 +182,44 @@ On submission the contract decodes each record into an `ExitRequest` struct and 
 
 When `setPartialWithdrawals` is off, the report is still in the new format but every record MUST carry `amount == 0` (FWR-only); a non-zero amount is rejected.
 
+##### Flow 2 — Execute withdrawal requests
+
+Anyone calls the permissionless `processExitRequests(count)`, forwarding the per-request EIP-7002 fee. It pops the next `count` requests from the FIFO in order and pushes each down the path above: **TWG** applies the exit limits and refunds excess fee, and the **WithdrawalVault** performs the `0x02` check for PWR, encodes the request, and submits it to the EIP-7002 contract. A request rejected at the predeploy is dropped and must be re-submitted by a later Oracle report.
+
+```solidity
+interface IValidatorsExitBusOracle7002 {
+    /// A single queued withdrawal request.
+    /// amountGwei == 0  -> full withdrawal request (FWR)
+    /// amountGwei  > 0  -> partial withdrawal request (PWR)
+    struct ExitRequest {
+        uint256 moduleId;
+        uint256 nodeOperatorId;
+        bytes   pubkey;
+        uint64  amountGwei;
+    }
+
+    /// Flow 1: Oracle submits the ordered, packed report; requests are appended to the FIFO queue.
+    function submitReportData(bytes calldata report, uint256 contractVersion) external;
+
+    /// Flow 2: permissionless — pop and deliver the next `count` queued requests to the
+    /// EIP-7002 withdrawal-request path. Caller forwards the per-request fee.
+    function processExitRequests(uint256 count) external payable;
+
+    /// Number of requests waiting in the FIFO queue.
+    function unprocessedRequestsCount() external view returns (uint256);
+
+    /// FWR-only fallback switch (privileged).
+    function setPartialWithdrawals(bool enabled) external;
+    function partialWithdrawalsEnabled() external view returns (bool);
+
+    /// Emitted for every request (validator ejector can use this events 
+    /// to fulfill exits when partial withdrawals are turned off).
+    event ExitRequested(
+        uint256 indexed moduleId,
+        uint256 indexed nodeOperatorId,
+        bytes pubkey,
+        uint64 amountGwei
+    );
+}
+```
+
