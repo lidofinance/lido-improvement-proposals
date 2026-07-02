@@ -154,3 +154,31 @@ A **new-operator grace period** applies: operators created and whose first key a
 3. **Biggest validator first** — prefer the largest-balance validator so exits stay partial and keep the validator active.
 4. **Lowest validator index** — within an operator, ascending validator index.
 
+#### On-chain Oracle
+
+On-chain, the protocol takes the Oracle's ordered requests and turns them into EIP-7002 withdrawals. This happens in **two flows**:
+
+- **Report submission** — the Oracle submits a packed report; each request is decoded and appended to a single FIFO queue.
+- **Execute withdrawal requests** — a permissionless handle pops queued requests and pushes them down the request path to the EIP-7002 predeploy:
+
+```
+VEBO-7002 (FIFO queue)  ->  TriggerableWithdrawalsGateway (TWG)  ->  WithdrawalVault  ->  EIP-7002 predeploy
+  report submission               rate limits, fee refund                encoding         withdrawal request
+```
+
+##### Flow 1 — Report submission
+
+The Oracle calls `submitReportData` with a packed report. The report keeps the existing encoding — a `dataFormat` selector plus a `data` blob of fixed-width records packed contiguously — but introduces a **new `dataFormat` version** whose record carries the withdrawal **amount**. Today's record is 64 bytes; the new record appends an 8-byte `amount`:
+
+```
+/// MSB <----------------------------------------------------------------------------------- LSB
+/// |  3 bytes   |   5 bytes    |    8 bytes     |      48 bytes       |      8 bytes          |
+/// |  moduleId  |  nodeOpId    | validatorIndex |   validatorPubkey   |  amount (gwei) *new*  |
+```
+
+`amount` (uint64, gwei) — **new**; `0` = full withdrawal (FWR), `> 0` = partial withdrawal (PWR).
+
+On submission the contract decodes each record into an `ExitRequest` struct and appends it to the FIFO queue. 
+
+When `setPartialWithdrawals` is off, the report is still in the new format but every record MUST carry `amount == 0` (FWR-only); a non-zero amount is rejected.
+
