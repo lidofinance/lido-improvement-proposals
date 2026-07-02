@@ -231,6 +231,61 @@ interface IValidatorsExitBusOracle7002 {
 | `StakingRouter`                         | Remove `onValidatorExitTriggered` (no longer called by the TWG) and `reportValidatorExitDelay` (late-exit-penalty accounting).                                          |
 | `ValidatorExitDelayVerifier`            | **Removed entirely** — the exit-delay proof contract is obsolete once late-exit penalties are gone.                                                                     |
 | `WithdrawalVault`                       | Already supports partial withdrawals — redeploy only to point at the new TWG address (immutable authorized caller).                                                     |
-| `LidoLocator`                           | Register the upgraded TWG, and remove `validatorExitDelayVerifier` addresses.                                                                                           |
+| `LidoLocator`                           | Register the new TWG address, and remove the `ValidatorExitDelayVerifier` entry.                                                                                        |
 | `OracleDaemonConfig`                    | Add the iterator params (`EXIT_ITERATION_CHUNK`, `MIN_PARTIAL_WITHDRAWAL`) and the active-rebalancing keys.                                                             |
+
+##### `ValidatorsExitBusOracle` → VEBO-7002
+
+The FIFO queue, the report `dataFormat` with `amount`, and the `processExitRequests` / `submitReportData` / `setPartialWithdrawals` surface are described in Flows 1–2 above.
+
+The `setPartialWithdrawals` toggle is the FWR-only fallback: when **off**, the contract accepts FWRs only, `ExitRequested` still fires for every FWR so a Validator Ejector can fulfill them via voluntary exits without EIP-7002 fees. This is the safe mode under sustained extreme EIP-7002 fees.
+
+On `submitReportData`, VEBO-7002 **MUST validate that every record with `amount > 0` (a PWR) targets a `0x02` (compounding-credentials) validator**.
+
+##### `TriggerableWithdrawalsGateway` (TWG)
+
+**Unified request path.** The TWG becomes the single entry point for **all** withdrawal requests — partial and full — instead of a full-exit-only gateway. The full-exit-only `triggerFullWithdrawals` is replaced by a `triggerWithdrawals` method that carries a per-request `amount` (`0` = FWR, `> 0` = PWR):
+
+```solidity
+interface ITriggerableWithdrawalsGateway {
+    struct WithdrawalRequest {
+        uint256 moduleId;
+        uint256 nodeOperatorId;
+        bytes   pubkey;
+        uint64  amount;   // gwei; 0 = full withdrawal (FWR), > 0 = partial withdrawal (PWR)
+        uint8   wcType;   // validator withdrawal-credentials type: 0x01 or 0x02
+    }
+
+    /// Single path for partial and full withdrawal requests.
+    /// Applies the extracted-balance rate limit, forwards each request to the
+    /// WithdrawalVault, and refunds any excess EIP-7002 fee to `refundRecipient`.
+    function triggerWithdrawals(
+        WithdrawalRequest[] calldata requests,
+        address refundRecipient
+    ) external payable;
+}
+```
+
+As part of this it **drops `_notifyStakingModules`**: the current TWG calls back into staking modules (via the Staking Router's `onValidatorExitTriggered`) whenever it triggers an exit, which existed for the late-exit-penalty accounting that this release removes. With that gone, the notification hook is dead weight and is deleted from the request path.
+
+**Rate limiter.** The limiter is **balance-denominated** — it caps the total extracted balance (sum of request `amount`). A full withdrawal (`amount == 0`) counts as the validator's max effective balance (32 ETH for `0x01`, up to 2048 ETH for `0x02`).
+
+##### `StakingRouter`
+
+Two exit-related hooks are removed, both tied to the late-exit-penalty accounting this release drops:
+
+- **`onValidatorExitTriggered`** — the TWG no longer notifies modules on exit, so this callback (and its module-interface counterpart) is deleted.
+- **`reportValidatorExitDelay`** — the entry point through which the `ValidatorExitDelayVerifier` reported proven exit delays for penalty accounting; with penalties gone, nothing calls it.
+
+##### `ValidatorExitDelayVerifier`
+
+**Removed entirely.** This contract proved on-chain that a validator's exit was delayed beyond the allowed window, feeding the late-exit penalty via `StakingRouter.reportValidatorExitDelay`. Once late-exit penalties are removed there is nothing to prove or report, so the contract and its `LidoLocator` registration are deleted.
+
+##### `WithdrawalVault`
+
+The WithdrawalVault already supports EIP-7002 partial withdrawals (variable `amount`), so it needs no functional change. It is **redeployed only to point at the new TWG address** — its authorized caller is an immutable/constructor parameter — after which `LidoLocator` is updated to resolve the new vault.
+
+##### `LidoLocator`
+
+Register the new TWG implementation address so the rest of the protocol resolves them after the upgrade, and **remove the `ValidatorExitDelayVerifier` entry**.
 
