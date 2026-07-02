@@ -87,10 +87,9 @@ The design splits cleanly along the oracle boundary:
 - **On-chain** protocol side — a thin set of primitives that:
     - ingests the Oracle report and appends its requests to a single FIFO queue;
     - exposes a permissionless handle to push queued requests to the EIP-7002 contract;
-    - enforces the exit limits (VEBO rate limit on balance exit and TWG rate limit on requests count);
+    - enforces the exit limits (TWG rate limit on extracted balance);
     - enforces the configurable rebalancing bounds (rate limit, thresholds);
     - holds partial withdrawal requests off/on switch (full withdrawal requests only mode);
-    - verifies that partial withdrawals target `0x02` validators;
 
 #### Off-chain Oracle: ordering and rebalancing logic
 
@@ -163,7 +162,7 @@ On-chain, the protocol takes the Oracle's ordered requests and turns them into E
 
 ```
 VEBO-7002 (FIFO queue)  ->  TriggerableWithdrawalsGateway (TWG)  ->  WithdrawalVault  ->  EIP-7002 predeploy
-  report submission               rate limits, fee refund                encoding         withdrawal request
+  report submission                 rate limits, fee refund             encoding         withdrawal request
 ```
 
 ##### Flow 1 — Report submission
@@ -184,7 +183,7 @@ When `setPartialWithdrawals` is off, the report is still in the new format but e
 
 ##### Flow 2 — Execute withdrawal requests
 
-Anyone calls the permissionless `processExitRequests(count)`, forwarding the per-request EIP-7002 fee. It pops the next `count` requests from the FIFO in order and pushes each down the path above: **TWG** applies the exit limits and refunds excess fee, and the **WithdrawalVault** performs the `0x02` check for PWR, encodes the request, and submits it to the EIP-7002 contract. A request rejected at the predeploy is dropped and must be re-submitted by a later Oracle report.
+Anyone calls the permissionless `processExitRequests(count)`, forwarding the per-request EIP-7002 fee. It pops the next `count` requests from the FIFO in order and pushes each down the path above: **TWG** applies the exit limits and refunds excess fee, then the **WithdrawalVault** encodes the request and submits it to the EIP-7002 contract. A request rejected at the predeploy is dropped and must be re-submitted by a later Oracle report.
 
 ```solidity
 interface IValidatorsExitBusOracle7002 {
@@ -222,4 +221,16 @@ interface IValidatorsExitBusOracle7002 {
     );
 }
 ```
+
+##### Scope — contracts to change
+
+| Contract                                | Change                                                                                                                                                                  |
+|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ValidatorsExitBusOracle` (→ VEBO-7002) | New report `dataFormat` with `amount`; FIFO queue storage; permissionless `processExitRequests` handle; `setPartialWithdrawals` switch.                                 |
+| `TriggerableWithdrawalsGateway` (TWG)   | Single path for all withdrawal requests (partial and full); drop `_notifyStakingModules`; rate limiter changed to bound **extracted balance** instead of request count. |
+| `StakingRouter`                         | Remove `onValidatorExitTriggered` (no longer called by the TWG) and `reportValidatorExitDelay` (late-exit-penalty accounting).                                          |
+| `ValidatorExitDelayVerifier`            | **Removed entirely** — the exit-delay proof contract is obsolete once late-exit penalties are gone.                                                                     |
+| `WithdrawalVault`                       | Already supports partial withdrawals — redeploy only to point at the new TWG address (immutable authorized caller).                                                     |
+| `LidoLocator`                           | Register the upgraded TWG, and remove `validatorExitDelayVerifier` addresses.                                                                                           |
+| `OracleDaemonConfig`                    | Add the iterator params (`EXIT_ITERATION_CHUNK`, `MIN_PARTIAL_WITHDRAWAL`) and the active-rebalancing keys.                                                             |
 
