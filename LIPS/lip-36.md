@@ -167,11 +167,11 @@ Excess tokens on the larger side remain in the executor for the next `addLiquidi
 
 #### Pool Deployment
 
-Deployment parameters, including initial price, A/gamma coefficients, fee structure, and oracle settings, will be published on the forum two weeks before deployment. Curve pools have no admin or pause controls post-deployment and are immutable once live. Emergency controls are scoped to the NEST contracts (see Emergency Controls).
+TwoCrypto-NG pools have no pool-level pause, but are not fully immutable: the Curve factory admin can ramp A/gamma and update fee/rebalancing/oracle parameters. Emergency controls are scoped to the NEST contracts (see Emergency Controls). The Curve factory address, implementation address, math/view implementations, factory admin, fee receiver, initial price, A/gamma, fees, and rebalancing parameters will be published before the on-chain vote.
 
 #### Pool Bootstrap
 
-The pool launches with zero liquidity. Applying the divergence check before the pool has reached sufficient depth would block addLiquidity() at launch; the check is bypassed during bootstrap and engages once the pool crosses a defined depth threshold. The threshold value will be published on the forum two weeks before the on-chain vote.
+The pool launches with zero liquidity. Applying the divergence check before the pool has reached sufficient depth would block `addLiquidity()` at launch; the check is bypassed during bootstrap and engages once the pool crosses a defined depth threshold. The threshold value will be published on the forum two weeks before the on-chain vote.
 
 #### Pool Skew Protection
 
