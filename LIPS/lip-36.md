@@ -5,12 +5,12 @@ status: Approved
 author: Vasiliy Shapovalov, Vitaly Galaichuk, Jen Kopytina, Alexander Belokon, adcv
 discussions-to: https://research.lido.fi/t/liquid-buybacks-nest-execution-with-ldo-wsteth-liquidity/10894
 created: 2026-04-20
-updated: 2026-06-29
+updated: 2026-07-15
 ---
 
 ## Simple Summary
 
-NEST is a deterministic onchain system that creates a direct rule-based economic link between Lido DAO success and LDO. It enables permissionless conversion of an excess share of staking revenue into LDO via CoW Swap and to pair it with wstETH as DAO-owned liquidity in a Curve LDO/wstETH pool. NEST uses explicit spending caps and formulas to determine available surplus. It must be explicitly funded in order to be operational. At launch, it will track staking revenue only; the architecture is designed to accommodate additional revenue sources through future governance votes. NEST can also operate in treasury-only mode if the DAO decides to skip LP provisioning and send converted LDO directly to the treasury.
+NEST is a deterministic onchain system that creates a direct rule-based economic link between Lido DAO success and LDO. It enables permissionless conversion of an excess share of staking revenue into LDO via CoW Swap and to pair it with wstETH as DAO-owned liquidity in a Curve LDO/wstETH pool. NEST uses explicit spending caps and formulas to determine available surplus. It must be explicitly funded in order to be operational. At launch, it will track staking revenue only; the architecture is designed to accommodate additional revenue sources through future governance votes. NEST launches in treasury-only mode, sending converted LDO directly to the treasury, while LP mode `Stonks` stays deployed and can be switched by a subsequent DAO vote.
 
 ## Motivation
 
@@ -29,7 +29,7 @@ Additionally, on-chain LDO liquidity depth is shallow. Without a systematic prov
 
 ### Solution
 
-NEST encodes a governance commitment: when protocol surplus conditions are met, a constrained share of excess staking revenue is automatically converted into LDO and, in LP mode (the initial configuration proposed by this LIP), paired with wstETH and deployed as DAO-owned liquidity. The mechanism is designed to be bounded by spending caps and governance controls, permissionless in normal operation, low-maintenance, and fully controllable by the Lido DAO.
+NEST encodes a governance commitment: when protocol surplus conditions are met, a constrained share of excess staking revenue is automatically converted into LDO and, in LP mode, paired with wstETH and deployed as DAO-owned liquidity. The mechanism is designed to be bounded by spending caps and governance controls, permissionless in normal operation, low-maintenance, and fully controllable by the Lido DAO.
 
 ## Specification
 
@@ -42,11 +42,11 @@ The system operates in two governance-controlled modes:
 1. **LP mode** — acquired LDO is paired with wstETH and deposited into a Curve LDO/wstETH TwoCrypto-NG pool; LP tokens are retained by the `BuybackExecutor` as DAO-owned liquidity.
 2. **Treasury-only mode** — acquired LDO is delivered directly to the Aragon Agent treasury.
 
-The active mode is derived from the active Stonks instance's receiver: the executor for LP mode, the treasury for treasury-only mode. Switching modes means pointing the executor at a different Stonks via `setStonksAndOperatingMode`, which requires a full DAO vote.
+The active mode is derived from the active Stonks instance's receiver: the executor for LP mode, the treasury for treasury-only mode. Switching modes means pointing the executor at a different Stonks via `setStonks`, which requires a full DAO vote.
 
-`setStonksAndOperatingMode` **does not** enforce that no Stonks order is in flight: it sweeps an expired tracked order back to the previous Stonks, but a still-live order survives the switch and is **abandoned**, emitting `OrderAbandoned`. Anyone may call its `recoverTokenFrom` after expiry to return the stETH to the previous Stonks. Operationally, allocation should be paused and any live order recovered before switching modes.
+`setStonks` **does not** enforce that no Stonks order is in flight: it sweeps an expired tracked order back to the previous Stonks, but a still-live order survives the switch and is **abandoned**, emitting `OrderAbandoned`. Anyone may call its `recoverTokenFrom` after expiry to return the stETH to the previous Stonks. Operationally, allocation should be paused and any live order recovered before switching modes.
 
-This LIP proposes deploying NEST in **LP mode as the initial operating configuration**. Treasury-only mode is available as a governance-controlled fallback that could be enabled by a subsequent DAO vote without redeploying the core contracts.
+This LIP originally proposed deploying NEST in LP mode as the initial operating configuration. Since then, further review surfaced reasons to defer launch-day liquidity provisioning, so NEST launches in **treasury-only mode**. LP mode stays fully deployed and can be enabled by a subsequent DAO vote without redeploying any contracts.
 
 ### New Contracts
 
@@ -84,7 +84,7 @@ Receives stETH from the `BuybackAllocator` and, in LP mode, settled LDO directly
 
 #### `Stonks v2`
 
-Stonks v2 Specification can be found [here](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw). The NEST implementation uses Stonks v2 as the CoW Swap integration layer for order creation and settlement. The `BuybackExecutor` interacts with Stonks v2 to create orders with the appropriate parameters and to manage order lifecycle events. At launch a single Stonks instance is deployed with the receiver set to the executor (LP mode); switching to treasury-only mode deploys a new Stonks instance with the receiver set to the treasury.
+Stonks v2 Specification can be found [here](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw). The NEST implementation uses Stonks v2 as the CoW Swap integration layer for order creation and settlement. The `BuybackExecutor` interacts with Stonks v2 to create orders with the appropriate parameters and to manage order lifecycle events. Two Stonks instances are deployed upfront: one with the receiver set to the treasury (treasury-only mode, active at launch) and one with the receiver set to the executor (LP mode).
 
 The existing contracts will be updated to support a configurable settlement receiver address. A new `receiver` field is added to the constructor's `InitParams` struct. If set to `address(0)`, it defaults to `AGENT`, preserving backward compatibility for non-NEST deployments. The stored receiver is passed through to each Order during initialization.
 
@@ -167,11 +167,32 @@ Excess tokens on the larger side remain in the executor for the next `addLiquidi
 
 #### Pool Deployment
 
-TwoCrypto-NG pools have no pool-level pause, but are not fully immutable: the Curve factory admin can ramp A/gamma and update fee/rebalancing/oracle parameters. Emergency controls are scoped to the NEST contracts (see Emergency Controls). The Curve factory address, implementation address, math/view implementations, factory admin, fee receiver, initial price, A/gamma, fees, and rebalancing parameters will be published before the on-chain vote.
+TwoCrypto-NG pools have no pool-level pause, but are not fully immutable: the Curve factory admin can ramp A/gamma and update fee/rebalancing/oracle parameters. Emergency controls are scoped to the NEST contracts (see Emergency Controls). The pool is deployed with the following configuration:
+
+| Parameter            | Value                                               |
+| -------------------- | --------------------------------------------------- |
+| Pool address         | `0xD7f1dA0a28E39dd0dB70E6Acdc2B49846AD22760`        |
+| Name / symbol        | Curve.fi LDO/wstETH · `LDOwstETH-f`                 |
+| Coins                | LDO (`0x5A98…1B32`) / wstETH (`0x7f39…2Ca0`)        |
+| A                    | `400000`                                            |
+| gamma                | `145000000000000` (0.000145)                        |
+| mid_fee              | `500000` (0.005%)                                   |
+| out_fee              | `5000000` (0.05%)                                   |
+| fee_gamma            | `230000000000000` (0.00023)                         |
+| allowed_extra_profit | `2000000000000`                                     |
+| adjustment_step      | `146000000000000`                                   |
+| ma_time              | `601` (seconds)                                     |
+| initial_price        | `8075081795329464726918` (~8,075.08 LDO per wstETH) |
+| Factory              | `0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F`        |
+| Pool implementation  | `0x934791f7F391727db92BFF94cd789c4623d14c52`        |
+| Math implementation  | `0x1Fd8Af16DC4BEBd950521308D55d0543b6cDF4A1`        |
+| Views implementation | `0x07CdEBF81977E111B08C126DEFA07818d0045b80`        |
+| Factory admin        | `0x97aA696e37659Fb4f0B53824246d802Df40E980A`        |
+| Fee receiver         | `0xa2Bcd1a4Efbd04B63cd03f5aFf2561106ebCCE00`        |
 
 #### Pool Bootstrap
 
-The pool launches with zero liquidity. Applying the divergence check before the pool has reached sufficient depth would block `addLiquidity()` at launch; the check is bypassed during bootstrap and engages once the pool crosses a defined depth threshold. The threshold value will be published on the forum two weeks before the on-chain vote.
+The pool launches with zero liquidity. Applying the divergence check before the pool has reached sufficient depth would block `addLiquidity()` at launch; the check is bypassed during bootstrap and engages once the pool crosses a defined depth threshold, set to $250,000 (`poolBootstrapMinTvlUsd`).
 
 #### Pool Skew Protection
 
@@ -230,21 +251,24 @@ All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with va
 
 ### Proposed Initial Values
 
-| Parameter                         | Value                           | Notes                                                                                                                           |
-| --------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `minStEthPriceUSD`                | `0`                             | Price floor disabled at launch; retained as a future governance lever                                                           |
-| `reserveDailyRateUSD`             | ~$109,589 (`$40,000,000 / 365`) | $40M annual revenue baseline                                                                                                    |
-| `surplusShareBP`                  | `5000` (50%)                    | 50% of surplus allocated to NEST. In LP mode: half of that budget goes to the LDO purchase leg, half to the wstETH pairing leg. |
-| `dailyCapUSD`                     | `$50,000`                       | Primary active safety limiter                                                                                                   |
-| `yearlyCapUSD`                    | `$10,000,000`                   | Annual ceiling                                                                                                                  |
-| `minSpendPerCallUSD`              | published before the vote       | Mandatory non-zero; constructor enforces `> 0` and `≤ dailyCapUSD`                                                              |
-| pool guards, order/deposit bounds | published before the vote       | Pool- and sizing-dependent; finalized with the pool parameters                                                                  |
+| Parameter                                         | Value                | Notes                                                                                                                           |
+| ------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `minStEthPriceUSD`                                | `0`                  | Price floor disabled at launch; retained as a future governance lever                                                           |
+| `reserveDailyRateUSD`                             | `$109,589`           | $40M annual revenue baseline, round daily literal                                                                               |
+| `surplusShareBP`                                  | `5000` (50%)         | 50% of surplus allocated to NEST. In LP mode: half of that budget goes to the LDO purchase leg, half to the wstETH pairing leg. |
+| `dailyCapUSD`                                     | `$50,000`            | Primary active safety limiter                                                                                                   |
+| `yearlyCapUSD`                                    | `$10,000,000`        | Annual ceiling                                                                                                                  |
+| `minSpendPerCallUSD`                              | `$1,000`             | Dust floor per allocation; constructor enforces `> 0` and `≤ dailyCapUSD`                                                       |
+| `poolPriceDivergenceToleranceBps`                 | `200` (2%)           | Divergence guard on LP deposits                                                                                                 |
+| `poolBootstrapMinTvlUsd`                          | `$250,000`           | Pool TVL at/above which the divergence gate engages                                                                             |
+| `minAllowedOrderAmount` / `maxAllowedOrderAmount` | 1 / 20 stETH         | Per-order stETH bounds on the executor                                                                                          |
+| `minDepositValueUsd` / `maxDepositValueUsd`       | `$1,000` / `$50,000` | Per-`addLiquidity()` USD bounds                                                                                                 |
 
 ### Roles and Authority
 
 | Role                 | Held By                             | Key Powers                                                                                                                                               |
 | -------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DEFAULT_ADMIN_ROLE` | Aragon Voting                       | Full configuration control on both contracts, `activate` / `setExecutor` / `setStonksAndOperatingMode`, role management. Requires full DAO vote.         |
+| `DEFAULT_ADMIN_ROLE` | Aragon Voting                       | Full configuration control on both contracts, `activate` / `setExecutor` / `setStonks`, role management. Requires full DAO vote.                         |
 | `MANAGER_ROLE`       | Treasury Management Committee (TMC) | Asset recovery, LP token management (`removeLiquidityAndRecoverToTreasury`, `recoverERC20`), propose EasyTrack motions to fund the allocator with stETH. |
 | `EMERGENCY_ROLE`     | Emergency Committee / Multisig, TMC | Pause/unpause the executor and Stonks creation/signatures. Cannot modify configuration.                                                                  |
 | `ALLOCATOR_ROLE`     | `BuybackAllocator`                  | Calls the executor's allocation hook. Granted to the allocator at deployment.                                                                            |
