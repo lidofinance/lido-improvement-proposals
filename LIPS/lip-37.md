@@ -1,6 +1,6 @@
 ---
 lip: 37
-title: "Key Delegation Authority"
+title: "Key Delegation Framework"
 status: WIP
 author: Raman Siamionau, Matsvei Talstalutski
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
@@ -28,7 +28,7 @@ Operational compromise is now the dominant cause of losses in the ecosystem. Of 
 
 Today each role handles its signing keys in its own one-off way, and rotating any of them runs through the same heavyweight governance path. Without a shared primitive, every new role re-invents key custody and rotation, and monitoring must learn each role's own conventions — multiplying operational risk. Standardizing delegation as a single, audited mechanism lets any role inherit the same rotation, revocation, and termination semantics, and lets monitoring treat every delegated key uniformly.
 
-KDA improvements unlock:
+KDF improvements unlock:
 
 - **Routine rotation as hygiene.** Periodic hot-key rotation limits the value of any single leaked key and shrinks the window in which an undetected compromise stays useful — a standard operational practice that the governance-gated path makes impractical today.
 - **Owners’ setup.** Owners increasingly prefer a multisig (or hard-wallet) over a bare EOA for stronger custody.
@@ -140,7 +140,7 @@ interface IDelegationContract {
     /// @param delegate Address of the incoming delegate.
     function assignDelegate(address delegate) external;
 
-    /// @notice Remove the current and pending delegate. 
+    /// @notice Immediately remove the current and pending delegate. 
     ///         Only callable by owner.
     ///         Reverts if the contract is terminated.
     function revokeDelegate() external;
@@ -504,6 +504,8 @@ function addGuardian(address guardian, uint256 newQuorum) external {
 }
 ```
 
+**Contract version bump.** Because `depositBufferedEther`, `pauseDeposits`, and `unvetSigningKeys` change a signature format — each `Signature` / `Signature[]` argument becomes `GuardianSignature` / `GuardianSignature[]` — this is a breaking interface change, so the redeployed contract bumps `VERSION` to `5`.
+
 ---
 
 ###### Council Daemon — Push and Pull Integration (Signer Side)
@@ -536,7 +538,7 @@ To accept those messages the ejector keeps an **allowlist** of trusted oracle si
 
 Migration is designed to be zero-downtime. All preparatory steps are completed off the critical path, leaving a single irreversible governance vote that flips every prepared seat to delegation at once.
 
-1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(ownerAddress, hotKey, cooldown)` — the owner being a Safe multisig, fixed for the contract's lifetime (see Owner Immutability in Part 1); the active delegate (its existing hot key) set in the same transaction; and a `cooldown` of **1 hour** for both Oracle and DSM contracts (reduced or 0 on testnet). (Passing `address(0)` for the delegate and assigning it later via `assignDelegate()` is also supported.)
+1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(ownerAddress, hotKey, cooldown)` — the owner being a Safe multisig, fixed for the contract's lifetime (see Owner Immutability in Part 1); the active delegate (its existing hot key) set in the same transaction; and a `cooldown` set according to policy for both Oracle and DSM services.
 2. **Publish and verify addresses (operators)**: each operator publishes its `DelegationContract` and owner addresses on the Lido research forum, so the DAO and other operators can verify them ahead of the vote.
 3. **Prepare daemons for rotation (operators)**: each operator stages the delegate key and the `DELEGATION_CONTRACT_ADDRESS` configuration in its Oracle and Council daemons, so they are ready to operate via the delegation contract the moment the seat is reassigned. No key material changes, and the daemons keep operating from the hot EOA until the vote lands.
 4. **Set up monitoring (Lido team)**: the Lido team registers every delegation contract in the monitoring infrastructure and begins watching the owner and delegate addresses for unexpected activity, so anomalies are caught both before and after the seat reassignment.
@@ -553,7 +555,7 @@ Until the governance vote in step 5 executes, operators continue to run as EOA p
 | `DelegationFactory`                | deployer                       | Single new deployment establishing the KDF infrastructure.                                                               |
 | `DelegationContract` (one per bot) | each operator, via the factory | One instance per Oracle/Council bot; deployed during the operator migration (Part 2), not by a single governance action. |
 
-**Redeployed at a new address (standalone, non-upgradeable) — references must be repointed by governance:**
+**Redeployed at a new address:**
 
 | Contract                | Repointing required                 |
 |-------------------------|-------------------------------------|
