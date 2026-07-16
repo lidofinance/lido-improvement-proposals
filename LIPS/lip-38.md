@@ -108,7 +108,7 @@ All three phases reuse the same machinery. Two governance-tunable parameters dri
 
 **No FWR over an unprocessed PWR.** The Oracle MUST NOT issue an FWR for a validator that still has an unprocessed PWR (in the FIFO queue or not yet observed as processed on the CL). The consensus layer rejects a full withdrawal request while a partial one for the same validator is pending, so such an FWR would be wasted and need re-requesting. The iterator therefore excludes validators with in-flight PWRs from FWR selection and only escalates a validator from PWR to FWR in a later report, once the PWR has cleared. See [Security Considerations](#security-considerations).
 
-**Per-report exit limit.** The iterator stops accumulating requests once the report's cumulative exited balance (`max_current_exit_balance`) reaches the per-report exit limit. This limit is shared across all three phases: Phase 1 draws against it first, and Phases 2–3 consume whatever remains.
+**Per-report exit limit.** The iterator stops accumulating requests once the report's cumulative exited balance (the `max_current_exit_balance` accumulator) reaches the per-report exit limit — the sanity checker's `maxBalanceExitRequestedPerReportInEth` parameter introduced in [LIP-35](lip-35.md). This limit is shared across all three phases: Phase 1 draws against it first, and Phases 2–3 consume whatever remains. Requests are weighed with the **same formula as the on-chain TWG limiter** — `amountGwei` for a PWR, max effective balance by WC type (32/2048 ETH) for an FWR; see [rate limiter invariants](#triggerablewithdrawalsgateway-twg).
 
 ##### Phase 1 — Cover withdrawal-queue demand
 
@@ -117,7 +117,7 @@ Phase 1 covers the current **withdrawal-queue (WQ) demand**, issuing PWR-first i
 1. **Forced-exit deviation** — operators over a force-exit limit first, by how far `currentValidators − targetValidators` exceeds the threshold.
 2. **Soft-exit deviation** — same idea for soft-exit limits, after forced exits.
 3. **Module share-rate deviation** — modules above their `priority_exit_share_threshold` (relative to total protocol balance) get elevated priority.
-4. **Target-stake deviation** — operators furthest **above** their target stake exit first, where `targetStake = moduleStake × operatorWeight / moduleTotalWeight`.
+4. **Target-stake deviation** — operators furthest **above** their target stake exit first, where `targetStake = moduleStake × operatorWeight / moduleTotalWeight`. Operator weights come from [LIP-35](lip-35.md): read on-chain via `getOperatorWeights` for CMv2, aggregated via the Meta Registry for CMv1, and a uniform baseline weight elsewhere.
 5. **Already-requested validators** — validators that already have PWR demand allocated to them **within this report** rank first, but only while their remaining balance stays above `MIN_ACTIVATION_BALANCE`. This concentrates exited balance into as few validators as possible, minimizing the number of distinct PWRs by taking more balance out of one validator before moving to the next.
 6. **Biggest validator first** — among the operator's validators, prefer the one with the **largest balance**. This maximizes the balance a single PWR can extract while leaving the validator active, favoring partial over full withdrawals.
 7. **Lowest validator index** — within an operator, ascending validator index.
@@ -133,18 +133,33 @@ After WQ demand is covered, the iterator satisfies any **forced-exit obligations
 
 This phase applies **only to the CMv2 staking module** and adds exit demand against operators drifting above their target stake, pushing the module back toward its target distribution.
 
-**Configuration.** All Phase 4 parameters live as keys in the existing **`OracleDaemonConfig`** key-value store.
+**Data model.** Phase 3 (and Phase 1 criterion 4) uses the following definitions:
 
-| `OracleDaemonConfig` key                | Type        | Meaning                                                                                     |
-|-----------------------------------------|-------------|---------------------------------------------------------------------------------------------|
-| `ACTIVE_REBALANCING_ENABLED`            | bool        | Global on/off for Phase 3.                                                                  |
-| `ACTIVE_REBALANCING_RATE_LIMIT`         | uint (ETH)  | Max stake exitable for rebalancing per VEBO report.                                         |
-| `ACTIVE_REBALANCING_OPERATOR_EXCESS_BP` | uint (bp)   | Operator-level trigger: `currentStake` over `targetStake` as a share of `targetStake`.      |
-| `ACTIVE_REBALANCING_GRACE_PERIOD`       | uint (days) | Grace period before a new operator can affect the module's stake balance used to rebalance. |
+- **`operatorWeight` / `moduleTotalWeight`** — CMv2 operator weights introduced in [LIP-35](lip-35.md), read on-chain via `getOperatorWeights`. `moduleTotalWeight` is the sum of weights over operators participating in the calculation (see the grace period below).
+- **`targetStake`** = `moduleStake × operatorWeight / moduleTotalWeight`, where `moduleStake` is the total balance of CMv2 validators at the report's refSlot, **excluding** operators inside the grace period.
+- **`currentStake`** — the sum of the operator's active validator balances at refSlot, **net of in-flight PWR amounts**: withdrawal requests already queued in the VEBO FIFO plus partial withdrawals pending on the CL (`pending_partial_withdrawals`). Without this netting, consecutive reports would double-count the same excess and over-drain the operator before earlier requests take effect.
+- **Request types.** All CMv2 validators use `0x02` credentials; rebalancing prefers PWRs but **may issue an FWR** where a partial withdrawal cannot serve the demand (validator balance at the effective-balance floor).
 
-**Trigger.** Phase 3 runs only if `ACTIVE_REBALANCING_ENABLED` is set. 
+**Configuration.** All Phase 3 parameters live as keys in the existing **`OracleDaemonConfig`** key-value store.
 
-A **new-operator grace period** applies: operators created and whose first key activated less than `ACTIVE_REBALANCING_GRACE_PERIOD` days ago cannot *affect* rebalancing calculations, but remain eligible to *receive* redistributed deposits via the normal deposit allocation.
+| `OracleDaemonConfig` key                | Type        | Meaning                                                                                                                             |
+|-----------------------------------------|-------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| `ACTIVE_REBALANCING_ENABLED`            | bool        | Global on/off for Phase 3.                                                                                                          |
+| `ACTIVE_REBALANCING_RATE_LIMIT`         | uint (ETH)  | Max stake exitable for rebalancing per VEBO report.                                                                                 |
+| `ACTIVE_REBALANCING_OPERATOR_EXCESS_BP` | uint (bp)   | Operator-level trigger: `currentStake` over `targetStake` as a share of `targetStake`.                                              |
+| `ACTIVE_REBALANCING_MODULE_EXCESS_BP`   | uint (bp)   | Module-level trigger: the sum of over-target stake across all operators as a share of total module stake.                           |
+| `ACTIVE_REBALANCING_GRACE_PERIOD`       | uint (days) | Days since first key activation before an operator counts toward `moduleStake`/`moduleTotalWeight` and participates in rebalancing. |
+
+**Trigger.** Phase 3 requires `ACTIVE_REBALANCING_ENABLED` to be set, and runs when **one or more** of the following conditions holds:
+
+1. **Operator-level** — at least one operator's `currentStake` exceeds `targetStake × (1 + ACTIVE_REBALANCING_OPERATOR_EXCESS_BP)`;
+2. **Module-level** — the sum of stake above target across all operators exceeds the defined share of total module stake:
+   `Σ max(0, currentStake − targetStake) > moduleStake × ACTIVE_REBALANCING_MODULE_EXCESS_BP`
+   (summed over operators outside the grace period).
+
+While neither condition holds, Phase 3 stays dormant, so small transient drifts don't generate exit churn.
+
+A **new-operator grace period** applies: an operator whose first key activated less than `ACTIVE_REBALANCING_GRACE_PERIOD` days ago is **excluded from the rebalancing calculation entirely** — its balance does not count toward `moduleStake`, its weight does not count toward `moduleTotalWeight`, and it is neither ranked nor targeted by rebalancing exits. Grace-period operators remain eligible to receive deposits via the normal deposit allocation.
 
 **Bounds.** The total rebalancing stake added to the report is capped at `ACTIVE_REBALANCING_RATE_LIMIT`.
 
@@ -169,15 +184,17 @@ VEBO-7002 (FIFO queue)  ->  TriggerableWithdrawalsGateway (TWG)  ->  WithdrawalV
 
 ##### Flow 1 — Report submission
 
-The Oracle calls `submitReportData` with a packed report. The report keeps the existing encoding — a `dataFormat` selector plus a `data` blob of fixed-width records packed contiguously — but introduces a **new `dataFormat` version** whose record carries the withdrawal **amount**. Today's record is 64 bytes; the new record appends an 8-byte `amount`:
+The Oracle calls `submitReportData` with a packed report. The report keeps the existing encoding — a `dataFormat` selector plus a `data` blob of fixed-width records packed contiguously — but introduces a **new `dataFormat` version** whose record carries the withdrawal **amount**. The current record (`DATA_FORMAT_LIST_WITH_KEY_INDEX = 2`, introduced in [LIP-35](lip-35.md)) is 72 bytes; the new record appends an 8-byte `amount`:
 
 ```
-/// MSB <----------------------------------------------------------------------------------- LSB
-/// |  3 bytes   |   5 bytes    |    8 bytes     |      48 bytes       |      8 bytes          |
-/// |  moduleId  |  nodeOpId    | validatorIndex |   validatorPubkey   |  amount (gwei) *new*  |
+/// MSB <--------------------------------------------------------------------------------------------------- LSB
+/// |  3 bytes   |   5 bytes    |    8 bytes     |   8 bytes  |      48 bytes       |      8 bytes          |
+/// |  moduleId  |  nodeOpId    | validatorIndex |  keyIndex  |   validatorPubkey   |  amount (gwei) *new*  |
 ```
 
 `amount` (uint64, gwei) — **new**; `0` = full withdrawal (FWR), `> 0` = partial withdrawal (PWR).
+
+`keyIndex` is **retained** from format 2: it lets the contract check against the staking module's key registry that the reported pubkey is a real registered key and determine its withdrawal-credentials type (`0x01`/`0x02`) on-chain — this is what backs the `0x02` validation of PWRs at submission.
 
 On submission the contract decodes each record into an `ExitRequest` struct and appends it to the FIFO queue. 
 
@@ -186,6 +203,8 @@ When `setPartialWithdrawals` is off, the report is still in the new format but e
 ##### Flow 2 — Execute withdrawal requests
 
 Anyone calls the permissionless `processExitRequests(count)`, forwarding the per-request EIP-7002 fee. It pops the next `count` requests from the FIFO in order and pushes each down the path above: **TWG** applies the exit limits and refunds excess fee, then the **WithdrawalVault** encodes the request and submits it to the EIP-7002 contract. A request rejected at the predeploy is dropped and must be re-submitted by a later Oracle report.
+
+**Cost model.** EIP-7002 fees for all VEBO-path requests are paid by the `processExitRequests` caller (excess is refunded via the TWG). This release **deliberately removes** the previous charge-back of forced-exit fees to Node Operator bond (CSM's `_fulfillExitObligations`, driven by the `onValidatorExitTriggered` notification): with the notification hooks gone, forced-exit fees are no longer billed to the misbehaving operator and are borne by the executor instead. The trade this buys: forced exits no longer depend on operator compliance at all — the protocol withdraws the stake itself via EIP-7002, so per-operator fee accounting is dead weight.
 
 ```solidity
 interface IValidatorsExitBusOracle7002 {
@@ -215,9 +234,12 @@ interface IValidatorsExitBusOracle7002 {
 
     /// Emitted for every request (validator ejector can use this events 
     /// to fulfill exits when partial withdrawals are turned off).
+    /// `validatorIndex` is carried by the packed report record and is included
+    /// so the ejector can keep matching pre-signed exit messages by index.
     event ExitRequested(
         uint256 indexed moduleId,
         uint256 indexed nodeOperatorId,
+        uint256 validatorIndex,
         bytes pubkey,
         uint64 amountGwei
     );
@@ -226,27 +248,35 @@ interface IValidatorsExitBusOracle7002 {
 
 ##### Scope — contracts to change
 
-| Contract                                | Change                                                                                                                                                                  |
-|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ValidatorsExitBusOracle` (→ VEBO-7002) | New report `dataFormat` with `amount`; FIFO queue storage; permissionless `processExitRequests` handle; `setPartialWithdrawals` switch.                                 |
-| `TriggerableWithdrawalsGateway` (TWG)   | Single path for all withdrawal requests (partial and full); drop `_notifyStakingModules`; rate limiter changed to bound **extracted balance** instead of request count. |
-| `StakingRouter`                         | Remove `onValidatorExitTriggered` (no longer called by the TWG) and `reportValidatorExitDelay` (late-exit-penalty accounting).                                          |
-| `ValidatorExitDelayVerifier`            | **Removed entirely** — the exit-delay proof contract is obsolete once late-exit penalties are gone.                                                                     |
-| `WithdrawalVault`                       | Already supports partial withdrawals — redeploy only to point at the new TWG address (immutable authorized caller).                                                     |
-| `LidoLocator`                           | Register the new TWG address, and remove the `ValidatorExitDelayVerifier` entry.                                                                                        |
-| `OracleDaemonConfig`                    | Add the iterator params (`EXIT_ITERATION_CHUNK`, `MIN_PARTIAL_WITHDRAWAL`) and the active-rebalancing keys.                                                             |
+| Contract                                | Change                                                                                                                                                                                                                                                                                         |
+|-----------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ValidatorsExitBusOracle` (→ VEBO-7002) | New report `dataFormat` with `amount`; FIFO queue storage; permissionless `processExitRequests` handle; `setPartialWithdrawals` switch.                                                                                                                                                        |
+| `TriggerableWithdrawalsGateway` (TWG)   | Add `triggerWithdrawals` (partial and full, used by VEBO-7002); **retain `triggerFullWithdrawals`** unchanged for existing consumers (CSM `Ejector`); drop `_notifyStakingModules`; rate limiter changed to bound **extracted balance** instead of request count, shared by both entry points. |
+| `StakingRouter`                         | Remove `onValidatorExitTriggered` (no longer called by the TWG) and `reportValidatorExitDelay` (late-exit-penalty accounting); revoke the two orphaned role grants.                                                                                                                            |
+| `ValidatorExitDelayVerifier`            | **Removed entirely** — the exit-delay proof contract is obsolete once late-exit penalties are gone.                                                                                                                                                                                            |
+| `WithdrawalVault`                       | Already supports partial withdrawals — implementation upgrade behind the existing proxy, with the new TWG as authorized caller (immutable constructor parameter). The proxy address is the protocol's withdrawal-credentials target and never changes.                                         |
+| `LidoLocator`                           | Register the new TWG address, and remove the `ValidatorExitDelayVerifier` entry.                                                                                                                                                                                                               |
+| `OracleDaemonConfig`                    | Add the iterator params (`EXIT_ITERATION_CHUNK`, `MIN_PARTIAL_WITHDRAWAL`) and the active-rebalancing keys.                                                                                                                                                                                    |
 
 ##### `ValidatorsExitBusOracle` → VEBO-7002
 
 The FIFO queue, the report `dataFormat` with `amount`, and the `processExitRequests` / `submitReportData` / `setPartialWithdrawals` surface are described in Flows 1–2 above.
 
-The `setPartialWithdrawals` toggle is the FWR-only fallback: when **off**, the contract accepts FWRs only, `ExitRequested` still fires for every FWR so a Validator Ejector can fulfill them via voluntary exits without EIP-7002 fees. This is the safe mode under sustained extreme EIP-7002 fees. While it is off, the off-chain VEBO **must not count any queued-but-unexecuted PWRs** as covering WQ demand when computing the next report.
+**Cutover.** Legacy report hashes with exit data not yet delivered at the moment of the upgrade are **abandoned** — the new format cannot deliver them, and no legacy delivery path is retained. This is accepted: the underlying exit demand re-emerges organically from validator balances and is re-covered by subsequent VEBO-7002 reports.
+
+The `setPartialWithdrawals` toggle is the FWR-only fallback: when **off**, the contract accepts FWRs only, `ExitRequested` still fires for every FWR so a Validator Ejector can fulfill them via voluntary exits without EIP-7002 fees. This is the safe mode under sustained extreme EIP-7002 fees.
+
+**Switch semantics:**
+
+- **Role.** `setPartialWithdrawals` is gated by a dedicated role held by **DAO governance in both directions** — turning the mode off and back on each require a vote. The switch is a considered protocol-mode change, not a fast emergency control.
+- **Validity at submission.** Reports are validated against the **live** switch state in `submitReportData`: while the switch is off, any record with `amount > 0` reverts the whole submission. A report built and quorum-agreed before a mid-frame flip therefore reverts; that frame is skipped and the next report is built FWR-only. This is accepted — the switch flips at governance speed, so a stranded frame is a rare, bounded cost.
+- **Already-queued PWRs.** PWRs sitting in the FIFO when the switch turns off **remain in the queue and must still be executed** — there is no dismissal. At the same time, the off-chain VEBO **must not count queued-but-unexecuted PWRs** as covering WQ demand when computing subsequent reports, because under the fee conditions that motivate the switch there is no guarantee of when they execute. The consequence is accepted double-coverage: the same demand may be covered once by the eventually-executed PWRs and once by the replacement FWRs. The resulting over-withdrawal is harmless — the excess ETH lands in the buffer and is absorbed by the regular deposit/withdrawal cycle.
 
 On `submitReportData`, VEBO-7002 **MUST validate that every record with `amount > 0` (a PWR) targets a `0x02` (compounding-credentials) validator**.
 
 ##### `TriggerableWithdrawalsGateway` (TWG)
 
-**Unified request path.** The TWG becomes the single entry point for **all** withdrawal requests — partial and full — instead of a full-exit-only gateway. The full-exit-only `triggerFullWithdrawals` is replaced by a `triggerWithdrawals` method that carries a per-request `amount` (`0` = FWR, `> 0` = PWR):
+**Unified request path.** The TWG becomes the single entry point for **all** withdrawal requests — partial and full. A new `triggerWithdrawals` method carrying a per-request `amount` (`0` = FWR, `> 0` = PWR) is added for VEBO-7002. The existing full-exit-only **`triggerFullWithdrawals` is retained with an unchanged external signature**, so current consumers — the CSM `Ejector` (`voluntaryEject` and strikes-based ejection via `ValidatorStrikes._ejectByStrikes`), which resolves the TWG from `LidoLocator` at call time — keep working across the upgrade without a redeploy or role migration:
 
 ```solidity
 interface ITriggerableWithdrawalsGateway {
@@ -258,19 +288,34 @@ interface ITriggerableWithdrawalsGateway {
         uint8   wcType;   // validator withdrawal-credentials type: 0x01 or 0x02
     }
 
-    /// Single path for partial and full withdrawal requests.
+    /// New single path for partial and full withdrawal requests (used by VEBO-7002).
     /// Applies the extracted-balance rate limit, forwards each request to the
     /// WithdrawalVault, and refunds any excess EIP-7002 fee to `refundRecipient`.
     function triggerWithdrawals(
         WithdrawalRequest[] calldata requests,
         address refundRecipient
     ) external payable;
+
+    /// Retained: full-withdrawal-only entry point with the existing external
+    /// signature, kept for backward compatibility with deployed consumers
+    /// (CSM Ejector). Internally routed through the same request path and the
+    /// same extracted-balance rate limit as `triggerWithdrawals` (each FWR
+    /// counted at the validator's max effective balance).
+    function triggerFullWithdrawals(/* unchanged signature */) external payable;
 }
 ```
 
+Both entry points draw from the **same** extracted-balance rate limit, so the retained method cannot be used to bypass the per-frame budget.
+
 As part of this it **drops `_notifyStakingModules`**: the current TWG calls back into staking modules (via the Staking Router's `onValidatorExitTriggered`) whenever it triggers an exit, which existed for the late-exit-penalty accounting that this release removes. With that gone, the notification hook is dead weight and is deleted from the request path.
 
-**Rate limiter.** The limiter is **balance-denominated** — it caps the total extracted balance (sum of request `amount`). A full withdrawal (`amount == 0`) counts as the validator's max effective balance (32 ETH for `0x01`, up to 2048 ETH for `0x02`).
+Note that this is a **behavioral change for the retained `triggerFullWithdrawals`** as well: its external signature is unchanged, but it no longer notifies staking modules on exit. Any module-side logic hanging off that notification (e.g. CSM's EL-fee charge-back against operator bond) stops firing. This is a deliberate removal — see the [cost model](#flow-2--execute-withdrawal-requests) in Flow 2.
+
+**Rate limiter.** The limiter is **balance-denominated** — it caps the total extracted balance per frame. Three invariants govern it:
+
+1. **One weight formula, both sides.** A request weighs `amountGwei` when `amountGwei > 0` (PWR), otherwise the validator's max effective balance by WC type — 32 ETH for `0x01`, 2048 ETH for `0x02` (FWR). The off-chain iterator's per-report exit limit, the submission-time sanity check, and the TWG limiter MUST all apply **exactly this formula** — any divergence would make a quorum-agreed report revert deterministically at `submitReportData`, frame after frame. Max-EB (rather than the validator's actual balance) is used for FWRs because it is verifiable on-chain from `wcType` alone; the cost is conservative budget consumption when FWRs dominate.
+2. **Frame budget floor.** The configured limit MUST be ≥ 2048 ETH, so the head-of-queue request — whatever its weight — always fits in a fresh frame and the FIFO can never jam permanently on a single max-weight FWR.
+3. **Prefix-processing on exhaustion.** When a `processExitRequests(count)` batch would exceed the remaining frame budget, the TWG processes the maximal prefix that fits and stops; it does not revert the batch and never skips over the blocking request.
 
 ##### `StakingRouter`
 
@@ -279,13 +324,17 @@ Two exit-related hooks are removed, both tied to the late-exit-penalty accountin
 - **`onValidatorExitTriggered`** — the TWG no longer notifies modules on exit, so this callback (and its module-interface counterpart) is deleted.
 - **`reportValidatorExitDelay`** — the entry point through which the `ValidatorExitDelayVerifier` reported proven exit delays for penalty accounting; with penalties gone, nothing calls it.
 
+Removing the hooks orphans their access-control grants, so the upgrade vote MUST also **revoke the corresponding roles**: the TWG's grant to call `onValidatorExitTriggered` and the `ValidatorExitDelayVerifier`'s grant to call `reportValidatorExitDelay`.
+
+The module-side counterparts of these hooks (their implementations in NOR, SDVT, and CSM) become unreachable dead code. **No staking-module upgrade is forced** by this release; each module can drop the methods in its next regular release.
+
 ##### `ValidatorExitDelayVerifier`
 
 **Removed entirely.** This contract proved on-chain that a validator's exit was delayed beyond the allowed window, feeding the late-exit penalty via `StakingRouter.reportValidatorExitDelay`. Once late-exit penalties are removed there is nothing to prove or report, so the contract and its `LidoLocator` registration are deleted.
 
 ##### `WithdrawalVault`
 
-The WithdrawalVault already supports EIP-7002 partial withdrawals (variable `amount`), so it needs no functional change. It is **redeployed only to point at the new TWG address** — its authorized caller is an immutable/constructor parameter — after which `LidoLocator` is updated to resolve the new vault.
+The WithdrawalVault already supports EIP-7002 partial withdrawals (variable `amount`), so it needs no functional change. Its proxy address is the target of the protocol's withdrawal credentials and therefore **cannot move**; the change is an **implementation upgrade behind the existing proxy** — a new implementation constructed with the new TWG as its authorized caller (immutable constructor parameter). The `LidoLocator` entry for the vault is unchanged.
 
 ##### `LidoLocator`
 
@@ -295,14 +344,15 @@ Register the new TWG implementation address so the rest of the protocol resolves
 
 This release **adds the following keys** to the contract (iterator params, see [Shared iterator mechanics](#shared-iterator-mechanics); active-rebalancing keys, see [Phase 3 — Active rebalancing](#phase-3--active-rebalancing)):
 
-| Key                                     | Type        | Default | Meaning                                                                                   |
-|-----------------------------------------|-------------|---------|-------------------------------------------------------------------------------------------|
-| `EXIT_ITERATION_CHUNK`                  | uint (ETH)  | 32      | Fixed unit of demand the iterator allocates per step.                                     |
-| `MIN_PARTIAL_WITHDRAWAL`                | uint (ETH)  | 8       | Min withdrawable balance above the floor for a validator to serve a PWR; PWR lower bound. |
-| `ACTIVE_REBALANCING_ENABLED`            | bool        | false   | Global on/off for Phase 3.                                                                |
-| `ACTIVE_REBALANCING_RATE_LIMIT`         | uint (ETH)  | —       | Max stake exitable for rebalancing per VEBO report.                                       |
-| `ACTIVE_REBALANCING_OPERATOR_EXCESS_BP` | uint (bp)   | —       | Operator-level trigger: `currentStake` over `targetStake` as a share of `targetStake`.    |
-| `ACTIVE_REBALANCING_GRACE_PERIOD`       | uint (days) | —       | Grace period before a new operator can affect the module's stake balance.                 |
+| Key                                     | Type        | Default | Meaning                                                                                     |
+|-----------------------------------------|-------------|---------|---------------------------------------------------------------------------------------------|
+| `EXIT_ITERATION_CHUNK`                  | uint (ETH)  | 32      | Fixed unit of demand the iterator allocates per step.                                       |
+| `MIN_PARTIAL_WITHDRAWAL`                | uint (ETH)  | 8       | Min withdrawable balance above the floor for a validator to serve a PWR; PWR lower bound.   |
+| `ACTIVE_REBALANCING_ENABLED`            | bool        | false   | Global on/off for Phase 3.                                                                  |
+| `ACTIVE_REBALANCING_RATE_LIMIT`         | uint (ETH)  | —       | Max stake exitable for rebalancing per VEBO report.                                         |
+| `ACTIVE_REBALANCING_OPERATOR_EXCESS_BP` | uint (bp)   | —       | Operator-level trigger: `currentStake` over `targetStake` as a share of `targetStake`.      |
+| `ACTIVE_REBALANCING_MODULE_EXCESS_BP`   | uint (bp)   | —       | Module-level trigger: sum of over-target stake across operators as a share of module stake. |
+| `ACTIVE_REBALANCING_GRACE_PERIOD`       | uint (days) | —       | Days since first key activation before an operator counts in rebalancing calculations.      |
 
 #### EasyTrack factories
 
@@ -313,14 +363,15 @@ The EasyTrack factories that interact with VEBO (e.g. the VEBO-bypass exit flow)
 
 - **Permissionless interference / DDoS.** The single FIFO queue keeps concurrency entirely under VEBO control and avoids FWR-replay attack surface.
 - **PWR/FWR concurrency on one validator.** The consensus layer rejects a full withdrawal request while the validator still has an unprocessed partial withdrawal request. So if VEBO issues a PWR and then an FWR for the same validator, the FWR is rejected by the CL and must be re-requested later. To avoid this waste, **VEBO MUST NOT issue an FWR for a validator that still has an unprocessed PWR** — it should wait until the PWR is processed (or only ever escalate a validator from PWR to FWR across separate reports once the PWR has cleared).
-- **Balance-denominated TWG limit.** Changing the TWG rate limiter to bound extracted balance (instead of request count) caps how much stake can leave per frame, so a stream of large partial withdrawals cannot exceed the intended ETH-denominated limit. Note this makes FWRs the expensive request against the limit: an FWR consumes the validator's full max effective balance (up to 2048 ETH for `0x02`) from the frame budget, so a burst of FWRs can exhaust the TWG limit far faster than PWRs.
+- **Balance-denominated TWG limit.** Changing the TWG rate limiter to bound extracted balance (instead of request count) caps how much stake can leave per frame, so a stream of large partial withdrawals cannot exceed the intended ETH-denominated limit. Note this makes FWRs the expensive request against the limit: an FWR consumes the validator's full max effective balance (up to 2048 ETH for `0x02`) from the frame budget, so a burst of FWRs can exhaust the TWG limit far faster than PWRs. The frame-budget floor (≥ 2048 ETH) and prefix-processing guarantee the queue still advances at least one request per frame in the worst case.
 - **EIP-7002 fee risk.** Organic-usage modeling shows fee escalation is a minimal credible risk at realistic batch sizes; turning `setPartialWithdrawals` off (FWR-only operation) provides a safe path under sustained extreme fees.
+- **No cost enforcement in FWR-only mode.** With the bond charge-back removed, the FWR-only fallback (exits fulfilled by the Validator Ejector via fee-less voluntary exits) carries no economic penalty for an operator that ignores an exit request — precisely the mode where the protocol prefers not to pay EIP-7002 fees itself. Accepted: the fallback is expected to be short-lived (fee spikes historically resolve quickly), and the protocol can still force any individual exit through EIP-7002 by paying the spiked fee if an operator stalls.
 - **Migration safety.** The explicit enable/disable control ensures active rebalancing cannot interfere with migration sequencing.
-- **Grace period.** Gating *triggering* (but not *receiving*) for new operators prevents newly onboarded operators from inducing immediate rebalancing pressure.
+- **Grace period.** Excluding new operators from the rebalancing calculation entirely (no contribution to `moduleStake`/`moduleTotalWeight`, not ranked, not targeted) prevents newly onboarded operators from inducing immediate rebalancing pressure. Residual risk: a drained operator can re-register under a fresh identity and re-receive stake through normal deposit allocation while immune to rebalancing for the grace window; this is bounded by CMv2 bond requirements and `ACTIVE_REBALANCING_RATE_LIMIT`.
 
 ## Failure Modes
 
-- **EIP-7002 fee spike** — mitigation: turn `setPartialWithdrawals` off for FWR-only operation; monitor execution-layer withdrawal-request fees. When `setPartialWithdrawals` is off, the VEBO demand-prediction phase (covering WQ requests) **must not count any queued-but-unexecuted PWRs** as covering demand — those PWRs may not be executed, so the demand they would have covered is re-covered by FWRs in the report.
+- **EIP-7002 fee spike** — mitigation: turn `setPartialWithdrawals` off for FWR-only operation; monitor execution-layer withdrawal-request fees. When `setPartialWithdrawals` is off, the VEBO demand-prediction phase (covering WQ requests) **must not count any queued-but-unexecuted PWRs** as covering demand — those PWRs may not be executed, so the demand they would have covered is re-covered by FWRs in the report. Queued PWRs still execute eventually (no dismissal), so the same demand can be covered twice; this over-withdrawal is accepted and returns to the buffer (see [switch semantics](#validatorsexitbusoracle--vebo-7002)).
 - **No-op / doomed requests** (validator already exiting, slashed, or otherwise unaffected by the request) — there is **no dismissal mechanism**: every queued request MUST still be executed to advance the FIFO, even if it takes no effect on the CL.
 
 ## Copyright
