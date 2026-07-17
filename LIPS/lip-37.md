@@ -13,7 +13,7 @@ updated: 2026-07-17
 This proposal introduces an Execution Delegation Framework (EDF) and adopts it across Lido's Oracle and DSM stacks:
 
 1. **Execution Delegation Framework (EDF)** — a general-purpose delegation mechanism for permissioned roles, intended as protocol-recommended infrastructure for off-chain components and broader usage. The protocol grants a permission once to a delegation contract; that contract's owner then chooses and rotates the active hot signing key freely, without a governance vote — a compromised key can be de-authorized by its owner immediately, and a replacement becomes effective after a safety cooldown.
-2. **EDF adoption within Oracle and DSM scope** — specifies the concrete off-chain and on-chain changes required to adopt EDF across [Lido Oracle](https://docs.lido.fi/holders/lido-oracle) and [Lido Council Daemon](https://docs.lido.fi/holders/lido-council-daemon).
+2. **EDF adoption within Oracle and DSM scope** — specifies the concrete off-chain and on-chain changes required to adopt EDF across [Lido Oracle](https://docs.lido.fi/holders/lido-oracle) and [Lido Council Daemon](https://docs.lido.fi/holders/lido-council-daemon) members.
 
 ## Abstract
 
