@@ -52,7 +52,7 @@ EDF removes the governance from rotation. A suspect key is de-authorized immedia
 
 ### Overview
 
-The release consists of three coordinated changes:
+The release consists of four coordinated changes:
 
 1. Deployment of the `DelegationFactory`, establishing the general-purpose on-chain delegation infrastructure (EDF).
 2. An update to the `DepositSecurityModule` contract to verify guardian signatures via the guardian's ERC-1271 `DelegationContract.isValidSignature`, so that Council guardians can operate behind EDF delegation contracts.
