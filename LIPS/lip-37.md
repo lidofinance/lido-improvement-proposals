@@ -23,7 +23,7 @@ Concretely, we propose to deploy a new `DelegationFactory` / `DelegationContract
 
 ## Motivation
 
-Operational compromise is now the dominant cause of losses in the ecosystem. Of the roughly $4 billion lost to Web3 incidents in 2025, about $2.1 billion (~52%) stemmed from access-control and operational-security failures — leaked signing keys, compromised machines, and mishandled signers — against roughly $512 million from smart-contract vulnerabilities ([Hacken 2025 Security Report](https://hacken.io/insights/2025-security-report/)). The largest and least-recoverable losses now come from compromised signers, not flawed code.
+Operational compromise is now the dominant cause of losses in the ecosystem. Of the roughly $4 billion lost to Web3 incidents in 2025, about $2.1 billion (~52%) stemmed from access-control and operational-security failures — leaked signing keys, compromised machines, and mishandled signers — against roughly $512 million from smart-contract vulnerabilities ([Hacken 2025 Security Report](https://hacken.io/insights/2025-security-report/)). The largest and least-recoverable losses now come from compromised signers, not flawed code, and the situation is getting [even more noticeable in 2026](https://quantstamp.com/blog/june-security-beat). 
 
 ### A standard primitive for permissioned key handling
 
