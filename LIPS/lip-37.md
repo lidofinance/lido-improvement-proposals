@@ -1,7 +1,7 @@
 ---
 lip: 37
-title: "Key Delegation Framework"
-status: WIP
+title: "Execution Delegation Framework"
+status: Proposed
 author: Raman Siamionau, Matsvei Talstalutski
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-01
@@ -9,14 +9,14 @@ created: 2026-06-01
 
 ## Simple Summary
 
-This proposal introduces a Key Delegation Framework (KDF) and adopts it across Lido's Oracle and DSM stacks:
+This proposal introduces an Execution Delegation Framework (EDF) and adopts it across Lido's Oracle and DSM stacks:
 
-1. **Key Delegation Framework (KDF)** — a general-purpose delegation mechanism for permissioned roles, intended as protocol-recommended infrastructure for off-chain components and broader usage. The protocol grants a permission once to a delegation contract; that contract's owner then chooses and rotates the active hot signing key freely, without a governance vote — a compromised key can be de-authorized by its owner immediately, and a replacement becomes effective after a safety cooldown.
-2. **KDF adoption within Oracle and DSM scope** — specifies the concrete off-chain and on-chain changes required to adopt KDF across [Lido Oracle](https://docs.lido.fi/holders/lido-oracle) and [Lido Council Daemon](https://docs.lido.fi/holders/lido-council-daemon).
+1. **Execution Delegation Framework (EDF)** — a general-purpose delegation mechanism for permissioned roles, intended as protocol-recommended infrastructure for off-chain components and broader usage. The protocol grants a permission once to a delegation contract; that contract's owner then chooses and rotates the active hot signing key freely, without a governance vote — a compromised key can be de-authorized by its owner immediately, and a replacement becomes effective after a safety cooldown.
+2. **EDF adoption within Oracle and DSM scope** — specifies the concrete off-chain and on-chain changes required to adopt EDF across [Lido Oracle](https://docs.lido.fi/holders/lido-oracle) and [Lido Council Daemon](https://docs.lido.fi/holders/lido-council-daemon).
 
 ## Abstract
 
-We propose to standardize the Key Delegation Framework (KDF): a protocol-wide mechanism for delegating the operational keys of permissioned actors. It targets the protocol's off-chain components first, but is suitable for any role whose permissions are exercised by an operator-held key. KDF inserts a factory-deployed, per-entity delegation contract between the protocol and each operator's hot key: governance grants permissions to the delegation contract, while the operator's cold key or multisig controls which hot key is active. The cold key can de-authorize a compromised hot key immediately and bring a replacement after a short safety cooldown or, if the cold key itself is compromised, irreversibly lock the contract. Oracle and Council operators are the first adopters, so that the response to a key compromise can be measured in minutes rather than the ~10 days a governance vote requires today. Beyond incident response, periodic hot-key rotation is itself a valuable security practice, and KDF makes it routine.
+We propose to standardize the Execution Delegation Framework (EDF): a protocol-wide mechanism for delegating the operational keys of permissioned actors. It targets the protocol's off-chain components first, but is suitable for any role whose permissions are exercised by an operator-held key. EDF inserts a factory-deployed, per-entity delegation contract between the protocol and each operator's hot key: governance grants permissions to the delegation contract, while the operator's cold key or multisig controls which hot key is active. The cold key can de-authorize a compromised hot key immediately and bring a replacement after a short safety cooldown or, if the cold key itself is compromised, irreversibly lock the contract. Oracle and Council operators are the first adopters, so that the response to a key compromise can be measured in minutes rather than the ~10 days a governance vote requires today. Beyond incident response, periodic hot-key rotation is itself a valuable security practice, and EDF makes it routine.
 
 Concretely, we propose to deploy a new `DelegationFactory` / `DelegationContract` system (repository: [`lidofinance/delegation-execution-authority`](https://github.com/lidofinance/delegation-execution-authority)), and targeted updates to the [`lido-oracle`](https://github.com/lidofinance/lido-oracle) daemon and [`DepositSecurityModule`](https://docs.lido.fi/contracts/deposit-security-module). The adoption scope specifies the integration points: the `lido-oracle` daemon gains delegation support via a `DELEGATION_CONTRACT_ADDRESS` environment variable, and the `DepositSecurityModule` is updated to verify guardian signatures with a standard ERC-1271 check against the guardian's `DelegationContract` (which implements `isValidSignature`), enabling council members to operate behind delegation contracts. Adoption is mandatory for these roles; a coordinated migration process is defined for existing Oracle and DSM operators to onboard to the new model without service interruption.
 
@@ -28,11 +28,11 @@ Operational compromise is now the dominant cause of losses in the ecosystem. Of 
 
 Today each role handles its signing keys in its own one-off way, and rotating any of them runs through the same heavyweight governance path. Without a shared primitive, every new role re-invents key custody and rotation, and monitoring must learn each role's own conventions — multiplying operational risk. Standardizing delegation as a single, audited mechanism lets any role inherit the same rotation, revocation, and termination semantics, and lets monitoring treat every delegated key uniformly.
 
-KDF improvements unlock:
+EDF improvements unlock:
 
 - **Routine rotation as hygiene.** Periodic hot-key rotation limits the value of any single leaked key and shrinks the window in which an undetected compromise stays useful — a standard operational practice that the governance-gated path makes impractical today.
 - **Owners’ setup.** Owners increasingly prefer a multisig (or hard-wallet) over a bare EOA for stronger custody.
-- **Future signing-scheme migration.** The signing schemes KDF relies on are not post-quantum safe, and in the future the protocol might need to support such verification. Routing all signature verification through KDF means such a migration needs no protocol change, only a KDF upgrade itself.
+- **Future signing-scheme migration.** The signing schemes EDF relies on are not post-quantum safe, and in the future the protocol might need to support such verification. Routing all signature verification through EDF means such a migration needs no protocol change, only a EDF upgrade itself.
 
 ### Hot-key operational risk for Oracle and Council operators
 
@@ -44,7 +44,7 @@ Oracle members and Deposit Security Module Committee council members currently o
 
 By their very nature, these bots must operate with hot keys: the signing key lives on the machine, which makes it inherently exposed and comparatively easy to compromise. The liability is operational: rotating a hot key today requires a full on-chain governance vote, drawing in the dev team and token holders for what should be routine key management. That cost cuts both ways. It makes proactive, periodic rotation too expensive to do regularly, so keys live longer than they should. And when a key is actually suspected, the replacement is only authorized once the vote executes — leaving the operator to choose between continuing to run on a key it no longer trusts or dropping the seat entirely until governance acts.
 
-KDF removes the governance from rotation. A suspect key is de-authorized immediately and a replacement comes online after a short safety cooldown, turning both routine rotation and incident response into a local operator action measured in minutes rather than the ~10 days a governance vote takes today.
+EDF removes the governance from rotation. A suspect key is de-authorized immediately and a replacement comes online after a short safety cooldown, turning both routine rotation and incident response into a local operator action measured in minutes rather than the ~10 days a governance vote takes today.
 
 
 ## Specification
@@ -53,23 +53,23 @@ KDF removes the governance from rotation. A suspect key is de-authorized immedia
 
 The release consists of three coordinated changes:
 
-1. Deployment of the `DelegationFactory`, establishing the general-purpose on-chain delegation infrastructure (KDF).
-2. An update to the `DepositSecurityModule` contract to verify guardian signatures via the guardian's ERC-1271 `DelegationContract.isValidSignature`, so that Council guardians can operate behind KDF delegation contracts.
+1. Deployment of the `DelegationFactory`, establishing the general-purpose on-chain delegation infrastructure (EDF).
+2. An update to the `DepositSecurityModule` contract to verify guardian signatures via the guardian's ERC-1271 `DelegationContract.isValidSignature`, so that Council guardians can operate behind EDF delegation contracts.
 3. Modifications to the Oracle and Council daemons' off-chain code to support operating behind delegation contracts.
 
 ### Rationale
 
-**Why KDF ships with its adoption scope.** The `DelegationFactory` and `DelegationContract` are inert on their own: without the Oracle and DSM integration they deliver no security benefit. Shipping the contracts together with their adoption scope is what actually closes the hot-key risk in this release rather than deferring it.
+**Why EDF ships with its adoption scope.** The `DelegationFactory` and `DelegationContract` are inert on their own: without the Oracle and DSM integration they deliver no security benefit. Shipping the contracts together with their adoption scope is what actually closes the hot-key risk in this release rather than deferring it.
 
-**Why a purpose-built own delegation contract rather than reusing an existing solution.** Other delegation frameworks we looked into are far more complex and flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes KDF's guarantees structural — owner can never `execute()` or sign, one active delegate, immediate revocation with a cooldown-gated assignment, irreversible `terminate()` — keeping the audited surface small.
+**Why a purpose-built own delegation contract rather than reusing an existing solution.** Other delegation frameworks we looked into are far more complex and flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes EDF's guarantees structural — owner can never `execute()` or sign, one active delegate, immediate revocation with a cooldown-gated assignment, irreversible `terminate()` — keeping the audited surface small.
 
-**Why keep cryptography outside the protocol.** All signature verification lives in KDF, so the eventual move to post-quantum signatures means updating only KDF, not the protocol. The protocol just does a generic ERC-1271 check against the delegation contract address and never needs to know how a signature is produced, so a PQ migration stays entirely within KDF.
+**Why keep cryptography outside the protocol.** All signature verification lives in EDF, so the eventual move to post-quantum signatures means updating only EDF, not the protocol. The protocol just does a generic ERC-1271 check against the delegation contract address and never needs to know how a signature is produced, so a PQ migration stays entirely within EDF.
 
 ### Technical Specification
 
 ---
 
-#### Part 1: Key Delegation Framework (KDF) — Contracts
+#### Part 1: Execution Delegation Framework (EDF) — Contracts
 
 ##### Architecture
 
@@ -366,7 +366,7 @@ The owner is the critical security boundary of the delegation model. The princip
 
 ---
 
-#### Part 2: KDF Adoption — Oracle and DSM Integration
+#### Part 2: EDF Adoption — Oracle and DSM Integration
 
 This section defines which components are migrated to the delegation model in this release, the concrete changes required for each, and the operator migration process. Adoption is mandatory for Oracle and DSM roles.
 
@@ -552,7 +552,7 @@ Until the governance vote in step 5 executes, operators continue to run as EOA p
 
 | Contract                           | Deployed by                    | Notes                                                                                                                    |
 |------------------------------------|--------------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| `DelegationFactory`                | deployer                       | Single new deployment establishing the KDF infrastructure.                                                               |
+| `DelegationFactory`                | deployer                       | Single new deployment establishing the EDF infrastructure.                                                               |
 | `DelegationContract` (one per bot) | each operator, via the factory | One instance per Oracle/Council bot; deployed during the operator migration (Part 2), not by a single governance action. |
 
 **Redeployed at a new address:**
