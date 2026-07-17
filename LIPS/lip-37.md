@@ -5,6 +5,7 @@ status: Proposed
 author: Raman Siamionau, Matsvei Talstalutski
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-01
+updated: 2026-07-17
 ---
 
 ## Simple Summary
