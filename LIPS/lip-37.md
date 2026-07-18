@@ -3,7 +3,7 @@ lip: 37
 title: "Execution Delegation Framework"
 status: Proposed
 author: Raman Siamionau, Matsvei Talstalutski
-discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
+discussions-to: https://research.lido.fi/t/lip-37-execution-delegation-framework-edf/11746
 created: 2026-06-01
 updated: 2026-07-17
 ---
@@ -319,7 +319,7 @@ sequenceDiagram
 **Security assumptions:**
 - The target contract must verify `msg.sender == DelegationContract` is a registered permission holder.
 - The delegate can call any target with any data; the contract does not restrict the call target. Governance must ensure the `DelegationContract` address holds only the narrowest set of permissions needed.
-- If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegate. On a *successful* call, only the current call's change (the unspent portion of `msg.value`) is returned to the delegate before `execute()` returns; pre-existing or force-sent ETH is excluded from this refund.
+- If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegate.
 - The refund is bounded to the current call's balance delta, so a (compromised) delegate cannot use `execute()` to extract ETH that was already sitting on the contract.
 
 **When to use:** Any integration where the bot submits transactions that modify on-chain state and the protocol contract checks `msg.sender` for authorization.
