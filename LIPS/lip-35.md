@@ -1,11 +1,11 @@
 ---
 lip: 35
 title: Staking Router v3
-status: Proposed
+status: Approved
 author: Maksim Kuraian (@mkurayan) , KRogLA (@KRogLA), Alexander Kolesnikov (@eddort), Anna Mukharram (@Amuhar)
-discussions-to: To be updated before merge
+discussions-to: https://research.lido.fi/t/staking-router-v3-design-implementation-proposal-lip-35/11621
 created: 2026-05-22
-updated: 2026-05-22
+updated: 2026-06-29
 ---
 
 # LIP-35. Staking Router v3
@@ -97,6 +97,7 @@ updated: 2026-05-22
     - [Motion creation](#motion-creation)
       - [Motion enacting](#motion-enacting)
     - [Required changes to StakingRouter](#required-changes-to-stakingrouter)
+  - [Operational controls](#operational-controls)
   - [Proposed params and roles](#proposed-params-and-roles)
     - [Lido](#lido-1)
     - [LidoLocator](#lidolocator)
@@ -107,11 +108,9 @@ updated: 2026-05-22
     - [DepositSecurityModule](#depositsecuritymodule)
     - [OracleReportSanityChecker](#oraclereportsanitychecker)
     - [ConsolidationGateway](#consolidationgateway)
-    - [ConsolidationGateway CircuitBreaker registration](#consolidationgateway-circuitbreaker-registration)
     - [ConsolidationBus](#consolidationbus)
     - [ConsolidationMigrator](#consolidationmigrator)
     - [TopUpGateway](#topupgateway-1)
-    - [TopUpGateway CircuitBreaker registration](#topupgateway-circuitbreaker-registration)
     - [TriggerableWithdrawalGateway](#triggerablewithdrawalgateway)
     - [EasyTrack](#easytrack)
   - [Security Considerations](#security-considerations)
@@ -414,7 +413,7 @@ The first report after migration is correct by construction:
 
 The list of checks has been updated following the **Pectra hard-fork** and the subsequent expansion of parameters passed to the Validator Exit Bus Oracle (VEBO) and Accounting Oracles (AO).
 
-[Here you can find a full description of changes](https://hackmd.io/@lido/sr-v3-sanity-checks).
+[Here you can find a full description of changes](https://hackmd.io/RLqefrGYQlaaPXnXEF8-ew).
 
 #### AO CL Balance Decrease
 
@@ -972,9 +971,13 @@ For withdrawal credentials of type `0x02`, the initial 32 ETH deposit is used to
 #### Deposit Security Module
 With the introduction of support for type `0x02` keys, Council daemons must correctly verify the withdrawal credentials of such keys and must not attempt to unvet keys with valid Lido withdrawal credentials.
 
-To prevent outdated Council daemons from incorrectly unvetting type 0x02 keys in newly added CMv2 modules after the protocol upgrade, it is proposed to include the contract version in the Guardian Signing Payload.
+To prevent outdated Council daemons from incorrectly unvetting `0x02` keys in newly added CMv2 modules after the protocol upgrade, it is proposed to bump DSM `VERSION` from `3` to `4`. 
 
-It is suggested to bump DSM `VERSION` from `3` to `4`. The `VERSION` is now embedded as a separate 32-byte field in the preimage of every guardian-signed message (attest a deposit, pause deposits, unvet signing keys); each hash is now formed as `keccak256(prefix, VERSION, …payload)` instead of `keccak256(prefix, …payload)`. Adding `VERSION` to the payload additionally binds it to a specific behavioral version of the DSM.
+Additionally, it is proposed to remove `canDeposit`, a helper method that was previously used by off-chain tools such as the Depositor Bot and is no longer necessary.
+
+```diff
+- function canDeposit(uint256 stakingModuleId)
+```
 
 ### Top-up flow
 
@@ -1400,7 +1403,7 @@ In addition to the deposit flow, the `IStakingRouter` interface is extended with
 - **Validator balances reporting** — `reportValidatorBalancesByStakingModule` is the state-mutating entry point used by the Accounting Oracle to deliver per-module validator balance data to the StakingRouter, where it is stored as each module's `validatorsBalanceGwei` and used as the basis for rewards distribution. `validateReportValidatorBalancesByStakingModule` is its view-only counterpart, used by the sanity checker and the oracle to pre-validate a report against the current module set and configured limits before it is submitted on-chain.
 - **Validator balance accessors** — `getModuleValidatorsBalance` and `getTotalModulesValidatorsBalance` return the active validators balance used for rewards distribution, either for a single module or aggregated across all registered modules.
 - **Module state getters** — `getStakingModuleStateConfig`, `getStakingModuleStateDeposits`, and `getStakingModuleStateAccounting` expose a module's state split into three logical parts (configuration, deposit-related fields, and accounting) to keep the returned structures small and decoupled, allowing consumers to fetch only the slice they need.
-- **Module-level helpers** — `getStakingModuleWithdrawalCredentials` returns the per-module withdrawal credentials with the module's type prefix applied (`0x01...` or `0x02...`), and `canDeposit` reports whether a module exists and is currently eligible to receive deposits.
+- **Module-level helpers** — `getStakingModuleWithdrawalCredentials` returns the per-module withdrawal credentials with the module's type prefix applied (`0x01...` or `0x02...`).
 - **Top-up cap configuration** — `setMaxTopUpPerBlockGwei` (restricted to `STAKING_MODULE_MANAGE_ROLE`) and `getMaxTopUpPerBlockGwei` manage the protocol-wide per-block top-up amount cap.
 - **Direct ETH transfers** — the new StakingRouter rejects any direct ETH transfers (`receive()` reverts). All ETH must enter via `receiveDepositableEther`, ensuring the [pull model](#depositable-eth-pull-model) is the single ETH-ingress path.
 - **Versioning** — `getContractVersion` returns the current initialized version of the proxy, replacing the previous `Versioned` helper.
@@ -1460,9 +1463,6 @@ interface IStakingRouter {
   /// @notice Returns the per-module withdrawal credentials with the module's type prefix applied.
   /// @return 0x01... for legacy (`0x01`) modules, 0x02... for new (`0x02`) modules.
   function getStakingModuleWithdrawalCredentials(uint256 _stakingModuleId) external view returns (bytes32);
-
-  /// @notice Returns whether the staking module exists and is in the `Active` status, i.e. eligible to receive deposits.
-  function canDeposit(uint256 _stakingModuleId) external view returns (bool);
 
   /// @notice Returns the staking module's active validators balance used for rewards distribution.
   /// @dev For `0x01` modules this is derived from on-chain accounting; for `0x02` modules it is the module's
@@ -1911,6 +1911,17 @@ interface IStakingRouter {
 
 In addition to a distinct method, it is proposed to create a special role (`STAKING_MODULE_SHARE_MANAGE_ROLE`) to allow for granular permissions in the updated version of the `StakingRouter.sol`.
 
+
+
+## Operational controls
+
+Staking Router v3 introduces a set of operational controls to ensure the safe and controlled functioning of the upgraded staking system:
+
+- **Consolidation Gateway Pause.** Used to immediately suspend validator consolidation activities in response to risks or incidents. Triggered via a CircuitBreaker by the CircuitBreaker Committee (former GateSeal Committee).
+- **Top-Up Gateway Pause.** Used to stop new stake top-ups in the event of the incident affecting the top-up flow. Triggered via a CircuitBreaker by the CircuitBreaker Committee (former GateSeal Committee).
+- **Consolidation Migrator Operator Pair Permission Revocation.** Used to revoke incorrectly linked or no longer relevant operator consolidation pairings. Triggered via a direct on-chain action (`disallowPair`) by the Curated Module Committee (CMC).
+- **Consolidation Bus Batch Removal.** Used to remove incorrect consolidation batches from the Consolidation Bus. Triggered via a direct on-chain action (`removeBatches`) by the Curated Module Committee (CMC).
+
 ## Proposed params and roles
 
 Below is a list of roles, configuration values, and deployment parameters proposed to be assigned as part of the upcoming upgrade. If certain parameters are not listed, they would either remain unchanged or are defined by network-level constraints.
@@ -1920,7 +1931,7 @@ Full details about the proposed parameters can be found in [Staking Router 3.0 p
 
 ### Lido
 
-New implementation; state migration is performed via `finalizeUpgrade_v4()` which reads from storage and takes no arguments. The Lido app implementation has no parameters that change between versions.
+New implementation; state migration is performed via `finalizeUpgrade_v4(_depositsReserveTarget)`.
 
 A new role `BUFFER_RESERVE_MANAGER_ROLE` is created on Lido and granted to the Aragon Agent during the upgrade.
 
@@ -1945,7 +1956,7 @@ New implementation. Two new addresses (`consolidationGateway`, `topUpGateway`) a
 
 ### StakingRouter
 
-Two new immutables (`MAX_EFFECTIVE_BALANCE_WC_TYPE_01`, `MAX_EFFECTIVE_BALANCE_WC_TYPE_02`) are added. Per-module state migration and OpenZeppelin AccessControl role re-import are performed in `finalizeUpgrade_v4(_maxTopUpPerBlockGwei)`, which also seeds the global per-block top-up cap.
+Per-module state migration and OpenZeppelin AccessControl role re-import are performed in `finalizeUpgrade_v4(_maxTopUpPerBlockGwei)`, which also seeds the global per-block top-up cap.
 
 | Role                               | Assignee                     |
 | ---------------------------------- | ---------------------------- |
@@ -2050,15 +2061,6 @@ Constructor parameters:
 | `gIFirstValidatorCurr`          | `0x0000000000000000000000000000000000000000000000000096000000000028` | Generalized index for first validator after fork pivot        |
 | `pivotSlot`                     | `0`                                                                  | Slot at which the active generalized index switches           |
 
-### ConsolidationGateway CircuitBreaker registration
-
-`ConsolidationGateway` is registered as a pausable contract on the existing [CircuitBreaker](./lip-34.md) instance, with a dedicated pauser committee assigned to it. Pause duration and heartbeat interval are global CircuitBreaker parameters and are not set per registration.
-
-| Name       | Value                    | Description                                                      |
-| ---------- | ------------------------ | ---------------------------------------------------------------- |
-| `pausable` | `ConsolidationGateway`   | Contract registered as pausable on CircuitBreaker                |
-| `pauser`   | Gate Seal contract | Gate Seal committee authorized to trigger a pause on `ConsolidationGateway` |
-
 ### ConsolidationBus
 
 New contract behind `OssifiableProxy`.
@@ -2068,8 +2070,8 @@ New contract behind `OssifiableProxy`.
 | Proxy admin          | Aragon Agent          |
 | `DEFAULT_ADMIN_ROLE` | Aragon Agent          |
 | `PUBLISH_ROLE`       | ConsolidationMigrator |
-| `REMOVE_ROLE`        | Aragon Agent          |
-| `MANAGE_ROLE`        | Aragon Agent          |
+| `REMOVE_ROLE`        | CMC Committee         |
+| `MANAGE_ROLE`        | Not assigned by default |
 
 Constructor parameters (implementation):
 
@@ -2081,8 +2083,8 @@ Constructor parameters (implementation):
 
 | Name                      | Value                              | Description                                                 |
 | ------------------------- | ---------------------------------- | ----------------------------------------------------------- |
-| `admin`                   | Aragon Agent (via temporary admin) | Receives `DEFAULT_ADMIN_ROLE`, `MANAGE_ROLE`, `REMOVE_ROLE` |
-| `initialBatchSize`        | `350`                              | Maximum number of consolidation requests per batch          |
+| `admin`                   | Aragon Agent (via temporary admin) | Receives `DEFAULT_ADMIN_ROLE`       |
+| `initialBatchSize`        | `200`                              | Maximum number of consolidation requests per batch          |
 | `initialMaxGroupsInBatch` | `10`                               | Maximum number of target validator groups per batch         |
 | `initialExecutionDelay`   | `86400` (24 hours)                 | Delay (seconds) between batch publishing and executability  |
 
@@ -2145,15 +2147,6 @@ Constructor parameters (implementation):
 | `_maxRootAgeSec`         | `600`                              | Maximum age (seconds) of the beacon root used to prove validator state                    |
 | `_targetBalanceGwei`     | `2046750000000` (2046.75 ETH)      | Validator target balance ceiling after top-up (leaves 1.25 ETH safety margin below MaxEB) |
 | `_minTopUpGwei`          | `2000000000` (2 ETH)               | Minimum top-up amount; smaller calculated top-ups are skipped                             |
-
-### TopUpGateway CircuitBreaker registration
-
-`TopUpGateway` is registered as a pausable contract on the existing [CircuitBreaker](./lip-34.md) instance, with a dedicated pauser committee assigned to it. Pause duration and heartbeat interval are global CircuitBreaker parameters and are not set per registration.
-
-| Name       | Value              | Description                                                            |
-| ---------- | ------------------ | ---------------------------------------------------------------------- |
-| `pausable` | `TopUpGateway`     | Contract registered as pausable on CircuitBreaker                      |
-| `pauser`   | Gate Seal contract | Gate Seal committee authorized to trigger a pause on `TopUpGateway`    |
 
 ### TriggerableWithdrawalGateway
 
