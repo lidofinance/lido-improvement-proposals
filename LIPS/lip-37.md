@@ -5,7 +5,7 @@ status: Proposed
 author: Raman Siamionau, Matsvei Talstalutski
 discussions-to: https://research.lido.fi/t/lip-37-execution-delegation-framework-edf/11746
 created: 2026-06-01
-updated: 2026-07-17
+updated: 2026-07-30
 ---
 
 ## Simple Summary
@@ -19,7 +19,7 @@ This proposal introduces an Execution Delegation Framework (EDF) and adopts it a
 
 We propose to standardize the Execution Delegation Framework (EDF): a protocol-wide mechanism for delegating the operational keys of permissioned actors. It targets the protocol's off-chain components first, but is suitable for any role whose permissions are exercised by an operator-held key. EDF inserts a factory-deployed, per-entity delegation contract between the protocol and each operator's hot key: governance grants permissions to the delegation contract, while the operator's cold key or multisig controls which hot key is active. The cold key can de-authorize a compromised hot key immediately and bring a replacement after a short safety cooldown or, if the cold key itself is compromised, irreversibly lock the contract. Oracle and Council operators are the first adopters, so that the response to a key compromise can be measured in minutes rather than the ~10 days a governance vote requires today. Beyond incident response, periodic hot-key rotation is itself a valuable security practice, and EDF makes it routine.
 
-Concretely, we propose to deploy a new `DelegationFactory` / `DelegationContract` system (repository: [`lidofinance/delegation-execution-authority`](https://github.com/lidofinance/delegation-execution-authority)), and targeted updates to the [`lido-oracle`](https://github.com/lidofinance/lido-oracle) daemon and [`DepositSecurityModule`](https://docs.lido.fi/contracts/deposit-security-module). The adoption scope specifies the integration points: the `lido-oracle` daemon gains delegation support via a `DELEGATION_CONTRACT_ADDRESS` environment variable, and the `DepositSecurityModule` is updated to verify guardian signatures with a standard ERC-1271 check against the guardian's `DelegationContract` (which implements `isValidSignature`), enabling council members to operate behind delegation contracts. Adoption is mandatory for these roles; a coordinated migration process is defined for existing Oracle and DSM operators to onboard to the new model without service interruption.
+Concretely, we propose to deploy a new `DelegationFactory` / `DelegationContract` system (repository: [`lidofinance/execution-delegation-framework`](https://github.com/lidofinance/execution-delegation-framework)), and targeted updates to the [`lido-oracle`](https://github.com/lidofinance/lido-oracle) daemon and [`DepositSecurityModule`](https://docs.lido.fi/contracts/deposit-security-module). The adoption scope specifies the integration points: the `lido-oracle` daemon gains delegation support via a `DELEGATION_CONTRACT_ADDRESS` environment variable, and the `DepositSecurityModule` is updated to verify guardian signatures with a standard ERC-1271 check against the guardian's `DelegationContract` (which implements `isValidSignature`), enabling council members to operate behind delegation contracts. Adoption is mandatory for these roles; a coordinated migration process is defined for existing Oracle and DSM operators to onboard to the new model without service interruption.
 
 ## Motivation
 
@@ -33,7 +33,7 @@ EDF improvements unlock:
 
 - **Routine rotation as hygiene.** Periodic hot-key rotation limits the value of any single leaked key and shrinks the window in which an undetected compromise stays useful — a standard operational practice that the governance-gated path makes impractical today.
 - **Owners’ setup.** Owners increasingly prefer a multisig (or hard-wallet) over a bare EOA for stronger custody.
-- **Future signing-scheme migration.** The signing schemes EDF relies on are not post-quantum safe, and in the future the protocol might need to support such verification. Routing all signature verification through EDF means such a migration needs no protocol change, only a EDF upgrade itself.
+- **Future signing-scheme migration.** The signing schemes EDF relies on are not post-quantum safe, and in the future the protocol might need to support such verification. Routing all signature verification through EDF means such a migration needs no protocol change, only an EDF upgrade itself.
 
 ### Hot-key operational risk for Oracle and Council operators
 
@@ -63,7 +63,7 @@ The release consists of four coordinated changes:
 
 **Why EDF ships with its adoption scope.** The `DelegationFactory` and `DelegationContract` are inert on their own: without the Oracle and DSM integration they deliver no security benefit. Shipping the contracts together with their adoption scope is what actually closes the hot-key risk in this release rather than deferring it.
 
-**Why a purpose-built own delegation contract rather than reusing an existing solution.** Other delegation frameworks we looked into are far more complex and flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes EDF's guarantees structural — owner can never `execute()` or sign, one active delegate, immediate revocation with a cooldown-gated assignment, irreversible `terminate()` — keeping the audited surface small.
+**Why a purpose-built own delegation contract rather than reusing an existing solution.** Other delegation frameworks we looked into are far more complex and flexible than this role needs, and that unused flexibility is attack and misconfiguration surface. A minimal, non-upgradeable contract instead makes EDF's guarantees structural — owner can never `execute()` or sign, one active delegate, immediate revocation with a cooldown-gated nomination, irreversible `terminate()` — keeping the audited surface small.
 
 **Why keep cryptography outside the protocol.** All signature verification lives in EDF, so the eventual move to post-quantum signatures means updating only EDF, not the protocol. The protocol just does a generic ERC-1271 check against the delegation contract address and never needs to know how a signature is produced, so a PQ migration stays entirely within EDF.
 
@@ -86,7 +86,7 @@ The contract has exactly two trusted entities, **owner** and **delegate**:
 
 | Role         | Custody                         | Capabilities                                                                                                                                      |
 |--------------|---------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Owner**    | Safe multisig or cold wallet    | Assign, reassign, and revoke the delegate (`assignDelegate()` / `revokeDelegate()`); irreversibly `terminate()` the contract                      |
+| **Owner**    | Safe multisig or cold wallet    | Nominate, renominate, and revoke the delegate (`nominateDelegate()` / `revokeDelegate()`); irreversibly `terminate()` the contract                |
 | **Delegate** | Hot key in the off-chain daemon | Call `execute()` to dispatch transactions (`push`); sign messages that integrators verify via the contract's ERC-1271 `isValidSignature` (`pull`) |
 
 The owner manages the delegate's lifecycle but can never act *as* the contract. Termination is the escape hatch for owner-key compromise: because `terminate()` is irreversible — it permanently disables `execute()` and clears the delegate — a still-trusted owner can neutralize the contract entirely.
@@ -103,11 +103,11 @@ interface IDelegationFactory {
     ///                  the owner requires deploying a new contract.
     /// @param delegate  Initial active delegate, set in the constructor (and
     ///                  effective immediately — the cooldown applies only to
-    ///                  later reassignments). Mutable thereafter via
-    ///                  assignDelegate(). Pass address(0) to deploy with no
+    ///                  later nominations). Mutable thereafter via
+    ///                  nominateDelegate(). Pass address(0) to deploy with no
     ///                  delegate.
-    /// @param cooldown  Seconds a reassigned delegate waits before becoming
-    ///                  effective (see assignDelegate). Set as a constructor
+    /// @param cooldown  Seconds a nominated delegate waits before becoming
+    ///                  effective (see nominateDelegate). Set as a constructor
     ///                  immutable; may be 0 to disable the cooldown.
     /// @return instance Address of the newly deployed DelegationContract.
     function deploy(address owner, address delegate, uint256 cooldown)
@@ -126,28 +126,34 @@ interface IDelegationFactory {
 interface IDelegationContract {
     // --- Owner controls ---
 
-    /// @notice Assign (or reassign) the active delegate.
+    /// @notice Nominate (or renominate) the active delegate.
     ///         Only callable by owner. The new delegate becomes effective only
     ///         after the contract's cooldown (`getCooldown()` seconds, or
     ///         immediately if cooldown is 0). The currently effective delegate
     ///         (if any) stays effective throughout the cooldown and is dropped
     ///         only when the new one activates — so a planned rotation is
     ///         seamless, with no interval lacking an active delegate.
-    ///         Reassigning before the cooldown elapses replaces the pending
+    ///         Renominating before the cooldown elapses replaces the pending
     ///         delegate and restarts the cooldown; the current one stays
     ///         effective throughout. To drop a (e.g. compromised) delegate
     ///         immediately, use revokeDelegate().
+    ///         Reverts if delegate == address(0); dropping a delegate is only
+    ///         possible via revokeDelegate().
     ///         Reverts if delegate == owner.
+    ///         Reverts if delegate == the current effective delegate
+    ///         (AlreadyDelegate) or == the pending delegate
+    ///         (AlreadyPendingDelegate), so a redundant nomination cannot
+    ///         silently restart the cooldown.
     ///         Reverts if the contract is terminated.
     /// @param delegate Address of the incoming delegate.
-    function assignDelegate(address delegate) external;
+    function nominateDelegate(address delegate) external;
 
     /// @notice Immediately remove the current and pending delegate. 
     ///         Only callable by owner.
     ///         Reverts if the contract is terminated.
     function revokeDelegate() external;
 
-    /// @notice Terminate the contract, permanently disabling execute(), signature verification via isValidSignature(), and further delegate reassignment via assignDelegate.
+    /// @notice Terminate the contract, permanently disabling execute(), signature verification via isValidSignature(), and further delegate nomination via nominateDelegate.
     ///         Only callable by owner.
     ///         Also clears the active delegate (as revokeDelegate), so
     ///         getDelegate() returns address(0) after termination.
@@ -179,7 +185,7 @@ interface IDelegationContract {
     ///         returns 0xffffffff.
     ///         The delegate is resolved via getDelegate(), so validation
     ///         fails closed when there is no effective delegate (never
-    ///         assigned, revoked, or terminated → address(0)).
+    ///         nominated, revoked, or terminated → address(0)).
     ///
     ///         NOTE: unlike a raw ECDSA check, this result is state-dependent
     ///         and revocable — it can return valid at one block and invalid at
@@ -207,23 +213,23 @@ interface IDelegationContract {
     function owner() external view returns (address);
 
     /// @notice Returns the currently *effective* delegate, or address(0) if
-    ///         none. After assignDelegate(), the previously effective delegate
+    ///         none. After nominateDelegate(), the previously effective delegate
     ///         remains the effective one until the new delegate's cooldown
     ///         elapses; only then does this return the new delegate. Returns
-    ///         address(0) when there is no current delegate (never assigned, or
+    ///         address(0) when there is no current delegate (never nominated, or
     ///         revoked) and once the contract is terminated.
     function getDelegate() external view returns (address);
 
     /// @notice Returns the pending (not-yet-effective) delegate and the
     ///         timestamp at which it becomes effective, or (address(0), 0) when
-    ///         there is no such pending assignment. Derived from the current
+    ///         there is no such nomination. Derived from the current
     ///         time: once the cooldown has elapsed (block.timestamp >=
     ///         activeFrom) the scheduled delegate is already effective, so it is
     ///         no longer reported here — this returns (address(0), 0) and
     ///         getDelegate() returns that delegate instead.
     function getPendingDelegate() external view returns (address delegate, uint256 activeFrom);
 
-    /// @notice Cooldown in seconds between assigning a delegate and it
+    /// @notice Cooldown in seconds between nominating a delegate and it
     ///         becoming effective. Set in the constructor (Solidity immutable)
     ///         and unchangeable thereafter.
     function getCooldown() external view returns (uint256);
@@ -233,6 +239,9 @@ interface IDelegationContract {
 
     // --- Events ---
 
+    /// @notice Emitted by the constructor when a non-zero initial delegate is
+    ///         set, so the initial configuration is observable on-chain.
+    event InitialDelegateSet(address indexed newDelegate);
     event DelegateNominated(address indexed newDelegate, uint256 activeFrom);
     event DelegateRevoked(address indexed revokedDelegate);
     event Terminated();
@@ -247,7 +256,7 @@ The `DelegationContract` is designed as a **general integration primitive** for 
 
 The `DelegationContract` is itself an **[ERC-1271](https://eips.ethereum.org/EIPS/eip-1271) signer**: it implements `isValidSignature(hash, signature)`. The integrator (protocol) contract treats the `DelegationContract` address as the signing principal and verifies a relayed signature by calling that contract's `isValidSignature(hash, signature)`.
 
-All of the delegation indirection lives inside `isValidSignature`: it resolves the current effective delegate via `getDelegate()` and validates the signature against it. This keeps the integrator **delegation-agnostic**. The contract fails closed: with no effective delegate (never assigned, revoked, or terminated) — `getDelegate()` is `address(0)`.
+All of the delegation indirection lives inside `isValidSignature`: it resolves the current effective delegate via `getDelegate()` and validates the signature against it. This keeps the integrator **delegation-agnostic**. The contract fails closed: with no effective delegate (never nominated, revoked, or terminated) — `getDelegate()` is `address(0)`.
 
 The integrator must know which `DelegationContract` to check. The address must be relayed alongside the signature, so the signature is bound to a specific delegation contract and the integrator reads the target from the message.
 
@@ -272,7 +281,7 @@ sequenceDiagram
 **Security assumptions:**
 - The integrator must treat the `DelegationContract` address as the authorized principal: it checks that the supplied `DelegationContract` is a registered entity **and** that `isValidSignature` returns the magic value (`0x1626ba7e`) for a valid signature.
 - The signing key must match the effective delegate at the time of on-chain verification. A key rotated (or the contract terminated) after signing but before verification causes `isValidSignature` to reject — failing closed.
-- The fail-closed-on-zero-delegate guard lives **inside** `isValidSignature` (it returns the failure value rather than verifying against `address(0)`), so integrators cannot accidentally validate a malformed signature against an unassigned delegate.
+- The fail-closed-on-zero-delegate guard lives **inside** `isValidSignature` (it returns the failure value rather than verifying against `address(0)`), so integrators cannot accidentally validate a malformed signature against an unset delegate.
 
 Reference implementation of the contract side:
 
@@ -286,7 +295,7 @@ function isValidSignature(bytes32 hash, bytes calldata signature)
     returns (bytes4)
 {
     address delegate = getDelegate();   // effective delegate, or address(0)
-    // Fail closed when there is no effective delegate (never assigned/revoked/terminated).
+    // Fail closed when there is no effective delegate (never nominated/revoked/terminated).
     // SignatureChecker: OpenZeppelin's library (utils/cryptography/SignatureChecker.sol).
     if (delegate != address(0) && SignatureChecker.isValidSignatureNow(delegate, hash, signature)) {
         return EIP1271_MAGIC_VALUE;
@@ -320,7 +329,6 @@ sequenceDiagram
 - The target contract must verify `msg.sender == DelegationContract` is a registered permission holder.
 - The delegate can call any target with any data; the contract does not restrict the call target. Governance must ensure the `DelegationContract` address holds only the narrowest set of permissions needed.
 - If the target call reverts, `execute()` reverts atomically and forwarded ETH is returned to the delegate.
-- The refund is bounded to the current call's balance delta, so a (compromised) delegate cannot use `execute()` to extract ETH that was already sitting on the contract.
 
 **When to use:** Any integration where the bot submits transactions that modify on-chain state and the protocol contract checks `msg.sender` for authorization.
 
@@ -330,21 +338,22 @@ The owner address is fixed at deployment and **cannot be changed on-chain** — 
 
 Rotating the owner therefore requires deploying a fresh `DelegationContract` and reassigning the role to the new contract. This also prevents silent transfer of committee participation between organizations and avoids legal ambiguity over who is accountable for the seat.
 
-##### Delegate Assignment and Revocation
+##### Delegate Nomination and Revocation
 
-Assignment is cooldown-gated; revocation is immediate:
+Nomination is cooldown-gated; revocation is immediate:
 
-- **Assignment** (`assignDelegate(newHotKey)`) schedules the new delegate, which becomes effective after the contract's `cooldown` elapses (immediately if the cooldown is 0). **The currently effective delegate stays active throughout the cooldown** and is dropped only when the new key activates — so `getDelegate()` returns the old key right up until the new one takes over, and a routine rotation has no gap. Activation is **not** a separate transaction: there is no stored "active" flag flipped at `activeFrom`. Instead the schedule (`pending`, `activeFrom`) is kept in storage and the views resolve the effective key from the current time — `getDelegate()` returns the scheduled key once `block.timestamp >= activeFrom`, and `getPendingDelegate()` stops reporting it at the same instant. Reassigning *before* the cooldown elapses replaces the pending key and restarts the cooldown, with the current key staying effective throughout. Reassigning *after* it has matured first **settles** the matured key as the current delegate (the next state-changing call folds the scheduled key into `current` before applying its own change), so a later rotation keeps the matured key effective during the new cooldown and never reverts to an earlier key. The cooldown is a reaction window: an unexpected assignment (e.g. from a compromised owner) is visible via the `DelegateNominated` event and `getPendingDelegate()` for `cooldown` seconds before the new key can act — while the previous key keeps operating the seat — so monitoring and governance can react before any swap takes effect.
-- **Revocation** (`revokeDelegate()`) is immediate and clears both the current and any pending delegate, leaving the contract with no delegate until a new one is assigned and its cooldown elapses.
+- **Nomination** (`nominateDelegate(newHotKey)`) schedules the new delegate, which becomes effective after the contract's `cooldown` elapses (immediately if the cooldown is 0). **The currently effective delegate stays active throughout the cooldown** and is dropped only when the new key activates — so `getDelegate()` returns the old key right up until the new one takes over, and a routine rotation has no gap. Activation is **not** a separate transaction: there is no stored "active" flag flipped at `activeFrom`. Instead the schedule (`pending`, `activeFrom`) is kept in storage and the views resolve the effective key from the current time — `getDelegate()` returns the scheduled key once `block.timestamp >= activeFrom`, and `getPendingDelegate()` stops reporting it at the same instant. Renominating *before* the cooldown elapses replaces the pending key and restarts the cooldown, with the current key staying effective throughout. Nominating *after* the pending key has matured first **settles** the matured key as the current delegate (the next state-changing call folds the scheduled key into `current` before applying its own change), so a later rotation keeps the matured key effective during the new cooldown and never reverts to an earlier key. The cooldown is a reaction window: an unexpected nomination (e.g. from a compromised owner) is visible via the `DelegateNominated` event and `getPendingDelegate()` for `cooldown` seconds before the new key can act — while the previous key keeps operating the seat — so monitoring and governance can react before any swap takes effect.
+- **Redundant nominations revert.** Because settling happens first, nominating the key that is *already* the effective delegate reverts with `AlreadyDelegate`, and renominating the key that is already pending reverts with `AlreadyPendingDelegate`. Neither is a silent no-op that restarts the cooldown; both are rejected so the on-chain schedule always reflects a real change. Nominating `address(0)` also reverts — dropping a delegate is only possible via `revokeDelegate()`.
+- **Revocation** (`revokeDelegate()`) is immediate and clears both the current and any pending delegate, leaving the contract with no delegate until a new one is nominated and its cooldown elapses.
 
-The cooldown is set in the constructor and cannot change; it may be 0.
+The cooldown is set in the constructor and cannot change; it may be 0. When the factory deploys an instance with a non-zero initial delegate, that delegate is effective immediately and the constructor emits `InitialDelegateSet`, so the starting configuration is observable on-chain alongside later `DelegateNominated` events.
 
 ##### Emergency Termination
 
 The owner may call `terminate()` to permanently disable the contract's `execute()` function; it also clears the active delegate (equivalent to `revokeDelegate()`) as part of the same call. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
 
 - All delegate calls to `execute()` revert.
-- All state-changing owner methods (`assignDelegate()`, `revokeDelegate()`, and `terminate()` itself) also revert — no owner method remains callable after termination.
+- All state-changing owner methods (`nominateDelegate()`, `revokeDelegate()`, and `terminate()` itself) also revert — no owner method remains callable after termination.
 - `getDelegate()` returns `address(0)`, so any pull-style integrator that resolves the active delegate through it (to verify a signature) fails closed and does not keep trusting the last delegate.
 - A new `DelegationContract` must be deployed and the role must be reassigned to the new address.
 
@@ -352,13 +361,13 @@ Termination is intended for scenarios where the owner believes the owner's own a
 
 ##### Hot-Key Rotation
 
-For a **planned** rotation the owner calls `assignDelegate(newHotKey)`. The previous key keeps operating until the new key becomes effective after the cooldown, so the rotation is seamless.
+For a **planned** rotation the owner calls `nominateDelegate(newHotKey)`. The previous key keeps operating until the new key becomes effective after the cooldown, so the rotation is seamless.
 
 The specific cadence for routine rotation is not mandated here; recommended practices will be maintained on the Lido research forum and may be revised. Contract-level requirements are:
 
 - On any suspected or confirmed hot-key compromise, the owner must call `revokeDelegate()` to drop the key **immediately**. 
-- A replacement is then assigned with `assignDelegate(newHotKey)` and becomes effective after its cooldown.
-- After assignment, the operator updates the daemon configuration.
+- A replacement is then nominated with `nominateDelegate(newHotKey)` and becomes effective after its cooldown.
+- After nomination, the operator updates the daemon configuration.
 
 ##### Owner Address Requirements
 
@@ -546,7 +555,7 @@ Migration is designed to be zero-downtime. All preparatory steps are completed o
 4. **Set up monitoring (Lido team)**: the Lido team registers every delegation contract in the monitoring infrastructure and begins watching the owner and delegate addresses for unexpected activity, so anomalies are caught both before and after the seat reassignment.
 5. **Governance vote**: a single DAO vote reassigns each Oracle committee and DSM guardian seat from the operator's hot EOA to its `DelegationContract` address — a `HashConsensus` member update for oracles, a `DepositSecurityModule` guardian replacement for guardians; the pre-configured daemons begin routing through the delegation contract without interruption.
 
-Until the governance vote in step 5 executes, operators continue to run as EOA principals on the existing (pre-migration) contracts, which keeps them online throughout preparation. After the vote, each operator confirms the switchover via `getDelegate()` and a successful report or guardian message in the following frame, and may rotate the hot key at any time via `assignDelegate()` with no further governance vote.
+Until the governance vote in step 5 executes, operators continue to run as EOA principals on the existing (pre-migration) contracts, which keeps them online throughout preparation. After the vote, each operator confirms the switchover via `getDelegate()` and a successful report or guardian message in the following frame, and may rotate the hot key at any time via `nominateDelegate()` with no further governance vote.
 
 ### Deployment Summary
 
@@ -565,7 +574,7 @@ Until the governance vote in step 5 executes, operators continue to run as EOA p
 
 ## Links
 
-- Delegation contracts repository (`lidofinance/delegation-execution-authority`): https://github.com/lidofinance/delegation-execution-authority
+- Delegation contracts repository (`lidofinance/execution-delegation-framework`): https://github.com/lidofinance/execution-delegation-framework
 - Oracle daemon (`lidofinance/lido-oracle`): https://github.com/lidofinance/lido-oracle
 - Core repository (`lidofinance/core`, contains `DepositSecurityModule`): https://github.com/lidofinance/core
 
