@@ -2,23 +2,27 @@
 lip: 39
 title: Simplified Negative Rebase Sanity Check
 status: WIP
-author: George Avsetsin
+author: George Avsetsin, Dmitry Gusakov, Eugene Mamin
 discussions-to: <research.lido.fi thread to be created>
 created: 2026-07-14
-updated: 2026-07-14
+updated: 2026-07-31
 ---
 
 # Simplified Negative Rebase Sanity Check
 
 ## Simple Summary
 
-Replace the stateful 36-day negative CL rebase allowance with a committee trigger at zero and a configurable per-report hard cutoff. Reports with no detected negative CL rebase are unchanged.
+Replace the stateful 36-day negative CL rebase allowance with a simpler per-report rule:
+
+- no CL loss detected: the report passes;
+- a CL loss within a configurable hard cutoff: an independent committee must confirm the report;
+- a CL loss above the hard cutoff: the report is rejected.
 
 ## Abstract
 
 [LIP-23](./lip-23.md) introduced a CL-spec-derived negative CL rebase allowance and a second-opinion interface. [LIP-35](./lip-35.md) adapted the same design to MaxEB accounting but kept its 36-day report ledger and left the second-opinion provider unset.
 
-This proposal simplifies both parts. It replaces the modeled allowance with two thresholds: zero for committee involvement and a configurable per-report hard cutoff. It also makes a DAO-approved committee, independent from the accounting-oracle members, the active second opinion. The negative-rebase check no longer needs report history or migration, and a detected negative CL rebase can no longer pass on the accounting-oracle report alone.
+This proposal simplifies both parts. It replaces the modeled allowance with two boundaries: a zero threshold — any detected CL loss requires committee confirmation — and a configurable per-report hard cutoff above which the report is rejected outright. It also makes a DAO-approved committee, independent from the accounting-oracle members, the active second opinion, and fully sunsets the SP1 ZK oracle previously developed for that role. The negative-rebase check no longer needs report history or migration, and a detected negative CL rebase can no longer pass on the accounting-oracle report alone.
 
 ## Motivation
 
@@ -36,13 +40,13 @@ The proposal stops trying to classify losses from CL rules:
 - negative CL rebase within the decrease allowed by `maxCLBalanceDecreaseBP`: require the committee;
 - loss above that limit: reject.
 
-The zero threshold removes the modeled oracle-only allowance. As of July 2026, Lido has never had a negative stETH rebase. The proposed check is stricter because it excludes EL rewards, so a small genuine CL-side loss may still require the committee. This deliberate false positive is safer than automatically accepting an unusual loss.
+The zero threshold removes the modeled oracle-only allowance. As of July 2026, Lido has never had a negative stETH rebase, and daily rebases have never come close to zero. The proposed check is stricter because it excludes EL rewards, so a small genuine CL-side loss may still require the committee. This deliberate false positive is safer than automatically accepting an unusual loss.
 
-The proposed initial 5% hard cutoff adds modest headroom over the [current penalty-derived 3.6% 36-day allowance](./lip-35.md#ao-cl-balance-decrease), reducing the need to retune the limit after CL parameter changes. The wider cutoff does not increase what the accounting oracle can submit alone: every detected negative CL rebase requires the committee. It also improves liveness during Dual Governance: a genuine loss within the cutoff can be confirmed without a DAO proposal while Rage Quit is active. A loss above the cutoff still requires DAO action.
+The initial hard cutoff is proposed at 5%. It adds modest headroom over the [current penalty-derived 3.6% 36-day allowance](./lip-35.md#ao-cl-balance-decrease), reducing the need to retune the limit after CL parameter changes. The wider cutoff does not increase what the accounting oracle can submit alone: every detected negative CL rebase requires the committee. It also improves liveness during Dual Governance: a genuine loss within the cutoff can be confirmed without a DAO proposal while Rage Quit is active. A loss above the cutoff still requires DAO action.
 
 ### Make the second opinion operational
 
-The [SP1 oracle](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747) was completed and deployed on mainnet in advisory mode, but never connected as the protocol's second opinion. It was later [updated for Electra](https://github.com/lidofinance/sp1-lido-accounting-zk/commit/07560d2ca75bde9ec85094212d454bd9a1f3ef90). A separate [RISC Zero/Boundless implementation](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/8) produced working mainnet test reports, but its external audit and production deployment remained outstanding. Its integration was [publicly paused](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/9). Both implementations show the maintenance cost of this approach. A CL proof tracks fork-specific state and proof formats, so Ethereum upgrades require development, testing, and renewed audit work.
+The [SP1 oracle](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747) was completed and deployed on mainnet in advisory mode, but never connected as the protocol's second opinion. It was later [updated for Electra](https://github.com/lidofinance/sp1-lido-accounting-zk/commit/07560d2ca75bde9ec85094212d454bd9a1f3ef90). As part of this proposal, the SP1 oracle is fully sunset: its operation and maintenance stop, and it is not adapted to future forks. No on-chain action is required because it was never connected to the protocol. A separate [RISC Zero/Boundless implementation](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/8) produced working mainnet test reports, but its external audit and production deployment remained outstanding. Its integration was [publicly paused](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/9). Both implementations show the maintenance cost of this approach. A CL proof tracks fork-specific state and proof formats, so Ethereum upgrades require development, testing, and renewed audit work.
 
 [LIP-23](./lip-23.md#second-opinion) explicitly allowed a third-party oracle committee or multisig as an alternative. This proposal uses that option and makes the second opinion part of the active report path.
 
@@ -53,13 +57,12 @@ The [SP1 oracle](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5
 ```python
 principalCLBalance = previousCLBalance + deposits
 totalPostCLBalance = postCLValidatorsBalance + postCLPendingBalance
-accountedPostCLBalance = totalPostCLBalance + withdrawalsVaultTransfer
-clRebase = accountedPostCLBalance - principalCLBalance
+clRebase = totalPostCLBalance + withdrawalsVaultTransfer - principalCLBalance
 ```
 
 - `clRebase >= 0`: pass without a second opinion;
-- `clRebase < 0` and the loss does not exceed the decrease allowed by `maxCLBalanceDecreaseBP`: require the committee;
-- the loss exceeds that allowance: revert before calling the committee.
+- `clRebase < 0 and -clRebase <= principalCLBalance * maxCLBalanceDecreaseBP / 10_000`: require the committee;
+- otherwise: revert before calling the committee.
 
 ### Rebase calculation
 
@@ -81,7 +84,7 @@ negativeCLRebase = -clRebase
 maxDecrease = principalCLBalance * maxCLBalanceDecreaseBP / 10_000
 
 if negativeCLRebase > maxDecrease:
-    revert IncorrectCLBalanceDecrease
+    revert NegativeCLRebaseAboveCutoff
 
 if secondOpinionOracle == address(0):
     revert SecondOpinionOracleNotSet
@@ -133,7 +136,7 @@ The report passes if:
 - the difference does not exceed `clBalanceOraclesErrorUpperBPLimit` of the second-opinion value;
 - the reported Withdrawal Vault balance equals the committee value.
 
-The committee publishes the exact values it verified, and `clBalanceOraclesErrorUpperBPLimit` is initially zero. The reported and committee CL balances must therefore match. A mismatch reverts the report and must be investigated before the incorrect report or attestation is replaced.
+The committee publishes the exact values it verified, and `clBalanceOraclesErrorUpperBPLimit` is proposed to be set to zero. The reported and committee CL balances must therefore match. A mismatch reverts the report and must be investigated before the incorrect report or attestation is replaced.
 
 [LIP-23](./lip-23.md#matching) used a one-sided upper margin because a ZK oracle that identifies Lido validators by withdrawal credentials can include validators not deposited by Lido. The comparison remains one-sided: the second-opinion value may be slightly above the reported value, but never below it. A non-zero margin should be enabled only when the active provider's methodology requires it.
 
@@ -145,7 +148,7 @@ The Withdrawal Vault value is matched only in the negative CL rebase branch. The
 
 The provider is a small contract controlled by a dedicated committee multisig. The committee can publish or replace an attestation for a `reportReference`.
 
-The committee cannot submit an accounting report or override the hard cutoff. Its members must be independent from the accounting-oracle members. The DAO approves the multisig address and its initial membership and threshold. The committee's off-chain process must independently derive the total CL balance and Withdrawal Vault balance for the report reference. The provider contract only stores the resulting attestation.
+The committee cannot submit an accounting report or override the hard cutoff. Its members must be independent from the accounting-oracle members. The DAO approves the multisig address and its initial membership and threshold. The committee's off-chain process must independently derive the total CL balance (not using Accounting Oracle software code) and Withdrawal Vault balance for the report reference. The provider contract only stores the resulting attestation.
 
 The checker retains `setSecondOpinionOracleAndCLBalanceUpperMargin(...)` and `SECOND_OPINION_MANAGER_ROLE`. The provider may also be changed through the existing bulk setter.
 
@@ -169,7 +172,7 @@ The existing `clBalanceOraclesErrorUpperBPLimit`, `CLBalanceOraclesErrorUpperBPL
 | `maxCLBalanceDecreaseBP`            |          `500` BP (5%) | Maximum negative CL rebase accepted in one report with committee attestation, relative to principal CL balance |
 | `clBalanceOraclesErrorUpperBPLimit` |                 `0` BP | Maximum amount by which the second-opinion CL balance may exceed the reported value                            |
 
-The initial hard cutoff must be finalized before implementation.
+The initial hard cutoff must be finalized before implementation. A separate numerical research is required but lies outside the current proposal.
 
 An account holding `MAX_CL_BALANCE_DECREASE_MANAGER_ROLE` can change the cutoff through `setMaxCLBalanceDecreaseBP`.
 
@@ -215,7 +218,7 @@ The second-opinion ABI is simplified because no provider is currently connected:
 The proposal replaces a model of plausible CL losses with two explicit security boundaries:
 
 - With the initial zero second-opinion margin, a negative CL rebase detected by the accounting-impact check requires an exact committee attestation; the current modeled allowance is removed.
-- The recovery corridor for a genuine loss is increased up to the hard cutoff. During Dual Governance, the committee can attest directly without waiting for a DAO proposal.
+- The recovery corridor for a genuine loss is increased up to the hard cutoff. During Dual Governance-induced Rage Quit mode, the committee can attest directly without waiting for a DAO proposal.
 
 The zero threshold applies after adding the ETH actually transferred from the Withdrawal Vault, including balance left there after earlier reports. A compromised accounting oracle can offset a reported CL loss only with ETH that is present in the vault and transferred into protocol accounting. It cannot fabricate that balance beyond the live vault balance. This limited corridor is accepted to keep the check stateless.
 
