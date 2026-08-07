@@ -5,7 +5,7 @@ status: Proposed
 author: Raman Siamionau, Matsvei Talstalutski
 discussions-to: https://research.lido.fi/t/lip-37-execution-delegation-framework-edf/11746
 created: 2026-06-01
-updated: 2026-07-30
+updated: 2026-08-07
 ---
 
 ## Simple Summary
@@ -86,7 +86,7 @@ The contract has exactly two trusted entities, **owner** and **delegate**:
 
 | Role         | Custody                         | Capabilities                                                                                                                                      |
 |--------------|---------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Owner**    | Safe multisig or cold wallet    | Nominate, renominate, and revoke the delegate (`nominateDelegate()` / `revokeDelegate()`); irreversibly `terminate()` the contract                |
+| **Owner**    | Safe multisig or cold wallet    | Nominate, renominate, and revoke the delegate (`nominateDelegate()` / `revokeDelegate()`); cancel a pending nomination (`revokeNomination()`); irreversibly `terminate()` the contract |
 | **Delegate** | Hot key in the off-chain daemon | Call `execute()` to dispatch transactions (`push`); sign messages that integrators verify via the contract's ERC-1271 `isValidSignature` (`pull`) |
 
 The owner manages the delegate's lifecycle but can never act *as* the contract. Termination is the escape hatch for owner-key compromise: because `terminate()` is irreversible — it permanently disables `execute()` and clears the delegate — a still-trusted owner can neutralize the contract entirely.
@@ -148,8 +148,18 @@ interface IDelegationContract {
     /// @param delegate Address of the incoming delegate.
     function nominateDelegate(address delegate) external;
 
+    /// @notice Immediately cancel the pending (not-yet-effective) nomination,
+    ///         keeping the current effective delegate untouched.
+    ///         Only callable by owner.
+    ///         Emits NominationRevoked.
+    ///         Reverts if there is no pending delegate (NoPendingDelegate).
+    ///         Reverts if the contract is terminated.
+    function revokeNomination() external;
+
     /// @notice Immediately remove the current and pending delegate. 
     ///         Only callable by owner.
+    ///         Emits NominationRevoked if a not-yet-effective nomination is
+    ///         dropped, in addition to DelegateRevoked.
     ///         Reverts if the contract is terminated.
     function revokeDelegate() external;
 
@@ -243,6 +253,7 @@ interface IDelegationContract {
     ///         set, so the initial configuration is observable on-chain.
     event InitialDelegateSet(address indexed newDelegate);
     event DelegateNominated(address indexed newDelegate, uint256 activeFrom);
+    event NominationRevoked(address indexed revokedNomination);
     event DelegateRevoked(address indexed revokedDelegate);
     event Terminated();
 }
@@ -342,9 +353,10 @@ Rotating the owner therefore requires deploying a fresh `DelegationContract` and
 
 Nomination is cooldown-gated; revocation is immediate:
 
-- **Nomination** (`nominateDelegate(newHotKey)`) schedules the new delegate, which becomes effective after the contract's `cooldown` elapses (immediately if the cooldown is 0). **The currently effective delegate stays active throughout the cooldown** and is dropped only when the new key activates — so `getDelegate()` returns the old key right up until the new one takes over, and a routine rotation has no gap. Activation is **not** a separate transaction: there is no stored "active" flag flipped at `activeFrom`. Instead the schedule (`pending`, `activeFrom`) is kept in storage and the views resolve the effective key from the current time — `getDelegate()` returns the scheduled key once `block.timestamp >= activeFrom`, and `getPendingDelegate()` stops reporting it at the same instant. Renominating *before* the cooldown elapses replaces the pending key and restarts the cooldown, with the current key staying effective throughout. Nominating *after* the pending key has matured first **settles** the matured key as the current delegate (the next state-changing call folds the scheduled key into `current` before applying its own change), so a later rotation keeps the matured key effective during the new cooldown and never reverts to an earlier key. The cooldown is a reaction window: an unexpected nomination (e.g. from a compromised owner) is visible via the `DelegateNominated` event and `getPendingDelegate()` for `cooldown` seconds before the new key can act — while the previous key keeps operating the seat — so monitoring and governance can react before any swap takes effect.
+- **Nomination** (`nominateDelegate(newHotKey)`) schedules the new delegate, which becomes effective after the contract's `cooldown` elapses (immediately if the cooldown is 0). **The currently effective delegate stays active throughout the cooldown** and is dropped only when the new key activates — so `getDelegate()` returns the old key right up until the new one takes over, and a routine rotation has no gap. Activation is **not** a separate transaction: there is no stored "active" flag flipped at `activeFrom`. Instead the schedule (`pending`, `activeFrom`) is kept in storage and the views resolve the effective key from the current time — `getDelegate()` returns the scheduled key once `block.timestamp >= activeFrom`, and `getPendingDelegate()` stops reporting it at the same instant. Renominating *before* the cooldown elapses replaces the pending key and restarts the cooldown, with the current key staying effective throughout. Nominating *after* the pending key has matured first **settles** the matured key as the current delegate (the next state-changing call folds the scheduled key into `current` before applying its own change), so a later rotation keeps the matured key effective during the new cooldown and never reverts to an earlier key. The cooldown is a reaction window: an unexpected nomination (e.g. from a compromised owner) is visible via the `DelegateNominated` event and `getPendingDelegate()` for `cooldown` seconds before the new key can act — while the previous key keeps operating the seat — so monitoring and governance can react before any swap takes effect. A pending nomination can also be cancelled outright via `revokeNomination()`, without touching the active key.
 - **Redundant nominations revert.** Because settling happens first, nominating the key that is *already* the effective delegate reverts with `AlreadyDelegate`, and renominating the key that is already pending reverts with `AlreadyPendingDelegate`. Neither is a silent no-op that restarts the cooldown; both are rejected so the on-chain schedule always reflects a real change. Nominating `address(0)` also reverts — dropping a delegate is only possible via `revokeDelegate()`.
-- **Revocation** (`revokeDelegate()`) is immediate and clears both the current and any pending delegate, leaving the contract with no delegate until a new one is nominated and its cooldown elapses.
+- **Nomination cancellation** (`revokeNomination()`) immediately drops the pending (not-yet-effective) delegate while keeping the current effective delegate untouched — the undo path for a mistaken or unwanted nomination that does not interrupt the operating seat. It emits `NominationRevoked` and reverts with `NoPendingDelegate` when there is nothing pending.
+- **Revocation** (`revokeDelegate()`) is immediate and clears both the current and any pending delegate, leaving the contract with no delegate until a new one is nominated and its cooldown elapses. If a not-yet-effective nomination is dropped along the way, `NominationRevoked` is emitted in addition to `DelegateRevoked`.
 
 The cooldown is set in the constructor and cannot change; it may be 0. When the factory deploys an instance with a non-zero initial delegate, that delegate is effective immediately and the constructor emits `InitialDelegateSet`, so the starting configuration is observable on-chain alongside later `DelegateNominated` events.
 
@@ -353,7 +365,7 @@ The cooldown is set in the constructor and cannot change; it may be 0. When the 
 The owner may call `terminate()` to permanently disable the contract's `execute()` function; it also clears the active delegate (equivalent to `revokeDelegate()`) as part of the same call. This is an **irreversible** operation: a terminated contract cannot be reactivated. After termination:
 
 - All delegate calls to `execute()` revert.
-- All state-changing owner methods (`nominateDelegate()`, `revokeDelegate()`, and `terminate()` itself) also revert — no owner method remains callable after termination.
+- All state-changing owner methods (`nominateDelegate()`, `revokeNomination()`, `revokeDelegate()`, and `terminate()` itself) also revert — no owner method remains callable after termination.
 - `getDelegate()` returns `address(0)`, so any pull-style integrator that resolves the active delegate through it (to verify a signature) fails closed and does not keep trusting the last delegate.
 - A new `DelegationContract` must be deployed and the role must be reassigned to the new address.
 
