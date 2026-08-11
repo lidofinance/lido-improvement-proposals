@@ -5,39 +5,38 @@ status: WIP
 author: George Avsetsin
 discussions-to: <research.lido.fi thread to be created>
 created: 2026-08-04
-updated: 2026-08-10
+updated: 2026-08-11
 ---
 
 # Lean Bunker Mode
 
 ## Simple Summary
 
-Make Bunker Mode leaner by replacing its complex, maintenance-heavy activation and withdrawal finalization logic with simpler rules calibrated conservatively.
+Simplify Bunker Mode activation and withdrawal finalization with a current-state slashing-impact check and a DAO-configurable request-age delay.
 
 ## Abstract
 
 This proposal simplifies how Bunker Mode is activated and how its safe border is calculated, without changing its on-chain interface.
 
-**Bunker Mode activation** (if any of the following occurs):
+**Bunker Mode is activated if either:**
 
 - the simulated CL rebase is negative;
-- a significant amount of Lido validator stake is slashed;
-- network-wide slashings materially increase losses for slashed Lido validators.
+- the current slashing-impact estimate reaches the configured threshold.
 
 **Finalization:**
 
-- in Bunker Mode: recent requests become eligible after a fixed, DAO-configurable delay while the mode remains active;
-- in Turbo Mode: the ordinary request timestamp margin is increased.
+- all requests must satisfy the ordinary request timestamp margin, which is increased;
+- while Bunker Mode remains active, requests must also be older than a DAO-configurable delay.
 
 ## Motivation
 
-**Problem.** A slashing or other validator failure can become observable before its full loss reaches the stETH share rate. Without a delay, users can finalize withdrawals before the loss is reported and shift it to remaining holders. The [original Bunker design](https://research.lido.fi/t/withdrawals-for-lido-on-ethereum-bunker-mode-design-and-implementation/3890) prevents this by keeping recent withdrawal requests exposed to losses that are already known or reasonably expected.
+**Problem.** A slashing or other validator failure can become observable before its full loss reaches the stETH share rate. Withdrawal requests are finalized at the lower of their request-time share rate and the post-report share rate. Without a delay, users can finalize withdrawals before the loss is reported and shift it to remaining holders. The [original Bunker design](https://research.lido.fi/t/withdrawals-for-lido-on-ethereum-bunker-mode-design-and-implementation/3890) prevents this by keeping recent withdrawal requests exposed to losses that are already known or reasonably expected.
 
 **Current approach.** The current oracle activates Bunker Mode for a negative CL rebase, slashings expected to cause a future negative rebase, or an abnormally low rebase ending in a negative tail. While Bunker Mode is active, it combines a negative-rebase border with a border derived from incomplete slashings considered associated with queued requests.
 
 **Drawbacks.** The slashing and abnormal-rebase paths estimate future penalties or rewards, query historical beacon states, and approximate request-to-slashing associations. They depend on Ethereum penalty timing, validator lifecycle rules, and report cadence. This makes independent oracle implementations difficult and creates recurring maintenance across Ethereum forks for logic intended only for rare incidents.
 
-**Proposed approach.** This proposal replaces those calculations with current-state checks calibrated conservatively and a fixed Bunker finalization delay while the mode remains active. It also increases the ordinary request timestamp margin to preserve the time horizon covered by the removed abnormal-rebase checks. Requests are already finalized at the lower of their request-time share rate and the post-report share rate, so holding them until a loss is reported preserves the original protection without forecasting a future rebase or associating individual requests with slashings.
+**Proposed approach.** This proposal replaces those calculations with current-state checks and a fixed Bunker finalization delay while the mode remains active. It also increases the ordinary request timestamp margin so requests created during the longest interval sampled by the removed abnormal-rebase check remain ineligible for the same report.
 
 ## Specification
 
@@ -45,25 +44,20 @@ This proposal changes two off-chain oracle decisions: whether to report Bunker M
 
 ### Bunker Mode activation
 
-**Current policy.** Under the [current Accounting Oracle policy](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#bunker-mode-activation), Bunker Mode is reported for a negative CL rebase, slashings expected to cause a future negative CL rebase, or a lower-than-expected CL rebase with a negative rebase expected at the end of the frame.
+**Current policy.** Under the [current Accounting Oracle policy](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#bunker-mode-activation), Bunker Mode is reported for a negative CL rebase, slashings expected to cause a future negative CL rebase, or an abnormally low CL rebase with a negative sampled tail.
 
-**Proposed policy.** The negative-rebase check is retained. The slashing prediction and abnormal-rebase classifier are replaced with current-state slashing checks. The oracle evaluates three checks on every report and reports Bunker Mode if any check is true:
+**Proposed policy.** The negative-rebase check is retained. The slashing prediction and abnormal-rebase classifier are replaced with one current-state slashing-impact estimate. The oracle evaluates two checks on every report and reports Bunker Mode if either check is true:
 
 - the simulated CL rebase is negative;
-- the slashed share of non-withdrawable Lido stake reaches the direct threshold;
-- pending slashed Lido stake combined with recent network slashings reaches the correlated-loss threshold.
+- the current slashing-impact estimate reaches the configured threshold.
 
 ```python
-isBunkerMode = (
-    isNegativeCLRebase
-    or isDirectSlashingBigEnough
-    or isCorrelatedSlashingBigEnough
-)
+isBunkerMode = isNegativeCLRebase or isSlashingImpactBigEnough
 ```
 
-If all three checks are false, the oracle reports Turbo Mode immediately, with no minimum Bunker duration or exit cooldown. Before the first report has been successfully processed, the oracle reports Turbo Mode, matching the current policy.
+If both checks are false, the oracle reports Turbo Mode immediately, with no minimum Bunker duration or exit cooldown. Before the first report has been successfully processed, the oracle reports Turbo Mode.
 
-**Negative simulated CL rebase.** The oracle [simulates the report](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#available-ether-and-share-rate) with EL rewards set to zero and no Withdrawal Queue requests finalized. The condition holds if the simulated post-report total pooled ether is below its pre-report value. The simulation still includes the reported CL balances, the Withdrawal Vault, and shares already requested for burning. Withdrawal finalization therefore cannot trigger this condition.
+**Negative simulated CL rebase.** The oracle uses the ordinary [on-chain report simulation](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#available-ether-and-share-rate), with EL rewards set to zero and no Withdrawal Queue requests finalized. The condition holds if the simulated post-report total pooled ether is below its pre-report value. All other report effects remain included, such as the reported CL balances, the Withdrawal Vault, shares already requested for burning, and external bad debt internalized by the report. Withdrawal finalization therefore cannot trigger this condition.
 
 ```python
 clRebaseSimulation = simulateReport(
@@ -78,7 +72,29 @@ isNegativeCLRebase = (
 )
 ```
 
-**Slashing exposure.** Both slashing checks use validator effective balances at the report reference epoch. `lidoExposure` contains Lido validators that have activated and are not yet withdrawable at that epoch. If its total effective balance is zero, both slashing checks are false and neither ratio is evaluated.
+**Slashing impact.** `lidoExposureBalance` is the total effective balance of Lido validators that have activated and are not yet withdrawable at the reference epoch. The estimate multiplies the share of this exposure that is slashed by the estimated impact per slashed ETH. That impact is the sum of:
+
+- a DAO-configurable base impact rate for cumulative incident effects that do not depend on other network slashings;
+- the current CL proportional slashing factor, used as a proxy for the correlated penalty.
+
+$$
+\text{slashingImpactShare}
+=
+\frac{\text{lidoNonWithdrawableSlashedBalance}}{\text{lidoExposureBalance}}
+\times
+\left(
+\frac{\text{baseSlashingImpactRatePPM}}{\text{PPM}}
++
+\min\left(
+\text{proportionalSlashingMultiplier}
+\times
+\frac{\text{networkRecentSlashedBalance}}{\text{networkActiveBalance}},
+1
+\right)
+\right)
+$$
+
+`networkRecentSlashedBalance` includes Lido slashings, so a fresh Lido-only incident affects both components. Network slashings without slashed Lido stake produce zero impact. The Lido balances below use validator effective balances at the reference epoch.
 
 ```python
 PPM = 1_000_000
@@ -93,61 +109,17 @@ lidoExposureBalance = sum(
     validator.effectiveBalance
     for validator in lidoExposure
 )
-```
 
-**Direct Lido slashing.** This check depends only on Lido's slashed exposure; network-wide slashings do not affect it. The condition holds when the slashed share of `lidoExposure` reaches the configured direct threshold.
-
-```python
 lidoNonWithdrawableSlashedBalance = sum(
     validator.effectiveBalance
     for validator in lidoExposure
     if validator.slashed
 )
 
-if lidoExposureBalance == 0:
-    isDirectSlashingBigEnough = False
-else:
-    directLidoSlashedSharePPM = (
-        PPM * lidoNonWithdrawableSlashedBalance // lidoExposureBalance
-    )
-
-    isDirectSlashingBigEnough = (
-        directLidoSlashedSharePPM
-        >= BUNKER_LIDO_SLASHED_SHARE_THRESHOLD_PPM
-    )
-```
-
-The initial direct threshold is `0.5%` of Lido exposure (`5,000 ppm` in the configuration). The network axis is included only to make the two slashing charts comparable; it is not an input to this check. An observed Lido slashed share on or above the line activates Bunker Mode.
-
-```mermaid
----
-config:
-  xyChart:
-    height: 400
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#005cc5"
----
-xychart
-    title "Direct trigger: fixed Lido threshold"
-    x-axis "Recent network slashed stake (% of active stake)" 0 --> 50
-    y-axis "Slashed share of Lido exposure (%)" 0 --> 0.55
-    line [0.5, 0.5]
-```
-
-**Correlated slashing.** This check counts only slashed Lido validators whose correlated penalty has not yet been applied at the report reference state. It scales their share of `lidoExposure` by the network-wide proportional slashing factor: the recent network slashed share multiplied by `proportionalSlashingMultiplier`, capped at one. The condition holds when the resulting proxy reaches the configured correlated-loss threshold. Network slashings without pending Lido slashings produce zero.
-
-```python
-lidoPendingSlashedBalance = sum(
-    validator.effectiveBalance
-    for validator in lidoExposure
-    if validator.slashed
-    and referenceEpoch
-        <= validator.withdrawableEpoch - epochsPerSlashingsVector // 2
-)
-
 networkRecentSlashedBalance = sum(beaconState.slashings)
-networkActiveBalance = totalActiveBalance(beaconState)
+networkActiveBalance = getTotalActiveBalance(beaconState)
+baseSlashingImpactRatePPM = BUNKER_BASE_SLASHING_IMPACT_RATE_PPM
+proportionalSlashingMultiplier = PROPORTIONAL_SLASHING_MULTIPLIER_BELLATRIX  # 3
 
 # Follows adjusted_total_slashing_balance in CL process_slashings:
 # https://ethereum.github.io/consensus-specs/specs/electra/beacon-chain/#modified-process_slashings
@@ -156,49 +128,52 @@ adjustedNetworkSlashedBalance = min(
     networkActiveBalance,
 )
 
-# Calculate the full product before dividing. Use at least 256-bit or
-# arbitrary-precision intermediate values; do not round the two shares separately.
+slashingImpactFactorNumerator = (
+    baseSlashingImpactRatePPM * networkActiveBalance
+    + PPM * adjustedNetworkSlashedBalance
+)
+
 if lidoExposureBalance == 0:
-    isCorrelatedSlashingBigEnough = False
+    isSlashingImpactBigEnough = False
 else:
-    correlatedLidoLossSharePPM = (
-        PPM
-        * lidoPendingSlashedBalance
-        * adjustedNetworkSlashedBalance
+    # Multiply before dividing and use arbitrary-precision intermediate values.
+    slashingImpactSharePPM = (
+        lidoNonWithdrawableSlashedBalance
+        * slashingImpactFactorNumerator
         // (lidoExposureBalance * networkActiveBalance)
     )
 
-    isCorrelatedSlashingBigEnough = (
-        correlatedLidoLossSharePPM
-        >= BUNKER_CORRELATED_LOSS_THRESHOLD_PPM
+    isSlashingImpactBigEnough = (
+        slashingImpactSharePPM
+        >= BUNKER_SLASHING_IMPACT_THRESHOLD_PPM
     )
 ```
 
-The `adjustedNetworkSlashedBalance` calculation follows the CL [`process_slashings`](https://ethereum.github.io/consensus-specs/specs/electra/beacon-chain/#modified-process_slashings) formula inherited by the target fork: it applies the proportional slashing multiplier and caps the network factor at one. The target fork uses `proportionalSlashingMultiplier = 3` and `epochsPerSlashingsVector = 8,192`; these values are taken from its CL specification, pinned by the new Accounting Oracle consensus version, and are not DAO-configurable. A slashed validator remains pending when `referenceEpoch` equals its correlated penalty epoch because `process_slashings` for that epoch runs only when the state advances past its last slot. Excluding validators after that epoch prevents an already applied Lido penalty from being combined with a later network event. `correlatedLidoLossSharePPM` cannot exceed the pending slashed share of Lido exposure.
+The base impact rate and activation threshold are DAO-configurable. `adjustedNetworkSlashedBalance` follows the target fork's CL [`process_slashings`](https://ethereum.github.io/consensus-specs/specs/electra/beacon-chain/#modified-process_slashings): the proportional component is capped at one, and its multiplier is not DAO-configurable.
 
-Only slashed Lido validators still awaiting their correlated penalty are counted on the y-axis below. With the initial `0.004%` correlated-loss threshold (`40 ppm` in the configuration) and a proportional slashing multiplier of `3`, the curve meets the `0.5%` direct threshold when about `0.27%` of active network stake has been slashed recently. The chart starts at this crossover; below it, the direct check activates first. When roughly one third of active network stake has been slashed recently, the network factor reaches its cap and the required pending Lido share remains `0.004%` thereafter. A point on or above the curve activates the correlated check; the pseudocode above defines the exact calculation.
+The chart shows the activation boundary for the proposed initial base rate of `5,000 ppm` and threshold of `40 ppm` over the range where it changes most. A point on or above the curve activates Bunker Mode. Only slashed Lido validators that are not yet withdrawable are counted on the Y axis. For larger network incidents, the boundary continues falling. Once recent network slashings reach one third of active stake, the network factor is capped and the boundary settles at approximately `0.004%` of Lido exposure.
 
 ```mermaid
 ---
 config:
   xyChart:
-    height: 400
+    height: 450
   themeVariables:
     xyChart:
       plotColorPalette: "#cf222e"
 ---
 xychart
-    title "Correlated trigger: pending Lido threshold"
-    x-axis "Recent network slashed stake (% of active stake)" 0.266667 --> 50
-    y-axis "Pending slashed share of Lido exposure (%)" 0 --> 0.55
-    line [0.5, 0.120163, 0.068287, 0.047696, 0.036646, 0.029753, 0.025042, 0.02162, 0.01902, 0.016978, 0.015333, 0.013978, 0.012843, 0.011878, 0.011049, 0.010327, 0.009694, 0.009135, 0.008636, 0.008189, 0.007786, 0.00742, 0.007088, 0.006784, 0.006505, 0.006248, 0.006011, 0.005791, 0.005586, 0.005396, 0.005218, 0.005051, 0.004895, 0.004748, 0.004609, 0.004479, 0.004356, 0.004239, 0.004128, 0.004023, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004]
+    title "Bunker Mode slashing boundary"
+    x-axis "Recent network slashings (% of active stake)" 0 --> 5
+    y-axis "Slashed Lido stake (% of Lido exposure)" 0 --> 0.85
+    line [0.8, 0.5, 0.363636, 0.285714, 0.235294, 0.2, 0.173913, 0.153846, 0.137931, 0.125, 0.114286, 0.105263, 0.097561, 0.090909, 0.085106, 0.08, 0.075472, 0.071429, 0.067797, 0.064516, 0.061538, 0.058824, 0.056338, 0.054054, 0.051948, 0.05, 0.048193, 0.046512, 0.044944, 0.043478, 0.042105, 0.040816, 0.039604, 0.038462, 0.037383, 0.036364, 0.035398, 0.034483, 0.033613, 0.032787, 0.032, 0.03125, 0.030534, 0.029851, 0.029197, 0.028571, 0.027972, 0.027397, 0.026846, 0.026316, 0.025806]
 ```
 
-Both slashing checks use slashings already visible in the reference state and can therefore activate before the correlated penalty reaches the reported CL balance and the stETH share rate. The negative-rebase check remains a backstop once the loss appears in the report simulation.
+The slashing check can activate before the correlated penalty is reflected in the reported CL balance. If the penalty later makes the simulated CL rebase negative, the negative-rebase check also activates Bunker Mode.
 
 ### Withdrawal finalization
 
-The safe border is the latest request creation timestamp that the oracle may include in finalization batches. Crossing it only makes a request eligible; the existing queue constraints still determine whether the request is finalized.
+The safe border is the request-creation cutoff used to select finalization batches. Requests created at or before it become eligible, while the existing queue constraints still determine whether they are finalized.
 
 **Current policy.** In Bunker Mode, the oracle uses the earlier of a negative-rebase border and an associated-slashing border. The negative-rebase border is anchored to the report preceding Bunker Mode activation and starts advancing after a configured maximum delay. The associated-slashing border is reconstructed from incomplete Lido slashings considered associated with queued requests.
 
@@ -208,26 +183,18 @@ The safe border is the latest request creation timestamp that the oracle may inc
 secondsPerEpoch = slotsPerEpoch * secondsPerSlot
 finalizationDefaultShift = ceil(requestTimestampMargin / secondsPerEpoch)
 
-defaultRequestsBorderEpoch = max(
-    0,
-    referenceEpoch - finalizationDefaultShift,
-)
+finalizationShift = finalizationDefaultShift
 
-if not isBunkerMode:
-    safeBorderEpoch = defaultRequestsBorderEpoch
-else:
-    bunkerRequestsBorderEpoch = max(
-        0,
-        referenceEpoch - bunkerFinalizationDelayEpochs,
+if isBunkerMode:
+    finalizationShift = max(
+        finalizationDefaultShift,
+        BUNKER_FINALIZATION_DELAY_EPOCHS,
     )
 
-    safeBorderEpoch = min(
-        defaultRequestsBorderEpoch,
-        bunkerRequestsBorderEpoch,
-    )
+safeBorderEpoch = max(0, referenceEpoch - finalizationShift)
 ```
 
-The resulting epoch is converted to the timestamp at its start and passed to the existing [finalization algorithm](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#finalization). Report cadence, FIFO ordering, share-rate accounting, batch construction and limits, pause handling, and the available-ETH budget can make actual finalization later.
+The resulting epoch is converted to the timestamp at its start and passed to the existing [finalization algorithm](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#finalization). All existing queue constraints, including FIFO ordering and the available-ETH budget, remain unchanged, so actual finalization may occur later.
 
 ### Configuration
 
@@ -245,18 +212,18 @@ The proposal adds three parameters to [`OracleDaemonConfig`](https://docs.lido.f
     <tr><th colspan="3" align="left"><code>OracleDaemonConfig</code></th></tr>
     <tr>
       <td>Bunker requests border</td>
-      <td>The earlier of an associated-slashing border and a negative-rebase border bounded by <a href="https://dao.lido.fi/vote/184"><code>FINALIZATION_MAX_NEGATIVE_REBASE_EPOCH_SHIFT = 2,250 epochs</code></a> (10 days).</td>
+      <td>An associated-slashing border with no fixed time cap, or a negative-rebase border capped by <a href="https://dao.lido.fi/vote/184"><code>FINALIZATION_MAX_NEGATIVE_REBASE_EPOCH_SHIFT = 2,250 epochs</code></a> (10 days), whichever is earlier.</td>
       <td>One Bunker-specific age-based border: <code>BUNKER_FINALIZATION_DELAY_EPOCHS = 9,000 epochs</code> (40 days).</td>
     </tr>
     <tr>
-      <td>Direct Lido slashing threshold</td>
+      <td>Base slashing impact rate</td>
       <td>No direct equivalent.</td>
-      <td><code>BUNKER_LIDO_SLASHED_SHARE_THRESHOLD_PPM = 5,000</code> (0.5% of Lido exposure).</td>
+      <td><code>BUNKER_BASE_SLASHING_IMPACT_RATE_PPM = 5,000</code> (0.5% of non-withdrawable slashed Lido balance).</td>
     </tr>
     <tr>
-      <td>Correlated slashing threshold</td>
+      <td>Slashing impact threshold</td>
       <td>No direct equivalent.</td>
-      <td><code>BUNKER_CORRELATED_LOSS_THRESHOLD_PPM = 40</code> (0.004% of Lido exposure).</td>
+      <td><code>BUNKER_SLASHING_IMPACT_THRESHOLD_PPM = 40</code> (0.004% of Lido exposure).</td>
     </tr>
     <tr><th colspan="3" align="left"><code>OracleReportSanityChecker</code></th></tr>
     <tr>
@@ -267,33 +234,35 @@ The proposal adds three parameters to [`OracleDaemonConfig`](https://docs.lido.f
   </tbody>
 </table>
 
-**Bunker finalization delay.** `BUNKER_FINALIZATION_DELAY_EPOCHS` replaces the associated-slashing and negative-rebase borders. Its initial `9,000` epochs are calibrated against, rather than added to, three horizons:
+**Bunker finalization delay.** `BUNKER_FINALIZATION_DELAY_EPOCHS` replaces the associated-slashing and negative-rebase borders. The delay is cause-independent: while either activation check remains true, the same Bunker border applies. The initial `9,000`-epoch delay covers three relevant horizons:
 
 - **Legacy negative-rebase limit — 2,250 epochs (10 days):** the maximum shift used by the current negative-rebase border.
 - **Slashing horizon — 8,192 epochs (about 36.4 days):** the minimum time before a slashed validator becomes withdrawable under the [target fork's inherited rules](https://ethereum.github.io/consensus-specs/specs/electra/beacon-chain/#modified-slash_validator).
-- **Full Lido exit — approximately 8,450 epochs (about 37.6 days):** in a protocol-wide incident, exit churn can keep the last affected validators non-withdrawable beyond the base slashing horizon under the [Gloas exit rules](https://eips.ethereum.org/EIPS/eip-8061) inherited by the target fork.
+- **Full Lido exit — approximately 8,450 epochs (about 37.6 days):** if all Lido validators are slashed, exit churn can keep the last affected validators non-withdrawable beyond the base slashing horizon under the [Gloas exit rules](https://eips.ethereum.org/EIPS/eip-8061) inherited by the target fork.
 
-`9,000` epochs equal 40 days and 40 [Accounting Oracle frames](https://docs.lido.fi/contracts/accounting-oracle/#report-cycle), covering the longest estimate with about 550 epochs of margin. The full-exit estimate assumes Lido at no more than 25% of active stake and no material pre-existing exit queue. If these assumptions or the fork rules no longer hold, the delay provides a 40-day response window while Bunker Mode remains active for [pausing the Withdrawal Queue](https://docs.lido.fi/guides/protocol-levers/#emergency-pause) and updating the parameter. The delay should remain a whole number of frames, although the oracle does not enforce this.
+`9,000` epochs equal 40 days and 40 [Accounting Oracle frames](https://docs.lido.fi/contracts/accounting-oracle/#report-cycle), covering the longest estimate with about 550 epochs of margin. The full-exit estimate assumes Lido at no more than 25% of active stake and no material exit demand ahead of or concurrent with Lido exits.
 
-The threshold rationale below uses a calibration baseline of 9 million ETH of Lido exposure, 40 million ETH of active network stake, and a representative one-frame CL rebase of about 630 ETH.
+If these assumptions or the fork rules no longer hold, responders must [pause the Withdrawal Queue](https://docs.lido.fi/guides/protocol-levers/#emergency-pause) or update the parameter. While Bunker Mode remains active, the 40-day delay is the available response window for requests held by the Bunker border. The delay should remain a whole number of frames, although the oracle does not enforce this.
 
-**Direct Lido slashing threshold.** The initial `5,000 ppm` threshold activates when 0.5% of Lido exposure is non-withdrawable and slashed. At the calibration baseline, this is 45,000 ETH. With no other recent slashings, normal finality, and no replacement stake, the modeled total shortfall over the full slashing horizon is about 350 ETH. This is roughly half of the baseline one-frame CL rebase and is spread across many reports, so the threshold remains an early trigger.
+The calibration below assumes 9 million ETH of Lido exposure, 40 million ETH of active network stake, and a representative one-frame CL rebase of about 630 ETH when estimating foregone rewards.
 
-**Correlated slashing threshold.** At the calibration baseline, the initial `40 ppm` threshold corresponds to a correlated-loss proxy of about 360 ETH, slightly more than half of the one-frame CL rebase. With a proportional slashing multiplier of `3`, larger network incidents activate the correlated check with less than 0.5% of Lido exposure slashed.
+**Base slashing impact rate.** The initial `5,000 ppm` value estimates cumulative incident effects independent of other network slashings as 0.5% of non-withdrawable slashed Lido balance. Under normal finality and no replacement stake, the calibration model combines the [initial slashing penalty](https://ethereum.github.io/consensus-specs/specs/electra/beacon-chain/#modified-slash_validator), continuing [source and target penalties](https://ethereum.github.io/consensus-specs/specs/altair/beacon-chain/#get_flag_index_deltas), and foregone CL rewards into a shortfall of about 0.44% relative to the no-slashing case over the 8,192-epoch horizon, rounded up to 0.5%. This is a cumulative severity estimate, not a prediction of the loss in one report. The correlated penalty is added separately through the current network slashing factor.
 
-**Default requests border.** `requestTimestampMargin` increases from 20 to 24 epochs. The retired abnormal-rebase classifier looked back up to [23 epochs](https://research.lido.fi/t/withdrawals-for-lido-on-ethereum-bunker-mode-design-and-implementation/3890/4), so 24 epochs preserves that horizon with one epoch of alignment margin.
+**Slashing impact threshold.** At the calibration baseline, the initial `40 ppm` threshold represents about 360 ETH of estimated cumulative impact. Together with the base impact rate, it makes a fresh Lido-only incident cross the boundary at about 44,000 ETH, or 0.48% of Lido exposure, while larger network incidents require less Lido stake to be slashed. Across a 20–25% Lido share of active network stake, the Lido-only boundary remains approximately 0.47–0.50%; a materially lower share requires recalibration.
 
-The proposal is activated no earlier than Glamsterdam. These calibrations are revalidated against the final target-fork specification before activation and whenever the Accounting Oracle frame, Lido exposure, or representative CL income changes materially.
+**Default requests border.** `requestTimestampMargin` increases from 20 to 24 epochs. The retired abnormal-rebase classifier sampled CL balance changes beginning 1 and [23 epochs](https://research.lido.fi/t/withdrawals-for-lido-on-ethereum-bunker-mode-design-and-implementation/3890/4) before the reference epoch. A 24-epoch margin keeps requests created during the longer sampled interval ineligible for the same report, with one epoch for alignment. It does not reproduce the classifier's ability to activate Bunker Mode and hold older requests.
+
+The proposal is activated no earlier than Glamsterdam. These calibrations are revalidated against the final target-fork specification before activation and whenever the Accounting Oracle frame, Lido share of active stake, or representative CL income changes materially.
 
 ### Implementation and activation
 
 The proposal requires a new Accounting Oracle daemon release and an Accounting Oracle consensus-version bump; no contract upgrade is required.
 
-The daemon replaces the abnormal-rebase classifier, future slashing-penalty prediction, and the two existing Bunker finalization borders with the activation and finalization rules specified above.
+The daemon implements the activation and finalization rules specified above.
 
 After the preceding report has been processed and while the Withdrawal Queue is in Turbo Mode, all Accounting Oracle instances are upgraded. The following on-chain changes are then required:
 
-- add `BUNKER_FINALIZATION_DELAY_EPOCHS`, `BUNKER_LIDO_SLASHED_SHARE_THRESHOLD_PPM`, and `BUNKER_CORRELATED_LOSS_THRESHOLD_PPM` to `OracleDaemonConfig`;
+- add `BUNKER_FINALIZATION_DELAY_EPOCHS`, `BUNKER_BASE_SLASHING_IMPACT_RATE_PPM`, and `BUNKER_SLASHING_IMPACT_THRESHOLD_PPM` to `OracleDaemonConfig`;
 - unset `NORMALIZED_CL_REWARD_PER_EPOCH`, `NORMALIZED_CL_REWARD_MISTAKE_RATE_BP`, `REBASE_CHECK_NEAREST_EPOCH_DISTANCE`, `REBASE_CHECK_DISTANT_EPOCH_DISTANCE`, and `FINALIZATION_MAX_NEGATIVE_REBASE_EPOCH_SHIFT` in `OracleDaemonConfig`;
 - change `OracleReportSanityChecker.requestTimestampMargin` from 7,680 to 9,216 seconds;
 - bump the Accounting Oracle consensus version.
@@ -304,9 +273,15 @@ Complete the on-chain changes before the next reference slot and bump the consen
 
 While Bunker Mode remains active, the 9,000-epoch delay provides a response window, not a solvency guarantee. If a loss can remain latent for longer, the Withdrawal Queue must be paused before affected requests become eligible.
 
-The new activation conditions are not a strict superset of the retired abnormal-rebase classifier, which can detect some non-slashing performance incidents before the simulated CL rebase becomes negative. The 24-epoch request margin preserves its lookback horizon but does not eliminate this detection gap.
+At runtime, the slashing-impact threshold does not adjust to current CL income. A sub-threshold slashing during an unusually low-income frame, or a non-slashing performance incident, may activate Bunker Mode only once the simulated CL rebase becomes negative. The 24-epoch request margin does not guarantee that such an incident is detected before requests become eligible.
 
-The existing restriction on depositing buffered ETH to the CL also remains in effect while Bunker Mode is active. For incidents outside the automatic policy's assumptions, the [CircuitBreaker](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-34.md) can pause the Withdrawal Queue, and the Reseal Committee can extend the pause through the [Reseal Manager](https://github.com/lidofinance/dual-governance/blob/develop/docs/mechanism.md) under its existing Dual Governance preconditions. Changing the delay may be unavailable during Dual Governance escalation. RageQuit uses the same queue, so both the Bunker delay and any pause also delay its completion.
+The estimate uses all non-withdrawable slashed Lido validators and the current CL slashings vector. It can keep applying the proportional component after the corresponding penalty has been charged or combine slashings from different incidents, biasing the result toward a longer Bunker period.
+
+If an unusually long exit queue outlasts the CL slashings vector, the base-only activation boundary is 0.8% of Lido exposure. The queue can also extend penalties beyond the 8,192-epoch horizon used to calibrate the base rate. The base rate assumes normal finality; inactivity leaks and other exceptional conditions require operational assessment.
+
+Buffered ETH cannot be deposited to the CL while Bunker Mode is active. For incidents outside the automatic policy's assumptions, the [CircuitBreaker](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-34.md) can pause the Withdrawal Queue, and the Reseal Committee can extend the pause through the [Reseal Manager](https://github.com/lidofinance/dual-governance/blob/develop/docs/mechanism.md) under its existing Dual Governance preconditions.
+
+Changing the delay may be unavailable during Dual Governance escalation. RageQuit uses the same queue, so both the Bunker delay and any pause also delay its completion.
 
 ## Copyright
 
