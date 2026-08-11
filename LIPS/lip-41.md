@@ -77,23 +77,6 @@ isNegativeCLRebase = (
 - a DAO-configurable base impact rate for cumulative incident effects that do not depend on other network slashings;
 - the current CL proportional slashing factor, used as a proxy for the correlated penalty.
 
-$$
-\text{slashingImpactShare}
-=
-\frac{\text{lidoNonWithdrawableSlashedBalance}}{\text{lidoExposureBalance}}
-\times
-\left(
-\frac{\text{baseSlashingImpactRatePPM}}{\text{PPM}}
-+
-\min\left(
-\text{proportionalSlashingMultiplier}
-\times
-\frac{\text{networkRecentSlashedBalance}}{\text{networkActiveBalance}},
-1
-\right)
-\right)
-$$
-
 `networkRecentSlashedBalance` includes Lido slashings, so a fresh Lido-only incident affects both components. Network slashings without slashed Lido stake produce zero impact. The Lido balances below use validator effective balances at the reference epoch.
 
 ```python
