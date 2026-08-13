@@ -34,7 +34,7 @@ This proposal simplifies how Bunker Mode is activated and how its safe border is
 
 **Current approach.** The current oracle activates Bunker Mode for a negative CL rebase, slashings expected to cause a future negative rebase, or an abnormally low rebase ending in a negative tail. While Bunker Mode is active, it combines a negative-rebase border with a border derived from incomplete slashings considered associated with queued requests.
 
-**Drawbacks.** The slashing and abnormal-rebase paths estimate future penalties or rewards, query historical beacon states, and approximate request-to-slashing associations. They depend on Ethereum penalty timing, validator lifecycle rules, and report cadence. This makes independent oracle implementations difficult and creates recurring maintenance across Ethereum forks for logic intended only for rare incidents.
+**Drawbacks.** The slashing and abnormal-rebase paths estimate future penalties or rewards, query historical beacon states, and approximate request-to-slashing associations. They depend on Ethereum penalty timing, validator lifecycle rules, and report cadence. This increases oracle implementation risks given all of the committee members run the same reference implementation and creates recurring maintenance across Ethereum forks for logic intended only for rare incidents.
 
 **Proposed approach.** This proposal replaces those calculations with current-state checks and a fixed Bunker finalization delay while the mode remains active. It also increases the ordinary request timestamp margin so requests created during the longest interval sampled by the removed abnormal-rebase check remain ineligible for the same report.
 
@@ -55,7 +55,7 @@ This proposal changes two off-chain oracle decisions: whether to report Bunker M
 isBunkerMode = isNegativeCLRebase or isSlashingImpactBigEnough
 ```
 
-If both checks are false, the oracle reports Turbo Mode immediately, with no minimum Bunker duration or exit cooldown. Before the first report has been successfully processed, the oracle reports Turbo Mode.
+If both checks are false, the oracle reports Turbo Mode immediately, with no minimum Bunker duration or exit cooldown. Before the first report has been successfully processed, the oracle assumes Turbo Mode.
 
 **Negative simulated CL rebase.** The oracle uses the ordinary [on-chain report simulation](https://docs.lido.fi/guides/oracle-spec/accounting-oracle/#available-ether-and-share-rate), with EL rewards set to zero and no Withdrawal Queue requests finalized. The condition holds if the simulated post-report total pooled ether is below its pre-report value. All other report effects remain included, such as the reported CL balances, the Withdrawal Vault, shares already requested for burning, and external bad debt internalized by the report. Withdrawal finalization therefore cannot trigger this condition.
 
