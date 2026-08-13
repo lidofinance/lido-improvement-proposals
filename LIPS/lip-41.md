@@ -217,7 +217,7 @@ The proposal adds three parameters to [`OracleDaemonConfig`](https://docs.lido.f
   </tbody>
 </table>
 
-**Bunker finalization delay.** `BUNKER_FINALIZATION_DELAY_EPOCHS` replaces the associated-slashing and negative-rebase borders. The delay is cause-independent: while either activation check remains true, the same Bunker border applies. The initial `9,000`-epoch delay covers three relevant horizons:
+**Bunker finalization delay.** `BUNKER_FINALIZATION_DELAY_EPOCHS` replaces the associated-slashing and negative-rebase borders. The delay is cause-independent: while either activation check remains true, the same Bunker border applies. The initial `9,000`-epoch (40 days) delay covers three relevant horizons:
 
 - **Legacy negative-rebase limit — 2,250 epochs (10 days):** the maximum shift used by the current negative-rebase border.
 - **Slashing horizon — 8,192 epochs (about 36.4 days):** the minimum time before a slashed validator becomes withdrawable under the [target fork's inherited rules](https://ethereum.github.io/consensus-specs/specs/electra/beacon-chain/#modified-slash_validator).
