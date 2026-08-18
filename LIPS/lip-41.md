@@ -111,18 +111,30 @@ adjustedNetworkSlashedBalance = min(
     networkActiveBalance,
 )
 
-slashingImpactFactorNumerator = (
-    baseSlashingImpactRatePPM * networkActiveBalance
-    + PPM * adjustedNetworkSlashedBalance
-)
-
 if lidoExposureBalance == 0:
     isSlashingImpactBigEnough = False
 else:
-    # Multiply before dividing and use arbitrary-precision intermediate values.
+    # Conceptually:
+    #
+    # slashedLidoShare = lidoNonWithdrawableSlashedBalance / lidoExposureBalance
+    #
+    # baseImpactRate = baseSlashingImpactRatePPM / PPM
+    # It represents the initial slashing penalty, continuing source and target
+    # penalties, and foregone CL rewards.
+    #
+    # correlatedPenaltyRate = adjustedNetworkSlashedBalance / networkActiveBalance
+    #
+    # impactPerSlashedETH = baseImpactRate + correlatedPenaltyRate
+    # slashingImpactShare = slashedLidoShare * impactPerSlashedETH
+    #
+    # The exact calculation uses a common denominator and arbitrary-precision
+    # intermediate values so the two components are not rounded separately.
     slashingImpactSharePPM = (
         lidoNonWithdrawableSlashedBalance
-        * slashingImpactFactorNumerator
+        * (
+            baseSlashingImpactRatePPM * networkActiveBalance
+            + PPM * adjustedNetworkSlashedBalance
+        )
         // (lidoExposureBalance * networkActiveBalance)
     )
 
