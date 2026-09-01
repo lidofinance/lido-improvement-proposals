@@ -33,19 +33,23 @@ This LIP covers new contracts and flows added with ValMart to CMv2, and addition
 
 > Terms validator, key, validator key, and deposit data meanings are the same within the document
 
-### ValMart Architecture
+### ValMart
 
 General architecture of CMv2 is covered in [LIP-33](./lip-33). Here we focus on the specific changes and additions introduced in ValMart.
 
 ![ValMart Architecture](./assets/lip-42/valmart.png)
 
-### Weight Boost Providers
+All ValMart features listed below are applicable to CMv2 only.
+
+#### Weight Boost Providers
 
 The key component of ValMart's architecture is the concept of weight boost providers. Weight boost providers are responsible for determining the weight multiplier of each Node Operator based on various factors. These weights are then used to calculate the overall stake allocation weight of the Node Operator within the protocol.
 
-Weight boost providers are added to `MetaRegistry` via `DEFAULT_ADMIN_ROLE` by the DAO. Due to limited plans on changes in the set of weight boost providers, there is no method to remove them once added.
+Weight boost providers are added to `MetaRegistry` via `DEFAULT_ADMIN_ROLE` by the DAO. Due to limited plans on changes in the set of weight boost providers, there is no method to remove them once added. However, the DAO can disable provider via `setWeightBoostProviderEnabled(uint256 providerId, bool enabled)` and information from this provider will no longer be used in weight calculations.
 
-### LDO Lock (`ERC20LockBoostProvider.sol`)
+Weight boosts are applied by simple multiplication of the Node Operator's base weight (defined by Node Operator's type) with the weight multiplier provided by each active weight boost provider. The final weight of the Node Operator is the product of its base weight and all applicable weight multipliers.
+
+#### LDO Lock Provider (`ERC20LockBoostProvider.sol`)
 
 ![LDO Lock](./assets/lip-42/ldo_lock.png)
 
@@ -59,6 +63,8 @@ Deposited LDO tokens are held on the Node Operator's vault (`LidoGovernanceLockV
 
 Weight multiplier is defined based on the current amount of LDO tokens deposited by the Node Operator to the vault. The weight multiplier values are set for ranges of LDO token amounts. The number of ranges and corresponding weight multipliers are determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
+Unlike other providers that provide weight boost for the exact Node Operator, LDO Lock Provider provides weight boost for all Node Operators in the Node Operator Group the Node Operator belongs to. If several operators in the same group weight boost from the LDO Lock provider, the largest boost is used to avoid situations of staked boosts.
+
 Example:
 
 | LDO Amount Deposited | Weight Multiplier |
@@ -67,7 +73,7 @@ Example:
 | X+1 - Y LDO | Mx |
 | Y+1 LDO and above | Nx |
 
-### Additional bond (`AdditionalBondRegistry.sol`)
+#### Additional Bond Provider (`AdditionalBondRegistry.sol`)
 
 ![Additional bond](./assets/lip-42/additional_bond.png)
 
@@ -93,7 +99,7 @@ Example:
 | Qx+1 - Rx | Mx |
 | Rx+1 and above | Nx |
 
-### Custom fee (`CustomFeeRegistry.sol`)
+#### Custom Fee Provider (`CustomFeeRegistry.sol`)
 
 ![Custom fee](./assets/lip-42/custom_fee.png)
 
@@ -119,7 +125,7 @@ Example:
 | (Q+1)% - R% | Mx |
 | (R+1)% and above | Nx |
 
-### Node Operator Strikes (`NodeOperatorStrikes.sol`)
+#### Node Operator Strikes Provider (`NodeOperatorStrikes.sol`)
 
 ![Node Operator Strikes](./assets/lip-42/strikes.png)
 
@@ -141,11 +147,17 @@ Example:
 | Q+1 - R | 0.Mx |
 | R+1 and above | 0.Nx |
 
-### Bond claim block on unresolved slashing
+### Non-ValMart changes
+
+#### Bond claim block on unresolved slashing
+
+> This feature is applicable to both CMv2 and CSM.
 
 One of the non-ValMart-related changes is the introduction of a bond claim block on unresolved slashing events. This mechanism ensures that Node Operators cannot immediately claim their bond if there is an ongoing slashing process, even if they exit other non-slashed validators, providing additional security and accountability within the protocol.
 
 A new per-Node-Operator counter of unresolved slashing events is introduced. This counter keeps track of the number of slashings reported via `reportValidatorSlashing` and not resolved via `ReportWithdrawalsForSlashedValidators` Easy Track motion. The bond claim for a Node Operator is blocked as long as this counter is non-zero, ensuring that bonds cannot be claimed while there are unresolved slashing events.
+
+Bond claim restriction is also applied to reward splitters. Neither Node Operator nor split recipients can claim bond if the restriction is active. Pulling rewards from `FeeDistributor` to Node Operator's bond is still permitted.
 
 ### Upgradability
 
