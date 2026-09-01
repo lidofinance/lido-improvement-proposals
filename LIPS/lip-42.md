@@ -11,7 +11,7 @@ created: 2026-08-26
 
 ## Simple Summary
 
-[Curated Module v2](./lip-33) (CMv2) has laid the foundation for the next phase of the Lido protocol's evolution, focusing on enhanced validator management and the introduction of the Validation Market. The stake allocation mechanism in CMv2 already supports weight-based stake allocation. The missing piece is the way for the Node Operators to influence their stake allocation weight. CMv2 Phase 2 closes this gap with the introduction of the Validation Market (ValMart). The ability to set custom fee values, increase the bonding ratio, lock LDO tokens, and the Node Operator strike system are key components of ValMart. Node Operators can increase their stake allocation weight by offering more favorable conditions to the Lido protocol, which will be reflected in their stake allocation weight. At the same time, CMC, the party responsible for overseeing the Curated Module, will have the ability to issue Node Operator Strikes in case of underperformance or other violations of the standard node operator protocols (SNOPs), consequently reducing the stake allocation weight of the Node Operator. The combination of these mechanisms will create a dynamic and competitive environment for Node Operators, fostering innovation and efficiency in the Lido protocol.
+[Curated Module v2](./lip-33) (CMv2) has laid the foundation for the next phase of the Lido protocol's evolution. The stake allocation mechanism in CMv2 already supports weight-based stake allocation. The missing piece is the way for the Node Operators to influence their stake allocation weight. CMv2 Phase 2 closes this gap with the introduction of the Validation Market (ValMart). The ability to set custom fee values, increase the bonding ratio, lock LDO tokens, and the Node Operator strike system are key components of ValMart. Node Operators can increase their stake allocation weight by offering more favorable conditions to the Lido protocol, which will be reflected in their stake allocation weight. At the same time, CMC, the party responsible for overseeing the Curated Module, will have the ability to issue Node Operator Strikes in case of underperformance or other violations of the standard node operator protocols (SNOPs), consequently reducing the stake allocation weight of the Node Operator. The combination of these mechanisms will create a dynamic and competitive environment for Node Operators, fostering innovation and efficiency in the Lido protocol.
 
 Alongside ValMart, several technical and operational improvements are proposed for both CMv2 and CSM.
 
@@ -55,35 +55,39 @@ Weight boosts are applied by simple multiplication of the Node Operator's base w
 
 Node Operators can lock their LDO tokens to indicate alignment with the protocol's long-term interests.
 
-Depositing LDO starts a lock period during which the tokens cannot be withdrawn. Once the lock period ends, the tokens can be unlocked and withdrawn by the Node Operator. Withdrawals do not restart the lock period. If the Node Operator has no active and depositable keys, the lock period is ignored, and LDO tokens can be withdrawn immediately.
+Depositing LDO starts a lock period during which the tokens cannot be withdrawn. Additional deposits restart the lock period. Once the lock period ends, the tokens can be unlocked and withdrawn by the Node Operator. Withdrawals do not restart the lock period. If the Node Operator has no active and depositable keys, the lock period is ignored, and LDO tokens can be withdrawn immediately.
+
+Lock period duration is configurable and determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
 Deposited LDO tokens are held on the Node Operator's vault (`LidoGovernanceLockVault.sol`) created upon first deposit and can be used in the protocol's governance. Delegation on both Aragon Voting and Snapshot voting is supported. It is also possible to vote on Aragon proposals directly.
 
 `MetaRegistry` is notified about weight multiplier changes when Node Operators deposit or withdraw their LDO tokens. `MetaRegistry` pulls the recent weight multiplier from the provider should the Node Operator weight need recalculation due to changes in the other weight providers or changes to the Node Operator's type.
 
-Weight multiplier is defined based on the current amount of LDO tokens deposited by the Node Operator to the vault. The weight multiplier values are set for ranges of LDO token amounts. The number of ranges and corresponding weight multipliers are determined by the DAO via `DEFAULT_ADMIN_ROLE`.
+Unlike other providers that provide weight boost for the exact Node Operator, LDO Lock Provider provides weight boost for all Node Operators in the Node Operator Group the Node Operator belongs to. If several operators in the same group weight boost from the LDO Lock provider, the largest boost is used to avoid situations of staked boosts from the same provider.
 
-Unlike other providers that provide weight boost for the exact Node Operator, LDO Lock Provider provides weight boost for all Node Operators in the Node Operator Group the Node Operator belongs to. If several operators in the same group weight boost from the LDO Lock provider, the largest boost is used to avoid situations of staked boosts.
+Weight multiplier is defined based on the current amount of LDO tokens deposited by the Node Operator to the vault. The weight multiplier values are set for ranges of LDO token amounts. The number of ranges and corresponding weight multipliers are determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
 Example:
 
 | LDO Amount Deposited | Weight Multiplier |
 |----------------------|-------------------|
-| 0 - X LDO | 1x |
-| X+1 - Y LDO | Mx |
-| Y+1 LDO and above | Nx |
+| 0 - X LDO            | 1x                |
+| X+1 - Y LDO          | Mx                |
+| Y+1 LDO and above    | Nx                |
 
 #### Additional Bond Provider (`AdditionalBondRegistry.sol`)
 
 ![Additional bond](./assets/lip-42/additional_bond.png)
 
-Node Operators can increase their bonding ratio for their validators to improve coverage of their validators and improve protocol security.
+Node Operators can increase their bonding ratio for their validators to improve bond coverage and protocol security.
   
 Bonding ratio is the multiplier applied to the base bond requirements determined by the Node Operator's bond curve. Increasing this multiplier means that Node Operators need to have more bond for their already uploaded and future validator keys. The default bonding ratio is 1x, meaning that the default bond requirements are applied.
 
 Node Operators can increase their bonding ratio at any time with the immediate effect on their stake allocation weight. Node Operators should have sufficient bond to cover the increased bonding ratio. Increased bonding ratio is applied immediately and reflected in `Accounting` contract.
 
 Decreasing bond ratio comes with the cooldown period. Once the decrease of the bonding ratio compared to the current value is requested, stake allocation weight is reduced immediately, while the bonding ratio remains the same until the cooldown period elapses. Once the cooldown period elapses, Node Operators have to submit an additional transaction to apply the reduced bonding ratio in the `Accounting` contract. This approach ensures that Node Operators can not immediately reduce their bonding ratio and withdraw bond in case of a detected slashing or low performance incident.
+
+Cooldown duration is configurable and determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
 An additional bond provider is attached to the `Accounting` contract via `SET_BOND_CURVE_MULTIPLIER_ROLE`.
 
@@ -93,17 +97,17 @@ Weight multiplier is defined based on the current bonding ratio set or requested
 
 Example:
 
-| Bonding Ratio | Weight Multiplier |
-|----------------------|-------------------|
-| Qx and below | 1x |
-| Qx+1 - Rx | Mx |
-| Rx+1 and above | Nx |
+| Bonding Ratio  | Weight Multiplier |
+|----------------|-------------------|
+| Qx and below   | 1x                |
+| Qx+1 - Rx      | Mx                |
+| Rx+1 and above | Nx                |
 
 #### Custom Fee Provider (`CustomFeeRegistry.sol`)
 
 ![Custom fee](./assets/lip-42/custom_fee.png)
 
-Node Operators set the custom fee they are willing to operate at. Lower fees are beneficial for the protocol. Hence, setting a lower fee (relative to the default fee for the given Node Operator type) results in higher stake allocation weight for the Node Operator.
+Node Operators can set the custom fee they are willing to operate at. Lower fees are beneficial for the protocol. Hence, setting a lower fee (relative to the default fee for the given Node Operator type) results in higher stake allocation weight for the Node Operator.
 
 Custom fee set as the percentage discount from the default fee defined for the Node Operator type. Ex. 10% discount when default fee is 5% results in a custom fee of 4.5%, while for the default fee of 3% a 10% discount results in a custom fee of 2.7%. The bigger the discount, the higher the stake allocation weight for the Node Operator.
 
@@ -111,7 +115,9 @@ Node Operators can increase their fee discount at any time, which will immediate
 
 Decreasing the fee discount is subject to a cooldown period. Once the decrease of the fee discount compared to the current value is requested, stake allocation weight is reduced immediately, while the effective fee remains the same until the cooldown period elapses. Once the cooldown period elapses, Node Operators have to submit an additional transaction to apply the reduced fee discount. This approach ensures that Node Operators cannot immediately reduce their fee discount and gain an unfair advantage in stake allocation since fees are effective as of Oracle reports (currently every 14 days).
 
-CMv2 Oracle uses active fee discounts set by Node Operators as of the report's refSlot. That indirectly means that the discount reduction cooldown period should be at least as long as the interval between Oracle reports to prevent Node Operators from bypassing the cooldown by timing their discount reductions around Oracle reports.
+Cooldown duration is configurable and determined by the DAO via `DEFAULT_ADMIN_ROLE`.
+
+CMv2 Oracle uses active fee discounts set by Node Operators as of the report's `refSlot`. That indirectly means that the discount reduction cooldown period should be at least as long as the interval between Oracle reports to prevent Node Operators from bypassing the cooldown by timing their discount reductions around Oracle reports.
 
 `MetaRegistry` is notified about weight multiplier changes when Node Operators increase or request a decrease of their fee discount. `MetaRegistry` pulls the recent weight multiplier from the provider should the Node Operator weight need recalculation due to changes in the other weight providers or changes to the Node Operator's type.
 
@@ -119,17 +125,17 @@ Weight multiplier is defined based on the current fee discount set or requested 
 
 Example:
 
-| Fee Discount | Weight Multiplier |
-|----------------------|-------------------|
-| Q% or below | 1x |
-| (Q+1)% - R% | Mx |
-| (R+1)% and above | Nx |
+| Fee Discount     | Weight Multiplier |
+|------------------|-------------------|
+| Q% or below      | 1x                |
+| (Q+1)% - R%      | Mx                |
+| (R+1)% and above | Nx                |
 
 #### Node Operator Strikes Provider (`NodeOperatorStrikes.sol`)
 
 ![Node Operator Strikes](./assets/lip-42/strikes.png)
 
-Poor performance, standard node operator protocol violations, and other misbehavior by Node Operators should have a clear reflection in their stake allocation weight. Node Operator Strikes are the way to achieve this accountability.
+Poor performance, standard node operator protocol (SNOP) violations, and other misbehavior by Node Operators should have a clear reflection in their stake allocation weight. Node Operator Strikes Provider is the way to achieve this accountability.
 
 The overseeing party (likely CMC - Curated Module Committee) can issue strikes to Node Operators and remove already issued strikes via `STRIKES_COMMITTEE_ROLE`. Each strike is an independent record that comes with the category, description, and lifetime. Category and description provide context for the strike, while the lifetime determines how long the strike affects the Node Operator's stake allocation weight.
 
@@ -142,10 +148,10 @@ Weight multiplier is defined based on the current number of active strikes for t
 Example:
 
 | Active Strikes | Weight Multiplier |
-|----------------------|-------------------|
-| Q or below | 1x |
-| Q+1 - R | 0.Mx |
-| R+1 and above | 0.Nx |
+|----------------|-------------------|
+| Q or below     | 1x                |
+| Q+1 - R        | 0.Mx              |
+| R+1 and above  | 0.Nx              |
 
 ### Non-ValMart changes
 
@@ -157,7 +163,7 @@ One of the non-ValMart-related changes is the introduction of a bond claim block
 
 A new per-Node-Operator counter of unresolved slashing events is introduced. This counter keeps track of the number of slashings reported via `reportValidatorSlashing` and not resolved via `ReportWithdrawalsForSlashedValidators` Easy Track motion. The bond claim for a Node Operator is blocked as long as this counter is non-zero, ensuring that bonds cannot be claimed while there are unresolved slashing events.
 
-Bond claim restriction is also applied to reward splitters. Neither Node Operator nor split recipients can claim bond if the restriction is active. Pulling rewards from `FeeDistributor` to Node Operator's bond is still permitted.
+Bond claim restriction is also applied to [reward splitters](./lip-33.md#rewards-claim). Neither Node Operator nor split recipients can claim bond if the restriction is active. Pulling rewards from `FeeDistributor` to Node Operator's bond is still permitted.
 
 ### Upgradability
 
