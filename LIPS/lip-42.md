@@ -165,6 +165,57 @@ A new per-Node-Operator counter of unresolved slashing events is introduced. Thi
 
 Bond claim restriction is also applied to [reward splitters](./lip-33.md#rewards-claim). Neither Node Operator nor split recipients can claim bond if the restriction is active. Pulling rewards from `FeeDistributor` to Node Operator's bond is still permitted.
 
+#### Late Exit Penalty Deprecation
+
+> This feature is applicable to both CMv2 and CSM.
+
+[LIP-38](./lip-38.md) introduces a new approach to validator exits and partial withdrawals. Post-LIP-38 exits are performed via [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) and do not require any action from the Node Operator side. Hence, late exit penalty mechanism becomes obsolete and should be removed.
+
+#### New balance tracking mechanism for CMv2
+
+> This feature is applicable to CMv2 only. CSM keeps the mechanism covered in [LIP-33](./lip-33.md).
+
+Partial withdrawals introduced in [LIP-38](./lip-38.md) make current ever-increasing per-validator balance accounting system insufficient, necessitating a new balance tracking mechanism for CMv2 with support for balance decreases.
+
+The solution is to transition to a balance-checkpoint system. `keyConfirmedBalance` is deprecated. New `lastAccountingProofSlot` variable is introduced. `keyAllocatedBalance` is now updated according to the following rules:
+
+- Top-up allocations increase `keyAllocatedBalance` immediately without recording `lastAccountingProofSlot` since it takes time for the deposit to be applied on CL.
+- Balance proof from CL can only increase `keyAllocatedBalance` and update `lastAccountingProofSlot`. Proofs with `BeaconState.balances[validatorIndex]` below the current value of `keyAllocatedBalance` are ignored and do not affect the checkpoint.
+- Partial withdrawal proof updates `keyAllocatedBalance` (with possible decrease) to the `BeaconState.balances[validatorIndex]` at the proof slot and updates `lastAccountingProofSlot`.
+- Proofs for the validators marked as withdrawn are rejected.
+
+Balance increases due to incoming consolidations are reported using ordinary balance proofs. 
+
+Outgoing consolidations and full withdrawals are considered terminal event in the validator lifecycle. Once reported, current value of `keyAllocatedBalance + 32 ETH` is subtracted from the operator's and module's balances. No future updates to `keyAllocatedBalance` are expected after this point.
+
+More details in a [separate document](https://hackmd.io/@lido/new-balance-tracking-for-cmv2).
+
+
+#### Updated `Verifier` contract for CMv2 to support partial withdrawals and new balance tracking mechanism
+
+> This feature is applicable to CMv2 only. CSM keeps the version of `Verifier` covered in [LIP-33](./lip-33.md).
+
+To support partial withdrawals and the new balance tracking mechanism, the `Verifier` contract in CMv2 features 2 new methods:
+
+##### `processPartialWithdrawalProof`
+
+Allows reporting partial withdrawal proofs from the CL. The withdrawal event is considered partial withdrawal if:
+
+- Validator's withdrawal epoch is ahead of the current epoch.
+- `BeaconState.balances[validatorIndex]` at the proof slot is below `MAX_EFFECTIVE_BALANCE`.
+
+Once reported, `keyAllocatedBalance` is updated to reflect the new balance, and `lastAccountingProofSlot` is set to the slot of the proof.
+
+#### `processOutgoingConsolidationProof`
+
+Allows reporting outgoing consolidation proofs from the CL. The proof is accepted if:
+
+- Source validator in the pending consolidation belongs to the given operator in CMv2.
+- Consolidation is successfully applied on CL.
+- To be extended
+
+Valid outgoing consolidation proofs are processed in CMv2 in the same way as full withdrawals.
+
 ### Upgradability
 
 `ERC20LockBoostProvider.sol`, `AdditionalBondRegistry.sol`, `CustomFeeRegistry.sol`, `NodeOperatorStrikes.sol` are upgradable using [OssifiableProxy](https://github.com/lidofinance/staking-modules/blob/main/src/lib/proxy/OssifiableProxy.sol) contracts.
