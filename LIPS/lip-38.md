@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau (@F4ever), Dmitry Gusakov
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-08-19
+updated: 2026-09-02
 ---
 
 ## Simple Summary
@@ -280,7 +280,7 @@ interface IValidatorWithdrawalsQueue7002 {
 |-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ValidatorsExitBusOracle` (→ VEBO-7002) | New report `dataFormat` with `amount`; decodes report records and appends them to the `ValidatorWithdrawalsQueue`; `enablePartialWithdrawals` / `disablePartialWithdrawals` switch.                                                                                                                                                                                                 |
 | `ValidatorWithdrawalsQueue`             | **New contract** — stores the single FIFO queue of withdrawal request intentions; role-gated `addWithdrawalIntents` (called by VEBO-7002); permissionless `processWithdrawalIntents` execution handle; queue-inspection views.                                                                                                                                        |
-| `TriggerableWithdrawalsGateway` (TWG)   | Add `triggerWithdrawals` (partial and full, used by VEBO-7002); **retain `triggerFullWithdrawals`** unchanged for existing consumers (CSM `Ejector`); drop `_notifyStakingModules`; switch the rate limiter from **validator-based** (one quota unit per request, per [LIP-30](lip-30.md)) to **balance-based** (extracted gwei per frame), shared by both entry points. |
+| `TriggerableWithdrawalsGateway` (TWG)   | Add `triggerWithdrawals` (partial and full, used by VEBO-7002); **remove `triggerFullWithdrawals`** — existing consumers (CSM `Ejector`) migrate to `triggerWithdrawals`; drop `_notifyStakingModules`; switch the rate limiter from **validator-based** (one quota unit per request, per [LIP-30](lip-30.md)) to **balance-based** (extracted gwei per frame). |
 | `StakingRouter`                         | Remove `onValidatorExitTriggered` (no longer called by the TWG) and `reportValidatorExitDelay` (late-exit-penalty accounting); revoke the two orphaned role grants.                                                                                                                                                                                                      |
 | Staking Modules (NOR, SDVT, CSM)        | Remove the module-side late-exit logic and penalty accounting: the `onValidatorExitTriggered` implementations and exit-delay-penalty bookkeeping fed by `reportValidatorExitDelay`; see [Staking Modules](#staking-modules-nor-sdvt-csm).                                                                                                                                |
 | `ValidatorExitDelayVerifier`            | **Removed entirely** — the exit-delay proof contract is obsolete once late-exit penalties are gone.                                                                                                                                                                                                                                                                      |
@@ -317,7 +317,7 @@ The queue offers no dismissal or reordering surface — requests execute strictl
 
 ##### `TriggerableWithdrawalsGateway` (TWG)
 
-**Unified request path.** The TWG becomes the single entry point for **all** withdrawal requests — partial and full. A new `triggerWithdrawals` method carrying a per-request `amount` (`0` = FWR, `> 0` = PWR) is added for VEBO-7002. The existing full-exit-only **`triggerFullWithdrawals` is retained with an unchanged external signature**, so current consumers — the CSM `Ejector` (`voluntaryEject` and strikes-based ejection via `ValidatorStrikes._ejectByStrikes`) — keep working across the upgrade without a redeploy or role migration:
+**Unified request path.** The TWG becomes the single entry point for **all** withdrawal requests — partial and full. A new `triggerWithdrawals` method carrying a per-request `amount` (`0` = FWR, `> 0` = PWR) is added, and the existing full-exit-only **`triggerFullWithdrawals` is removed**. Its current consumers — the CSM `Ejector` (`voluntaryEject` and strikes-based ejection via `ValidatorStrikes._ejectByStrikes`) — migrate to `triggerWithdrawals`:
 
 ```solidity
 interface ITriggerableWithdrawalsGateway {
@@ -329,31 +329,20 @@ interface ITriggerableWithdrawalsGateway {
         bytes   pubkey;         // dynamic type placed last, consistent with the queue's WithdrawalIntent
     }
 
-    /// New single path for partial and full withdrawal requests (used by VEBO-7002).
+    /// The single path for all partial and full withdrawal requests
+    /// (used by VEBO-7002 and the CSM Ejector).
     /// Applies the extracted-balance rate limit, forwards each request to the WithdrawalVault,
     /// and refunds any unused EIP-7002 fee to `refundRecipient`.
     function triggerWithdrawals(
         WithdrawalIntent[] calldata intents,
         address refundRecipient
     ) external payable;
-
-    /// Retained: full-withdrawal-only entry point with the existing external
-    /// signature, kept for backward compatibility with deployed consumers
-    /// (CSM Ejector). Since CSM is a 0x01 module, each request should consume 
-    /// 32 ETH of the limit quota.
-    function triggerFullWithdrawals(
-        IStakingRouter.ValidatorExitData[] calldata validatorsData,
-        address refundRecipient,
-        uint256 exitType
-    ) external payable;
 }
 ```
 
-Both entry points draw from the **same** extracted-balance rate limit, so the retained method cannot be used to bypass the per-frame limits.
+All callers go through this single entry point and draw from the **same** extracted-balance rate limit.
 
-As part of this it **drops `_notifyStakingModules`**: the current TWG calls back into staking modules (via the Staking Router's `onValidatorExitTriggered`) whenever it triggers an exit, which existed for the late-exit-penalty accounting that this release removes.
-
-Note that this is a **behavioral change for the retained `triggerFullWithdrawals`** as well: its external signature is unchanged, but it no longer notifies staking modules on exit. Any module-side logic hanging off that notification (e.g. CSM's EL-fee charge-back against operator bond) stops firing. This is a deliberate removal — see the [cost model](#flow-2--process-withdrawal-requests) in Flow 2.
+As part of this, it **drops `_notifyStakingModules`**: the current TWG calls back into staking modules whenever it triggers an exit, via the Staking Router’s `onValidatorExitTriggered`, which in turn calls the module’s `onValidatorExitTriggered`. This callback existed to support late-exit-penalty accounting, which is removed in this release. Exits triggered through the TWG no longer notify staking modules, so any module-side logic hanging off that notification (e.g. CSM's EL-fee charge-back against operator bond) stops firing.
 
 **Rate limiter.** The limiter is **balance-based** — it caps the total extracted balance per frame. Three rules apply:
 
