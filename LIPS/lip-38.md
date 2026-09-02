@@ -359,12 +359,13 @@ Two exit-related hooks are removed, both tied to the late-exit-penalty accountin
 
 Removing the hooks orphans their access-control grants, so the upgrade vote MUST also **revoke the corresponding roles**: the TWG's grant to call `onValidatorExitTriggered` and the `ValidatorExitDelayVerifier`'s grant to call `reportValidatorExitDelay`.
 
-##### Staking Modules (NOR, SDVT, CSM)
+##### Staking Modules (NOR, SDVT, CSM, CMv2)
+It is proposed to keep the legacy **NOR** and **SDVT** modules unchanged.
 
-Once the TWG stops calling `onValidatorExitTriggered` and `StakingRouter.reportValidatorExitDelay` is removed, the module-side counterparts of those hooks become unreachable and can be removed:
-
-- **`onValidatorExitTriggered` implementations** (NOR, SDVT, CSM) — deleted from each module; nothing calls them once the TWG no longer notifies on exit.
-- **Late-exit-penalty accounting** — the bookkeeping fed by `reportValidatorExitDelay` (tracking proven exit delays and applying the corresponding penalty) is removed from the modules that implement it.
+For **CSM** and **CMv2**, it is proposed to:
+* **Remove `onValidatorExitTriggered` implementations** — these hooks become unreachable once the TWG stops notifying staking modules about validator exits.
+* **Remove late-exit-penalty accounting** — remove the bookkeeping driven by `reportValidatorExitDelay`, including tracking proven exit delays and applying the corresponding penalties, since `StakingRouter.reportValidatorExitDelay` is removed.
+* **Switch the `TriggerableWithdrawalsGateway` call** from `triggerFullWithdrawals` to `triggerWithdrawals`.
 
 ##### `ValidatorExitDelayVerifier`
 
@@ -372,7 +373,7 @@ Once the TWG stops calling `onValidatorExitTriggered` and `StakingRouter.reportV
 
 ##### `WithdrawalVault`
 
-The WithdrawalVault already supports EIP-7002 partial withdrawals (variable `amount`), so it needs no functional change. Its proxy address is the target of the protocol's withdrawal credentials and therefore **cannot move**; the change is an **implementation upgrade behind the existing proxy** — a new implementation constructed with the new TWG as its authorized caller (immutable constructor parameter). The `LidoLocator` entry for the vault is unchanged.
+The WithdrawalVault already supports EIP-7002 partial withdrawals (variable `amount`), so it needs no functional change. A new implementation constructed with the new TWG as its authorized caller (immutable constructor parameter).
 
 ##### `LidoLocator`
 
