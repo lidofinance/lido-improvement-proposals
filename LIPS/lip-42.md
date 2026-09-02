@@ -190,7 +190,6 @@ Outgoing consolidations and full withdrawals are considered terminal event in th
 
 More details in a [separate document](https://hackmd.io/@lido/new-balance-tracking-for-cmv2).
 
-
 #### Updated `Verifier` contract for CMv2 to support partial withdrawals and new balance tracking mechanism
 
 > This feature is applicable to CMv2 only. CSM keeps the version of `Verifier` covered in [LIP-33](./lip-33.md).
@@ -222,7 +221,9 @@ Valid outgoing consolidation proofs are processed in CMv2 in the same way as ful
 
 Instances of `LidoGovernanceLockVault.sol` are deployed using [BeaconProxy](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.4.0/contracts/proxy/beacon/BeaconProxy.sol) and share the same DAO-controlled [Beacon](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.4.0/contracts/proxy/beacon/UpgradeableBeacon.sol).
 
-### Security considerations
+### Known Issues
+
+[LIP-33](./lip-33.md) mentions ["Permissionless withdrawal reporting vulnerability"](./lip-33.md#permissionless-withdrawal-reporting-vulnerability). This issue is no longer applicable to CMv2 due to the removal of the penalty applied upon validator exit and calculated based on the recorded validator balance. This penalty was initially introduced in CSM, a highly autonomous and permissionless staking module. CMv2, in turn, assumes a dedicated overseeing committee (CMC) responsible for monitoring module's performance and acting accordingly (reporting general delayed penalties for the cases of poor performance, see - https://snapshot.org/#/s:lido-snapshot.eth/proposal/0xa4179234377bab093a8ee46da0f430d51bb343d00ca74ce8bf1d7d8cdb0db9dd). Hence, the vulnerable mechanism is no longer needed in CMv2 and is removed in this LIP.
 
 #### Slashing event reported but unresolved before module upgrade can reduce bond claim block time for future slashing events
 
@@ -230,9 +231,11 @@ If a slashing event is reported but remains unresolved before a module upgrade, 
 
 Due to the negligible likelihood of this scenario occurring in real life, the impact can be accepted as a minor risk. Alternatively, module upgrade can be postponed until all unresolved slashing events are resolved, ensuring that the ongoing slashings counter accurately reflects the true state of unresolved slashings.
 
-### Known Issues
+#### Race condition in `keyAllocatedBalance` updates between top-ups and partial withdrawals
 
-[LIP-33](./lip-33.md) mentions ["Permissionless withdrawal reporting vulnerability"](./lip-33.md#permissionless-withdrawal-reporting-vulnerability). This issue is no longer applicable to CMv2 due to the removal of the penalty applied upon validator exit and calculated based on the recorded validator balance. This penalty was initially introduced in CSM, a highly autonomous and permissionless staking module. CMv2, in turn, assumes a dedicated overseeing committee (CMC) responsible for monitoring module's performance and acting accordingly (reporting general delayed penalties for the cases of poor performance, see - https://snapshot.org/#/s:lido-snapshot.eth/proposal/0xa4179234377bab093a8ee46da0f430d51bb343d00ca74ce8bf1d7d8cdb0db9dd). Hence, the vulnerable mechanism is no longer needed in CMv2 and is removed in this LIP.
+A top-up is recorded immediately but may not yet be reflected on the consensus layer. If an earlier partial-withdrawal proof arrives during this window, its checkpoint replaces the tracked balance and temporarily excludes the pending top-up from `keyAllocatedBalance`. A newer proof restores it once the deposit is applied.
+
+Current design prefers temporary underestimation, which may allow additional deposits, over advancing the `lastAccountingProofSlot` on top-up, which would reject the unreported partial-withdrawal proof and temporarily overestimate allocation, unnecessarily restricting deposits.
 
 ## Links
 
