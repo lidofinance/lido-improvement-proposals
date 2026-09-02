@@ -157,7 +157,7 @@ Example:
 
 #### Bond claim block on unresolved slashing
 
-> This feature is applicable to both CMv2 and CSM.
+> This feature applies to both CMv2 and CSM.
 
 One of the non-ValMart-related changes is the introduction of a bond claim block on unresolved slashing events. This mechanism ensures that Node Operators cannot immediately claim their bond if there is an ongoing slashing process, even if they exit other non-slashed validators, providing additional security and accountability within the protocol.
 
@@ -167,13 +167,13 @@ Bond claim restriction is also applied to [reward splitters](./lip-33.md#rewards
 
 #### Late Exit Penalty Deprecation
 
-> This feature is applicable to both CMv2 and CSM.
+> This feature applies to both CMv2 and CSM.
 
 [LIP-38](./lip-38.md) introduces a new approach to validator exits and partial withdrawals. Post-LIP-38 exits are performed via [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) and do not require any action from the Node Operator side. Hence, late exit penalty mechanism becomes obsolete and should be removed.
 
 #### New balance tracking mechanism for CMv2
 
-> This feature is applicable to CMv2 only. CSM keeps the mechanism covered in [LIP-33](./lip-33.md).
+> This feature applies to CMv2 only. CSM keeps the mechanism covered in [LIP-33](./lip-33.md).
 
 Partial withdrawals introduced in [LIP-38](./lip-38.md) make current ever-increasing per-validator balance accounting system insufficient, necessitating a new balance tracking mechanism for CMv2 with support for balance decreases.
 
@@ -190,15 +190,24 @@ Outgoing consolidations and full withdrawals are considered terminal event in th
 
 More details in a [separate document](https://hackmd.io/@lido/new-balance-tracking-for-cmv2).
 
+#### Exit balance deficit penalty removal for CMv2
+
+> This feature applies to CMv2 only. CSM keeps the mechanism covered in [LIP-33](./lip-33.md).
+
+Due to the transition to the new balance tracking mechanism in CMv2, the exit balance deficit penalty is removed. The new mechanism does not guarantee a reliable snapshot of the validator's balance. Hence, exit balance deficit can not be calculated reliably.
+
+Since CMv2 already assumes an overseeing committee (CMC) for reliable operation, it is assumed that a balance deficit that occurred due to validator underperformance is penalized manually using [General Delayed Penalty mechanism](./lip-33.md#general-penalty-with-confirmation). Balance deficit due to slashing is already handled using [dedicated Easy Track flow](./lip-33.md#slashed-validators).
+
+
 #### Updated `Verifier` contract for CMv2 to support partial withdrawals and new balance tracking mechanism
 
-> This feature is applicable to CMv2 only. CSM keeps the version of `Verifier` covered in [LIP-33](./lip-33.md).
+> This feature applies to CMv2 only. CSM keeps the version of `Verifier` covered in [LIP-33](./lip-33.md).
 
 To support partial withdrawals and the new balance tracking mechanism, the `Verifier` contract in CMv2 features 2 new methods:
 
 ##### `processPartialWithdrawalProof`
 
-Allows reporting partial withdrawal proofs from the CL. The withdrawal event is considered partial withdrawal if:
+Allows reporting partial withdrawal proofs from the CL. The withdrawal event is considered a partial withdrawal if:
 
 - Validator's withdrawal epoch is ahead of the current epoch.
 - `BeaconState.balances[validatorIndex]` at the proof slot is below `MAX_EFFECTIVE_BALANCE`.
@@ -223,13 +232,13 @@ Instances of `LidoGovernanceLockVault.sol` are deployed using [BeaconProxy](http
 
 ### Known Issues
 
-[LIP-33](./lip-33.md) mentions ["Permissionless withdrawal reporting vulnerability"](./lip-33.md#permissionless-withdrawal-reporting-vulnerability). This issue is no longer applicable to CMv2 due to the removal of the penalty applied upon validator exit and calculated based on the recorded validator balance. This penalty was initially introduced in CSM, a highly autonomous and permissionless staking module. CMv2, in turn, assumes a dedicated overseeing committee (CMC) responsible for monitoring module's performance and acting accordingly (reporting general delayed penalties for the cases of poor performance, see - https://snapshot.org/#/s:lido-snapshot.eth/proposal/0xa4179234377bab093a8ee46da0f430d51bb343d00ca74ce8bf1d7d8cdb0db9dd). Hence, the vulnerable mechanism is no longer needed in CMv2 and is removed in this LIP.
+[LIP-33](./lip-33.md) mentions ["Permissionless withdrawal reporting vulnerability"](./lip-33.md#permissionless-withdrawal-reporting-vulnerability). This issue is no longer applicable to CMv2 due to the removal of the penalty applied upon validator exit and calculated based on the recorded validator balance. This penalty was initially introduced in CSM, a highly autonomous and permissionless staking module. CMv2, in turn, assumes a dedicated overseeing committee (CMC) responsible for monitoring the module's performance and acting accordingly (reporting general delayed penalties for cases of poor performance, see [snapshot vote](https://snapshot.org/#/s:lido-snapshot.eth/proposal/0xa4179234377bab093a8ee46da0f430d51bb343d00ca74ce8bf1d7d8cdb0db9dd)). Hence, the vulnerable mechanism is no longer needed in CMv2 and is removed in this LIP.
 
 #### Slashing event reported but unresolved before module upgrade can reduce bond claim block time for future slashing events
 
 If a slashing event is reported but remains unresolved before a module upgrade, the ongoing slashings counter will remain zero after the module upgrade. If another slashing occurs after the upgrade, resolution of the slashing started before the upgrade will null out the ongoing slashings counter that should have been incremented, potentially allowing Node Operators to claim their bonds prematurely.
 
-Due to the negligible likelihood of this scenario occurring in real life, the impact can be accepted as a minor risk. Alternatively, module upgrade can be postponed until all unresolved slashing events are resolved, ensuring that the ongoing slashings counter accurately reflects the true state of unresolved slashings.
+Because this scenario is highly unlikely in practice, the impact can be accepted as a minor risk. Alternatively, module upgrade can be postponed until all unresolved slashing events are resolved, ensuring that the ongoing slashings counter accurately reflects the true state of unresolved slashings.
 
 #### Race condition in `keyAllocatedBalance` updates between top-ups and partial withdrawals
 
