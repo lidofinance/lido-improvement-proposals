@@ -68,7 +68,17 @@ The diagram above shows the two paths by which withdrawal requests reach the EIP
     - verifies against the staking module that each reported key belongs to the stated module and node operator, and that every PWR targets a `0x02` validator;
     - appends the intentions, in report order, to the single FIFO queue in the `ValidatorWithdrawalsQueue` contract;
     - emits an `ExitRequested` event per intention, which lets an Ejector pick up FWRs in the fallback mode described below.
+```
+Off-chain Oracle Daemon  ->  Validators Exit Bus Oracle  ->  Validator Withdrawals Queue 
+   report submission             report validation             enqueue requests 
+```
+
 3. **Execute queued intentions from `ValidatorWithdrawalsQueue`.** An executor (the **Exit Queue Bot** or any other caller) calls the permissionless `processWithdrawalIntents`, passing the number of intentions to process and the required EIP-7002 fee. The queue pops that many intentions from its head, in order, and hands them with the fee to the TWG, which turns each into an actual withdrawal request as described above.
+```
+Validator Withdrawals Queue Bot  ->  Validator Withdrawals Queue  ->  Triggerable Withdrawals Gateway  ->  WithdrawalVault  ->  EIP-7002 predeploy
+  permissionless call with fee            dequeue requests                      rate limits                   encoding          withdrawal requests
+```
+
 
 ##### FWR-only fallback
 
@@ -87,7 +97,9 @@ The module sends the exit intentions and the fee to the same TWG entry point (`t
 
 #### Single FIFO queue
 
-Withdrawal request intentions (both PWRs and FWRs) are stored in a single FIFO queue and processed in submission order, each becoming an actual EIP-7002 withdrawal request only once executed (see [Flow 2](#flow-2--process-withdrawal-requests)). We chose this model because:
+![single_queue](./assets/lip-38/single_queue.png)
+
+Withdrawal request intentions (both PWRs and FWRs) are stored in a single FIFO queue and processed in submission order, each becoming an actual EIP-7002 withdrawal request only once executed. We chose this model because:
 
 - **Simplicity.** One queue is simple to process on-chain and does not need separate concurrency controls.
 - **Safety with public execution.** The strict execution order of withdrawal intents within the queue limits interference by public callers and removes the possibility of [FWR-replay DDoS](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-30.md#61-attack-vector-vulnerability-from-uncontrolled-creation-of-twrs).
@@ -106,17 +118,6 @@ The Ejector cannot process PWRs, and the new system expects few FWRs. Historical
 
 We are updating the `TriggerableWithdrawalsGateway`. Its rate limiter becomes **balance-based**: it bounds the total ETH extracted per frame. Each request is weighed by how much stake it actually withdraws — `amountGwei` for a PWR, or the validator's max effective balance by WC type (32/2048 ETH) for an FWR.
 
-### Technical Specification
-
-The design splits cleanly along the oracle boundary:
-
-- **Off-chain Oracle** owns all *ordering* logic — which module, which Node Operator, and which validator keys (with what amounts) should exit next, and all active-rebalancing decision-making. It produces the per-report list of withdrawal request intentions.
-- **On-chain** protocol side — a thin set of primitives that:
-    - ingests the Oracle report and appends its withdrawal request intentions to a single FIFO queue;
-    - exposes a permissionless handle to execute queued intentions, turning each into an actual withdrawal request against the EIP-7002 contract;
-    - enforces the exit limits (TWG rate limit on extracted balance);
-    - enforces the configurable rebalancing bounds (rate limit, thresholds);
-    - holds partial withdrawal requests off/on switch (full withdrawal requests only mode);
 
 ### Off-chain Oracle: ordering and rebalancing logic
 
@@ -195,23 +196,11 @@ A **new-operator grace period** applies: an operator whose first key was deposit
 3. **Biggest validator first** — prefer the largest-balance validator so exits stay partial and keep the validator active.
 4. **Lowest validator index** — within an operator, ascending validator index.
 
-### On-chain Oracle
+### On-chain withdrawal intentions
 
-On-chain, the protocol takes the Oracle's ordered withdrawal request intentions and turns them into EIP-7002 withdrawals. This happens in **two flows**:
+#### ValidatorsExitBusOracle
 
-- **Report submission** — the Oracle submits a packed report; each intention is decoded and appended to a single FIFO queue.
-- **Execute withdrawal requests** — a permissionless handle pops queued intentions and pushes each down the request path to the EIP-7002 predeploy, where it becomes an actual withdrawal request:
-
-![withdrawal_requests_detailed](./assets/lip-38/withdrawal_requests_detailed.png)
-
-#### Flow 1 — Report submission
-
-```
-Off-chain Oracle Daemon  ->  ValidatorsExitBusOracle  ->  ValidatorWithdrawalsQueue 
-   report submission             report validation             enqueue requests 
-```
-
-The Oracle calls `submitReportData` with the existing `ReportData` structure: a `dataFormat` selector and a `data` blob of fixed-width records packed together. It introduces a **new `dataFormat` version** whose record carries the withdrawal **amount**. The current record (`DATA_FORMAT_LIST_WITH_KEY_INDEX = 2`, introduced in [LIP-35](lip-35.md)) is 72 bytes; the new record appends an 8-byte `amount`:
+The off-chain oracle daemon calls `submitReportData` with the existing `ReportData` structure: a `dataFormat` selector and a `data` blob of fixed-width records packed together. It introduces a **new `dataFormat` version** whose record carries the withdrawal **amount**. The current record (`DATA_FORMAT_LIST_WITH_KEY_INDEX = 2`, introduced in [LIP-35](lip-35.md)) is 72 bytes; the new record appends an 8-byte `amount`:
 
 ```
 /// MSB <--------------------------------------------------------------------------------------------------- LSB
@@ -225,20 +214,9 @@ On submission VEBO decodes each record into a `WithdrawalIntent` struct — a wi
 
 When partial withdrawals are disabled, the report is still in the new format but every record MUST carry `amount == 0` (FWR-only); if any record carries a non-zero amount, the protocol reverts the entire `submitReportData` call.
 
-#### Flow 2 — Process withdrawal intentions
-
-```
-Validator Withdrawals Queue Bot  ->  ValidatorWithdrawalsQueue  ->  TriggerableWithdrawalsGateway (TWG)  ->  WithdrawalVault  ->  EIP-7002 predeploy
-    permissionless call, fee          dequeue requests (FIFO)           rate limits, fee refund                encoding         withdrawal request
-```
-
-Anyone calls the permissionless `processWithdrawalIntents(count, refundRecipient)`, forwarding the per-request EIP-7002 fee. It pops the next `count` intentions from the FIFO in order and pushes each down the path above: **TWG** applies the exit limits and refunds unused fee to `refundRecipient`, then the **WithdrawalVault** encodes an actual withdrawal request and submits it to the EIP-7002 contract.
-
-**Cost model.** The `processWithdrawalIntents` caller pays EIP-7002 fees for all VEBO-path requests. The forced-exit fee refund mechanism from [LIP-30](lip-30.md) is removed.
-
 ```solidity
 interface IValidatorsExitBusOracle {
-    /// Flow 1: Oracle submits the ordered, packed report; each record is decoded into a
+    /// Off-chain oracle daemon submits the ordered, packed report; each record is decoded into a
     /// WithdrawalIntent and appended to the ValidatorWithdrawalsQueue FIFO.
     function submitReportData(ReportData calldata report, uint256 contractVersion) external;
 
@@ -259,44 +237,7 @@ interface IValidatorsExitBusOracle {
         uint64  amountGwei
     );
 }
-
-interface IValidatorWithdrawalsQueue {
-    /// A single queued withdrawal request intention — not yet an EIP-7002 request.
-    /// amount == 0  -> full withdrawal (FWR) once executed; weighed against the TWG's
-    ///                 extracted-balance rate limit at the validator's max effective
-    ///                 balance for its wcType (32/2048 ETH).
-    /// amount  > 0  -> partial withdrawal (PWR) once executed; weighed at amount.
-    struct WithdrawalIntent {
-        uint32  moduleId;       // matches the 3-byte moduleId field width in the packed report record
-        uint64  nodeOperatorId; // matches the 5-byte nodeOpId field width in the packed report record
-        uint64  amount;         // gwei; 0 = full withdrawal (FWR), > 0 = partial withdrawal (PWR).
-        uint8   wcType;         // validator withdrawal-credentials type: 0x01 or 0x02
-        bytes   pubkey;         // dynamic type placed last so it doesn't break packing of the fields above
-    }
-
-    /// Flow 1 (called by VEBO-7002): append decoded report intentions to the tail of the
-    /// FIFO queue. Role-gated; VEBO-7002 is the only expected holder of the role.
-    function addWithdrawalIntents(WithdrawalIntent[] calldata intents) external;
-
-    /// Flow 2: Permissionless — pop the next `count` queued intentions and execute each as an
-    /// actual withdrawal request down the EIP-7002 path (TWG -> WithdrawalVault -> predeploy).
-    /// Caller forwards the per-request fee; unused fee is refunded to `refundRecipient`.
-    function processWithdrawalIntents(uint256 count, address refundRecipient) external payable;
-
-    /// Number of intentions waiting in the FIFO queue.
-    function unprocessedIntentsCount() external view returns (uint256);
-
-    /// Returns the queued intention at FIFO offset `index` from the head of the queue
-    /// (`index == 0` is the next intention `processWithdrawalIntents` will execute), letting
-    /// permissionless executors and monitoring tools inspect the queue before calling it.
-    function getWithdrawalIntent(uint256 index) external view returns (WithdrawalIntent memory);
-}
-
 ```
-                                                                |
-#### ValidatorsExitBusOracle
-
-The report `dataFormat` with `amount`, the `submitReportData` entry point, and the `enablePartialWithdrawals` / `disablePartialWithdrawals` switch are described in Flows 1–2 above.
 
 **Cutover.** Legacy report hashes with exit data not yet delivered at the moment of the upgrade are **abandoned** — the new format cannot deliver them, and no legacy delivery path is retained. This is accepted: the underlying exit demand re-emerges organically from validator balances and is re-covered by subsequent VEBO-7002 reports.
 
@@ -318,7 +259,43 @@ On `submitReportData`, VEBO-7002 **MUST validate that every record with `amount 
 - **`processWithdrawalIntents`** — the permissionless Flow 2 handle: pops intentions from the head of the queue and executes each down the TWG → WithdrawalVault → EIP-7002 path, with the caller forwarding the per-request fee and naming a refund recipient for the unused remainder.
 - **`unprocessedIntentsCount` / `getWithdrawalIntent`** — views that let permissionless executors and monitoring tools inspect the queue before processing it.
 
+```solidity
+interface IValidatorWithdrawalsQueue {
+    /// A single queued withdrawal request intention — not yet an EIP-7002 request.
+    /// amount == 0  -> full withdrawal (FWR) once executed; weighed against the TWG's
+    ///                 extracted-balance rate limit at the validator's max effective
+    ///                 balance for its wcType (32/2048 ETH).
+    /// amount  > 0  -> partial withdrawal (PWR) once executed; weighed at amount.
+    struct WithdrawalIntent {
+        uint32  moduleId;       // matches the 3-byte moduleId field width in the packed report record
+        uint64  nodeOperatorId; // matches the 5-byte nodeOpId field width in the packed report record
+        uint64  amount;         // gwei; 0 = full withdrawal (FWR), > 0 = partial withdrawal (PWR).
+        uint8   wcType;         // validator withdrawal-credentials type: 0x01 or 0x02
+        bytes   pubkey;         // dynamic type placed last so it doesn't break packing of the fields above
+    }
+
+    /// Called by VEBO: append decoded report intentions to the tail of the
+    /// FIFO queue. Role-gated; VEBO is the only expected holder of the role.
+    function addWithdrawalIntents(WithdrawalIntent[] calldata intents) external;
+
+    /// Permissionless — pop the next `count` queued intentions and execute each as an
+    /// actual withdrawal request down the EIP-7002 path (TWG -> WithdrawalVault -> predeploy).
+    /// Caller forwards the per-request fee; unused fee is refunded to `refundRecipient`.
+    function processWithdrawalIntents(uint256 count, address refundRecipient) external payable;
+
+    /// Number of intentions waiting in the FIFO queue.
+    function unprocessedIntentsCount() external view returns (uint256);
+
+    /// Returns the queued intention at FIFO offset `index` from the head of the queue
+    /// (`index == 0` is the next intention `processWithdrawalIntents` will execute), letting
+    /// permissionless executors and monitoring tools inspect the queue before calling it.
+    function getWithdrawalIntent(uint256 index) external view returns (WithdrawalIntent memory);
+}
+```
+
 The queue offers no dismissal or reordering surface — requests execute strictly in submission order (see [Single FIFO queue](#single-fifo-queue)).
+
+**Cost model.** The `processWithdrawalIntents` caller pays EIP-7002 fees for all VEBO-path requests. The forced-exit fee refund mechanism from [LIP-30](lip-30.md) is removed.
 
 #### TriggerableWithdrawalsGateway (TWG)
 
