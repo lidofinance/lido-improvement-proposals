@@ -2,10 +2,10 @@
 lip: 38
 title: "VEBO-7002 — Execution Layer Initiated Exits and Active Rebalancing"
 status: WIP
-author: Raman Siamionau (@F4ever), Dmitry Gusakov
+author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-09-02
+updated: 2026-09-06
 ---
 
 ## Simple Summary
@@ -50,7 +50,7 @@ Today, stake redistribution across Node Operators and modules happens only throu
 
 ## Specification
 
-![full_withdrawal_requests_flow](./assets/lip-38/full_withdrawal_requests_flow.png)
+![withdrawal_intentions](./assets/lip-38/withdrawal_intentions.png)
 
 ### Overview
 
