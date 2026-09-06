@@ -54,14 +54,33 @@ Today, stake redistribution across Node Operators and modules happens only throu
 
 ### Overview
 
-1. **Off-chain Oracle computes exit demand in three sequential phases.**
-    - Phase 1 — cover regular **withdrawal-queue demand**.
-    - Phase 2 — issue **forced validator exits**.
-    - Phase 3 — add **active rebalancing** within CMv2. Phase 3 is optional and can be switched off (leaving only Phases 1–2).
-2. **The Oracle reports the ordered withdrawal request intentions on-chain, where they are appended to a single FIFO queue in the `ValidatorWithdrawalsQueue` contract.**
-3. **Anyone can execute queued intentions.** A permissionless handle pops them one by one and submits each as an actual partial (PWR) or full (FWR) withdrawal request to the EIP-7002 predeploy, paying the per-request fee.
+The diagram above shows the two paths by which withdrawal requests reach the EIP-7002 system contract. Both converge on the `TriggerableWithdrawalsGateway` (TWG) — the single entry point for every partial (PWR) or full (FWR) withdrawal request — and draw from its shared, balance-based rate limit. The TWG forwards each request with the exact EIP-7002 fee to the `WithdrawalVault`, which encodes it and submits it to the EIP-7002 system contract, and refunds any unused fee to the caller-specified refund recipient.
 
-An **`enablePartialWithdrawals` / `disablePartialWithdrawals` switch** can turn partial withdrawals off, making VEBO create FWRs only. `ExitRequested` events for FWRs let an Ejector fulfill them through voluntary exits without EIP-7002 fees.
+#### Oracle withdrawals flow
+
+1. **The off-chain Oracle computes exit demand.** The Oracle daemon reads its parameters from `OracleDaemonConfig` and builds the ordered list of withdrawal request intentions — each a PWR against a `0x02` validator or an FWR — in three sequential phases:
+    - Phase 1 — cover regular **withdrawal-queue demand**;
+    - Phase 2 — issue **forced validator exits**;
+    - Phase 3 — add **active rebalancing** within CMv2. Phase 3 is optional and can be switched off (leaving only Phases 1–2).
+2. **The Oracle submits the report to VEBO-7002.** On submission, VEBO:
+    - checks the report's total requested withdrawal balance in ETH against the sanity checker limit;
+    - verifies against the staking module that each reported key belongs to the stated module and node operator, and that every PWR targets a `0x02` validator;
+    - appends the intentions, in report order, to the single FIFO queue in the `ValidatorWithdrawalsQueue` contract;
+    - emits an `ExitRequested` event per intention, which lets an Ejector pick up FWRs in the fallback mode described below.
+3. **Execute queued intentions from `ValidatorWithdrawalsQueue`.** An executor (the **Exit Queue Bot** or any other caller) calls the permissionless `processWithdrawalIntents`, passing the number of intentions to process and the required EIP-7002 fee. The queue pops that many intentions from its head, in order, and hands them with the fee to the TWG, which turns each into an actual withdrawal request as described above.
+
+##### FWR-only fallback
+
+An **`enablePartialWithdrawals` / `disablePartialWithdrawals` switch** can turn partial withdrawals off, making VEBO accept FWR intentions only. `ExitRequested` events for FWRs let an Ejector fulfill them through voluntary exits without EIP-7002 fees.
+
+#### Modules withdrawals flow
+
+The CSM and CMv2 modules trigger withdrawals directly, bypassing the Oracle and the FIFO queue, in two cases:
+
+- **Voluntary exit** — a Node Operator requests the exit of its own validators.
+- **Forced exit of a bad performer** — a validator that has accumulated strikes reported by the Bad Performance Oracle is ejected.
+
+The module sends the exit intentions and the fee to the same TWG entry point (`triggerWithdrawals`), which processes them under the shared rate limit and refunds the remaining fee to the refund recipient, exactly as in the Oracle flow.
 
 ### Rationale
 
