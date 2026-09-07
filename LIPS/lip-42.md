@@ -209,12 +209,25 @@ Due to the transition to the new balance tracking mechanism in CMv2, the exit ba
 
 Since CMv2 already assumes an overseeing committee (CMC) for reliable operation, it is assumed that a balance deficit that occurred due to validator underperformance is penalized manually using [General Delayed Penalty mechanism](./lip-33.md#general-penalty-with-confirmation). Balance deficit due to slashing is already handled using [dedicated Easy Track flow](./lip-33.md#slashed-validators).
 
-
 #### Updated `Verifier` contract for CMv2 to support partial withdrawals and new balance tracking mechanism
 
 > This feature applies to CMv2 only. CSM keeps the version of `Verifier` covered in [LIP-33](./lip-33.md).
 
-To support partial withdrawals and the new balance tracking mechanism, the `Verifier` contract in CMv2 features 2 new methods:
+Due to significant changes in the balance tracking mechanism, CMv2 will have it's own version of the `Verifier` contract called `CuratedVerifier` featuring the following methods:
+
+##### `processSlashedProof`
+
+This method is identical to the LIP-33 version.
+
+##### `processValidatorWithdrawnProof`
+
+Unlike LIP-33 `processWithdrawalProof`, this method does not require a proof of the full withdrawal event from the CL. Instead, it only requires a proof that the validator's `withdrawable_epoch` has been reached. The actual withdrawal event is no longer required due to the removal of the exit balance deficit penalty.
+
+This method reports a terminal event in the validator's lifecycle to `CuratedModule` for validators that have exited or were consolidated.
+
+##### `processBalanceProof`
+
+This method is similar to the LIP-33 version, with the only difference being that it now updates the `keyAllocatedBalance` and `lastAccountingProofSlot` on `CuratedModule` to reflect the new balance and the slot of the proof, respectively.
 
 ##### `processPartialWithdrawalProof`
 
@@ -225,15 +238,17 @@ Allows reporting partial withdrawal proofs from the CL. The withdrawal event is 
 
 Once reported, `keyAllocatedBalance` is updated to reflect the new balance, and `lastAccountingProofSlot` is set to the slot of the proof.
 
-#### `processOutgoingConsolidationProof`
+##### `processHistoricalPartialWithdrawalProof`
 
-Allows reporting outgoing consolidation proofs from the CL. The proof is accepted if:
+This method is the version of `processPartialWithdrawalProof` that handles historical proofs, allowing reporting of partial withdrawals that occurred in the past.
 
-- Source validator in the pending consolidation belongs to the given operator in CMv2.
-- Consolidation is successfully applied on CL.
-- To be extended
+##### Note on the historical versions of methods
 
-Valid outgoing consolidation proofs are processed in CMv2 in the same way as full withdrawals.
+The only historical method is `processHistoricalPartialWithdrawalProof`. Other methods do not need historical versions due to:
+
+- `processSlashedProof` - once slashed, a validator remains slashed forever, and any future state of this validator can be used.
+- `processValidatorWithdrawnProof` - once set, `withdrawable_epoch` remains unchanged, and any future state of this validator can be used.
+- `processBalanceProof` - due to the fact that `CuratedModule` accepts balance reports with the increased balance for the slots newer than `lastAccountingProofSlot`, and features no high-water mark mechanism, historical versions are unnecessary.
 
 ### Upgradability
 
@@ -249,7 +264,7 @@ Instances of `LidoGovernanceLockVault.sol` are deployed using [BeaconProxy](http
 
 If a slashing event is reported but remains unresolved before a module upgrade, the ongoing slashings counter will remain zero after the module upgrade. If another slashing occurs after the upgrade, resolution of the slashing started before the upgrade will null out the ongoing slashings counter that should have been incremented, potentially allowing Node Operators to claim their bonds prematurely.
 
-Because this scenario is highly unlikely in practice, the impact can be accepted as a minor risk. Alternatively, module upgrade can be postponed until all unresolved slashing events are resolved, ensuring that the ongoing slashings counter accurately reflects the true state of unresolved slashings.
+Because this scenario is highly unlikely in practice, the impact can be accepted as a minor risk. Alternatively, the module upgrade can be postponed until all unresolved slashing events are resolved, ensuring that the ongoing slashings counter accurately reflects the true state of unresolved slashings.
 
 #### Race condition in `keyAllocatedBalance` updates between top-ups and partial withdrawals
 
