@@ -171,6 +171,17 @@ Bond claim restriction is also applied to [reward splitters](./lip-33.md#rewards
 
 [LIP-38](./lip-38.md) introduces a new approach to validator exits and partial withdrawals. Post-LIP-38 exits are performed via [EIP-7002](https://eips.ethereum.org/EIPS/eip-7002) and do not require any action from the Node Operator side. Hence, late exit penalty mechanism becomes obsolete and should be removed.
 
+The following methods and flows will be removed:
+- `BaseModule.sol`
+    - `reportValidatorExitDelay` - Method for reporting delayed validator exits.
+    - `onValidatorExitTriggered` - Hook to notify module about TW fee paid.
+- `ExitPenalties.sol`
+    - `processExitDelayReport`
+    - `processTriggeredExit`
+    - `isValidatorExitDelayPenaltyApplicable`
+
+`ExitPenalties.sol` sole responsibility post LIP-42 is to handle validator strike ejection penalties.
+
 #### New balance tracking mechanism for CMv2
 
 > This feature applies to CMv2 only. CSM keeps the mechanism covered in [LIP-33](./lip-33.md).
