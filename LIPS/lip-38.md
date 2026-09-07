@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-09-06
+updated: 2026-09-07
 ---
 
 ## Simple Summary
@@ -29,7 +29,7 @@ This redesign also removes components made redundant by the new flow: late-exit 
 
 ### Limitations of the current VEBO
 
-The current VEBO depends on Node Operators uploading pre-signed validator exit messages and on Ejector software to broadcast them. This design has these limits:
+The current VEBO depends on Node Operators uploading pre-signed validator exit messages and on Ejector software to broadcast them. This mechanism has worked reliably since it went live with Lido V2, but the design has structural limits:
 
 - **Full exits only.** The flow exclusively supports full validator exits.
 - **Limited upload capacity.** Only some pre-signed exit messages can be uploaded for each Node Operator. This limits the harm if an operator's signing system is compromised, but also limits how many and which validators the Ejector can exit.
@@ -47,7 +47,7 @@ EIP-7002 lets the protocol trigger withdrawals from the execution layer using va
 
 ### Why active rebalancing
 
-Today, stake redistribution across Node Operators and modules happens only through organic inflows (new deposits) and outflows (withdrawal demand). When a module or an individual operator drifts above its target stake, there is no protocol-level lever to correct it on a controlled schedule. For CMv2 we need a mechanism that can deliberately move the module toward its target distribution while staying compatible with the regular withdrawal and deposit flow. The withdrawal-based VEBO-7002 flow makes such a mechanism natural to express: rebalancing is simply additional, rate-limited exit demand against over-target operators.
+Today, stake redistribution across Node Operators and modules happens mostly through organic inflows (new deposits) and outflows (withdrawal demand). The two existing levers beyond this flow serve other purposes: the **boosted exit mode** of the operator target limit ([LIP-25](lip-25.md)) is a measure for offboarding an operator, and the **deposit reserve** ([LIP-35](lip-35.md)) is a static mechanism for guaranteeing a stable flow of deposits to a dedicated module, as with the CMv2 onboarding. Neither can pull an over-target CMv2 operator back toward its target stake on a controlled schedule. For CMv2 we need a mechanism that can deliberately move the module toward its target distribution while staying compatible with the regular withdrawal and deposit flow. The withdrawal-based VEBO-7002 flow makes such a mechanism natural to express: rebalancing is simply additional, rate-limited exit demand against over-target operators.
 
 ## Specification
 
