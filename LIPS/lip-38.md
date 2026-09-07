@@ -345,9 +345,11 @@ Removing the hooks orphans their access-control grants, so the upgrade vote MUST
 It is proposed to keep the legacy **NOR** and **SDVT** modules unchanged.
 
 For **CSM** and **CMv2**, it is proposed to:
+* **Switch the `TriggerableWithdrawalsGateway` call** from `triggerFullWithdrawals` to `triggerWithdrawals`.
 * **Remove `onValidatorExitTriggered` implementations** — these hooks become unreachable once the TWG stops notifying staking modules about validator exits.
 * **Remove late-exit-penalty accounting** — remove the bookkeeping driven by `reportValidatorExitDelay`, including tracking proven exit delays and applying the corresponding penalties, since `StakingRouter.reportValidatorExitDelay` is removed.
-* **Switch the `TriggerableWithdrawalsGateway` call** from `triggerFullWithdrawals` to `triggerWithdrawals`.
+* **Remove `isValidatorExitDelayPenaltyApplicable` implementations** - these method became useless since exit penalty system is removed.
+* **Remove `exitDeadlineThreshold` method** - these method became useless since exit penalty system is removed.
 
 #### ValidatorExitDelayVerifier
 
