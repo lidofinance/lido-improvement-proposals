@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 ## Simple Summary
@@ -23,7 +23,7 @@ We propose to rework the Validators Exit Bus Oracle ("VEBO-7002") across its on-
 
 **Off-chain**, we rework the exit-ordering logic so it selects both which validators to exit and the withdrawal amount per validator. This adds support for **partial withdrawal requests** — preferring PWRs against `0x02` validators and falling back to FWRs where PWRs are not applicable — and for **Active Rebalancing**: additional, rate-limited exits against CMv2 operators whose `currentStake` exceeds their `targetStake`, moving the module toward its target distribution.
 
-This redesign also removes components made redundant by the new flow: late-exit penalties and proofs to trigger full withdrawal requests.
+This redesign also removes two mechanisms of the Triggerable Withdrawals framework ([LIP-30](lip-30.md)) that the new flow makes redundant: exit delay verification with late-exit penalties, and exit requests hash delivery via EasyTrack.
 
 ## Motivation
 
@@ -57,6 +57,8 @@ Today, stake redistribution across Node Operators and modules happens mostly thr
 
 The diagram above shows the two paths by which withdrawal requests reach the EIP-7002 system contract. Both converge on the `TriggerableWithdrawalsGateway` (TWG) — the single entry point for every partial (PWR) or full (FWR) withdrawal request — and draw from its shared, balance-based rate limit. The TWG forwards each request with the exact EIP-7002 fee to the `WithdrawalVault`, which encodes it and submits it to the EIP-7002 system contract, and refunds any unused fee to the caller-specified refund recipient.
 
+Because the protocol now submits withdrawal requests itself through the EIP-7002 system contract, two mechanisms introduced by the Triggerable Withdrawals framework become redundant and are removed in this release: **exit delay verification with late-exit penalties** and **exit requests hash delivery via EasyTrack**. The Ejector remains only as a fallback for FWR-only mode.
+
 #### Oracle withdrawals flow
 
 1. **The off-chain Oracle computes exit demand.** The Oracle daemon reads its parameters from `OracleDaemonConfig` and builds the ordered list of withdrawal request intentions — each a PWR against a `0x02` validator or an FWR — in three sequential phases:
@@ -73,12 +75,11 @@ Off-chain Oracle Daemon  ->  Validators Exit Bus Oracle  ->  Validator Withdrawa
    report submission             report validation             enqueue requests 
 ```
 
-3. **Execute queued intentions from `ValidatorWithdrawalsQueue`.** An executor (the **Exit Queue Bot** or any other caller) calls the permissionless `processWithdrawalIntents`, passing the number of intentions to process and the required EIP-7002 fee. The queue pops that many intentions from its head, in order, and hands them with the fee to the TWG, which turns each into an actual withdrawal request as described above.
+3. **Execute queued intentions from `ValidatorWithdrawalsQueue`.** An executor (the **Validator Withdrawals Queue Bot** or any other caller) calls the permissionless `processWithdrawalIntents`, passing the number of intentions to process and the required EIP-7002 fee. The queue pops that many intentions from its head, in order, and hands them with the fee to the TWG, which turns each into an actual withdrawal request as described above.
 ```
 Validator Withdrawals Queue Bot  ->  Validator Withdrawals Queue  ->  Triggerable Withdrawals Gateway  ->  WithdrawalVault  ->  EIP-7002 predeploy
   permissionless call with fee            dequeue requests                      rate limits                   encoding          withdrawal requests
 ```
-
 
 ##### FWR-only fallback
 
@@ -113,6 +114,18 @@ The trade-offs are:
 #### Deprecating the Ejector as the primary tool
 
 The Ejector cannot process PWRs, and the new system expects few FWRs. Historical mainnet data shows that EIP-7002 fee spikes are short and end before VEBO could react. With fewer validators and no planned reduction in EIP-7002 throughput, request fees should remain reasonable. The Ejector therefore becomes a **fallback**, used only when `disablePartialWithdrawals()` enables FWR-only operation.
+
+#### Removing exit delay verification and late-exit penalties
+
+Late-exit penalties exist because the exit is performed by the Node Operator, whose Ejector broadcasts a pre-signed exit message, and the protocol cannot know whether that happened without a CL state proof. With the proposed changes the protocol submits the withdrawal request through EIP-7002 and the consensus layer executes it with no action from the operator. Nothing can fail or be ignored on the operator side, so there is nothing to prove and nothing to penalize.
+
+#### Removing exit requests hash delivery via EasyTrack
+
+The [`SubmitExitRequestHashes` EasyTrack factories](lip-30.md#appendix-b---easy-track-factories-for-veb) let Curated and sDVT Node Operators submit exit requests through VEBO's `submitExitRequestsHash` without Oracle quorum. They are primarily a safety net for operators who lose access to validator signing keys and therefore cannot sign a voluntary exit. This need disappears: **CMv1** is being consolidated into CMv2, and **sDVT** runs distributed validators, where losing the keys is unlikely, and is going to be deprecated in the near future as well.
+
+**CSM and CMv2** trigger exits directly through the TWG and do not rely on this flow (see [Modules withdrawals flow](#modules-withdrawals-flow)).
+
+With no consumer left, the hash-delivery entry points and the EasyTrack factories built on them can be safely removed.
 
 #### From validator-count limits to balance-based limits
 
@@ -239,7 +252,7 @@ interface IValidatorsExitBusOracle {
 }
 ```
 
-**Cutover.** Legacy report hashes with exit data not yet delivered at the moment of the upgrade are **abandoned** — the new format cannot deliver them, and no legacy delivery path is retained. This is accepted: the underlying exit demand re-emerges organically from validator balances and is re-covered by subsequent VEBO-7002 reports.
+**Cutover.** The hash-delivery entry points `submitExitRequestsHash` and `submitExitRequestsData` are removed, and the `SUBMIT_REPORT_HASH_ROLE` held by EasyTrack is revoked. Legacy report hashes with exit data not yet delivered at the moment of the upgrade are **abandoned** — the new format cannot deliver them, and no legacy delivery path is retained. The underlying exit demand re-emerges organically from validator balances and is re-covered by subsequent VEBO-7002 reports.
 
 The `disablePartialWithdrawals` / `enablePartialWithdrawals` toggle is the FWR-only fallback: when disabled, the contract accepts FWRs only. `ExitRequested` still fires for every FWR so a Validator Ejector can fulfill them via voluntary exits without EIP-7002 fees. This is the safe mode under sustained extreme EIP-7002 fees.
 
@@ -295,7 +308,7 @@ interface IValidatorWithdrawalsQueue {
 
 The queue offers no dismissal or reordering surface — requests execute strictly in submission order (see [Single FIFO queue](#single-fifo-queue)).
 
-**Cost model.** The `processWithdrawalIntents` caller pays EIP-7002 fees for all VEBO-path requests. The forced-exit fee refund mechanism from [LIP-30](lip-30.md) is removed.
+**Cost model.** The `processWithdrawalIntents` caller pays EIP-7002 fees for all VEBO-path requests. The forced-exit fee refund mechanism is removed.
 
 #### TriggerableWithdrawalsGateway (TWG)
 
@@ -334,26 +347,25 @@ As part of this, it **drops `_notifyStakingModules`**: the current TWG calls bac
 
 #### StakingRouter
 
-Two exit-related hooks are removed, both tied to the late-exit-penalty accounting this release drops:
+The two exit-related hooks are removed:
 
 - **`onValidatorExitTriggered`** — the TWG no longer notifies modules on exit, so this callback (and its module-interface counterpart) is deleted.
 - **`reportValidatorExitDelay`** — the entry point through which the `ValidatorExitDelayVerifier` reported proven exit delays for penalty accounting; with penalties gone, nothing calls it.
 
-Removing the hooks orphans their access-control grants, so the upgrade vote MUST also **revoke the corresponding roles**: the TWG's grant to call `onValidatorExitTriggered` and the `ValidatorExitDelayVerifier`'s grant to call `reportValidatorExitDelay`.
+Removing the hooks orphans their access-control grants, so the upgrade vote MUST also **revoke the corresponding roles**: `REPORT_VALIDATOR_EXIT_TRIGGERED_ROLE` from the TWG and `REPORT_VALIDATOR_EXITING_STATUS_ROLE` from the `ValidatorExitDelayVerifier`.
 
 #### Staking Modules (NOR, SDVT, CSM, CMv2)
-It is proposed to keep the legacy **NOR** and **SDVT** modules unchanged.
+It is proposed to keep the legacy **NOR** and **SDVT** modules unchanged. 
 
 For **CSM** and **CMv2**, it is proposed to:
 * **Switch the `TriggerableWithdrawalsGateway` call** from `triggerFullWithdrawals` to `triggerWithdrawals`.
-* **Remove `onValidatorExitTriggered` implementations** — these hooks become unreachable once the TWG stops notifying staking modules about validator exits.
-* **Remove late-exit-penalty accounting** — remove the bookkeeping driven by `reportValidatorExitDelay`, including tracking proven exit delays and applying the corresponding penalties, since `StakingRouter.reportValidatorExitDelay` is removed.
-* **Remove `isValidatorExitDelayPenaltyApplicable` implementations** - these method became useless since exit penalty system is removed.
-* **Remove `exitDeadlineThreshold` method** - these method became useless since exit penalty system is removed.
+* **Remove `onValidatorExitTriggered` implementations** together with the EIP-7002 fee charge-back they drive — the hook becomes unreachable once the TWG stops notifying staking modules about validator exits.
+* **Remove late-exit-penalty accounting** — the bookkeeping driven by `reportValidatorExitDelay`, including tracking proven exit delays and applying the corresponding penalties, since `StakingRouter.reportValidatorExitDelay` is removed.
+* **Remove `isValidatorExitDelayPenaltyApplicable` and `exitDeadlineThreshold`** — the remaining `IStakingModule` methods of the exit-penalty system.
 
 #### ValidatorExitDelayVerifier
 
-**Removed entirely.** This contract proved on-chain that a validator's exit was delayed beyond the allowed window, feeding the late-exit penalty via `StakingRouter.reportValidatorExitDelay`. Once late-exit penalties are removed there is nothing to prove or report, so the contract and its `LidoLocator` registration are deleted.
+**Removed entirely.** This contract verifies a CL state proof that a validator requested to exit is still active, computes how long the operator has been eligible to exit it, and reports the delay through `StakingRouter.reportValidatorExitDelay`. Once late-exit penalties are removed there is nothing to prove or report, so the contract and its `LidoLocator` registration are deleted. The off-chain Validator Late Prover Bot that produced these proofs is retired with it.
 
 #### WithdrawalVault
 
@@ -379,7 +391,7 @@ This release **adds the following keys** to the contract: the iterator params sh
 
 #### EasyTrack factories
 
-The EasyTrack factories that interact with VEBO (e.g. the VEBO-bypass exit flow, which lets a committee submit exit requests directly without waiting on Oracle quorum) are **removed** in this release.
+The EasyTrack factories that submit exit request hashes to VEBO on behalf of Curated and sDVT Node Operators are **removed** in this release, and their `SUBMIT_REPORT_HASH_ROLE` is revoked. They depend on the hash-delivery flow, which VEBO-7002 no longer has (see [Rationale](#removing-exit-requests-hash-delivery-via-easytrack)).
 
 A new EasyTrack factory is **added**: it lets CMC update the five `ACTIVE_REBALANCING_*` keys on `OracleDaemonConfig` (see [`OracleDaemonConfig`](#oracledaemonconfig)) without a full DAO vote per change.
 
@@ -395,7 +407,7 @@ A new EasyTrack factory is **added**: it lets CMC update the five `ACTIVE_REBALA
 
 ## Failure Modes
 
-- **EIP-7002 fee spike** — mitigation: call `disablePartialWithdrawals` for FWR-only operation and monitor execution-layer withdrawal-request fees. Old queued PWRs may later execute in addition to replacement FWRs. This is not automatically harmless. See [switch semantics](#validatorsexitbusoracle--vebo-7002).
+- **EIP-7002 fee spike** — mitigation: call `disablePartialWithdrawals` for FWR-only operation and monitor execution-layer withdrawal-request fees. Old queued PWRs may later execute in addition to replacement FWRs. This is not automatically harmless. See [switch semantics](#validatorsexitbusoracle).
 - **No-op requests** (a validator is already exiting, slashed, or is otherwise unaffected) — there is **no dismissal mechanism**. Every queued request MUST still be executed before the FIFO can advance, even when the CL will not apply it.
 
 ## Copyright
