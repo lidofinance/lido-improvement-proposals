@@ -129,7 +129,7 @@ With no consumer left, the hash-delivery entry points and the EasyTrack factorie
 
 #### From validator-count limits to balance-based limits
 
-We are updating the `TriggerableWithdrawalsGateway`. Its rate limiter becomes **balance-based**: it bounds the total ETH extracted per frame. Each request is weighed by how much stake it actually withdraws — `amountGwei` for a PWR, or the validator's max effective balance by WC type (32/2048 ETH) for an FWR.
+We are updating the `TriggerableWithdrawalsGateway`. Its rate limiter becomes **balance-based**: it bounds the total ETH requested to be withdrawn per frame. Each request is weighed by how much stake it actually withdraws — `amountGwei` for a PWR, or the validator's max effective balance by WC type (32/2048 ETH) for an FWR.
 
 
 ### Off-chain Oracle: ordering and rebalancing logic
