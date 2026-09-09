@@ -18,11 +18,9 @@ This proposal also introduces **Active Rebalancing**: a controlled, rate-limited
 
 We propose to rework the Validators Exit Bus Oracle ("VEBO-7002") across its on-chain and off-chain parts.
 
-**On-chain**, we add a new **`ValidatorWithdrawalsQueue` contract** that stores a **FIFO queue** of withdrawal request intentions (partial and full), appended by the VEBO on each Oracle report. Anyone can call a public function on the queue to process requests in order and send them to the EIP-7002 predeploy. An `enablePartialWithdrawals` / `disablePartialWithdrawals` switch on the VEBO lets the protocol turn partial withdrawals off, reverting to FWR-only operation (that could be fulfilled through a Validator Ejector) under extreme EIP-7002 fee conditions.
+**On-chain**, we add a new **`ValidatorWithdrawalsQueue` contract** that stores a **FIFO queue** of withdrawal request intentions (partial and full), appended by the VEBO on each Oracle report. Anyone can call a public function on the queue to process requests in order and send them to the EIP-7002 predeploy. An `enablePartialWithdrawals` / `disablePartialWithdrawals` switch on the VEBO lets the protocol turn partial withdrawals off, reverting to FWR-only operation (that could be fulfilled through a Validator Ejector) under extreme EIP-7002 fee conditions. Also removes two mechanisms of the Triggerable Withdrawals framework ([LIP-30](lip-30.md)) that the new flow makes redundant: exit delay verification with late-exit penalties, and exit requests hash delivery via EasyTrack.
 
 **Off-chain**, we rework the exit-ordering logic so it selects both which validators to exit and the withdrawal amount per validator. This adds support for **partial withdrawal requests** — preferring PWRs against `0x02` validators and falling back to FWRs where PWRs are not applicable — and for **Active Rebalancing**: additional, rate-limited exits against CMv2 operators whose `currentStake` exceeds their `targetStake`, moving the module toward its target distribution.
-
-This redesign also removes two mechanisms of the Triggerable Withdrawals framework ([LIP-30](lip-30.md)) that the new flow makes redundant: exit delay verification with late-exit penalties, and exit requests hash delivery via EasyTrack.
 
 ## Motivation
 
