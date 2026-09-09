@@ -213,9 +213,9 @@ A **new-operator grace period** applies: an operator whose first key was deposit
 The off-chain oracle daemon calls `submitReportData` with the existing `ReportData` structure: a `dataFormat` selector and a `data` blob of fixed-width records packed together. It introduces a **new `dataFormat` version** whose record carries the withdrawal **amount**. The current record (`DATA_FORMAT_LIST_WITH_KEY_INDEX = 2`, introduced in [LIP-35](lip-35.md)) is 72 bytes; the new record appends an 8-byte `amount`:
 
 ```
-/// MSB <--------------------------------------------------------------------------------------------------- LSB
-/// |  3 bytes   |   5 bytes    |    8 bytes     |   8 bytes  |      48 bytes       |      8 bytes          |
-/// |  moduleId  |  nodeOpId    | validatorIndex |  keyIndex  |   validatorPubkey   |  amount (gwei) *new*  |
+/// MSB <------------------------------------------------------------------------------- LSB
+/// |  3 bytes   |   5 bytes    |   8 bytes  |      48 bytes       |      8 bytes          |
+/// |  moduleId  |  nodeOpId    |  keyIndex  |   validatorPubkey   |  amount (gwei) *new*  |
 ```
 
 `amount` (uint64, gwei) — **new**; `0` = full withdrawal (FWR), `> 0` = partial withdrawal (PWR).
@@ -237,12 +237,9 @@ interface IValidatorsExitBusOracle {
     function partialWithdrawalsEnabled() external view returns (bool);
 
     /// Emitted for every queued intention.
-    /// `validatorIndex` is carried by the packed report record and is included
-    /// so the ejector can keep matching pre-signed exit messages by index.
-    event ExitRequested(
+    event WithdrawalRequested(
         uint32  indexed moduleId,
         uint64  indexed nodeOperatorId,
-        uint64  validatorIndex,
         bytes   pubkey,
         uint64  amountGwei
     );
