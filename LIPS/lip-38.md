@@ -10,10 +10,9 @@ updated: 2026-09-08
 
 ## Simple Summary
 
-This proposal redesigns the Validators Exit Bus Oracle (VEBO) around **EIP-7002 execution-layer withdrawal requests**. It also introduces **Active Rebalancing** — a controlled way to reduce excess stake at Node Operators without waiting for organic inflows and outflows.
+This proposal changes how the Lido protocol pulls stake back from validators. Instead of relying on Node Operators to pre-sign exit messages and run software to broadcast them, the protocol requests withdrawals directly on Ethereum (EIP-7002). It supports both full and partial withdrawals: from compound validators it takes only the ETH it needs and can leaves the validator running. Node Operators no longer need to maintain exit messages or run ejector software. Two now-unnecessary mechanisms are also removed: exit delay verification with late-exit penalties, and exit requests hash delivery via EasyTrack.
 
-1. **VEBO-7002** — VEBO replaces Node-Operator-supplied pre-signed exit messages and the Ejector with EIP-7002 partial withdrawal requests (PWRs) and full withdrawal requests (FWRs) as the primary exit mechanism. This enables precise, partial stake exits from `0x02` validators, reduces unproductive stake time, shortens withdrawal finalization, and simplifies the protocol by removing several legacy components.
-2. **Active Rebalancing** — a controlled, rate-limited way for the protocol to forcibly move stake toward a target distribution by requesting additional withdrawals from over-target Curated Module v2 (CMv2) operators, reusing the same withdrawal-based flow introduced by VEBO-7002.
+This proposal also introduces **Active Rebalancing**: a controlled, rate-limited way to move stake away from Curated Module v2 operators above their target share, instead of waiting for deposits and withdrawals to even it out.
 
 ## Abstract
 
