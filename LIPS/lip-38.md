@@ -63,8 +63,8 @@ Because the protocol now submits withdrawal requests itself through the EIP-7002
     - Phase 2 — issue **forced validator exits**;
     - Phase 3 — add **active rebalancing** within CMv2. Phase 3 is optional and can be switched off (leaving only Phases 1–2).
 2. **The off-chain Oracle submits the report to VEBO contract.** On submission, VEBO:
-    - checks the report's total requested withdrawal balance in ETH against the sanity checker limit;
-    - verifies against the staking module that each reported key belongs to the stated module and node operator, and that every PWR targets a `0x02` validator;
+    - checks the report's total requested withdrawal balance in ETH against the sanity checker limit and that every PWR targets a `0x02` validator;
+    - retrieve operators’ public keys from the modules using their key indices;
     - appends the intentions, in report order, to the single FIFO queue in the `ValidatorWithdrawalsQueue` contract;
     - emits an `ExitRequested` event per intention, which lets an Ejector pick up FWRs in the fallback mode described below.
 ```
@@ -210,15 +210,17 @@ A **new-operator grace period** applies: an operator whose first key was deposit
 
 #### ValidatorsExitBusOracle
 
-The off-chain oracle daemon calls `submitReportData` with the existing `ReportData` structure: a `dataFormat` selector and a `data` blob of fixed-width records packed together. It introduces a **new `dataFormat` version** whose record carries the withdrawal **amount**. The current record (`DATA_FORMAT_LIST_WITH_KEY_INDEX = 2`, introduced in [LIP-35](lip-35.md)) is 72 bytes; the new record appends an 8-byte `amount`:
+The off-chain oracle daemon calls `submitReportData` with the existing `ReportData` structure: a `dataFormat` selector and a `data` blob of fixed-width records packed together. It introduces a new compact `dataFormat` version `DATA_FORMAT_WITHDRAWALS_LIST = 3`  whose record carries the withdrawal **amount**:
 
 ```
-/// MSB <------------------------------------------------------------------------------- LSB
-/// |  3 bytes   |   5 bytes    |   8 bytes  |      48 bytes       |      8 bytes          |
-/// |  moduleId  |  nodeOpId    |  keyIndex  |   validatorPubkey   |  amount (gwei) *new*  |
+/// MSB <---------------------------------------------------LSB
+/// |  3 bytes   |   5 bytes    |   8 bytes  |    8 bytes     |
+/// |  moduleId  |  nodeOpId    |  keyIndex  |  amount (gwei) |
 ```
 
 `amount` (uint64, gwei) — **new**; `0` = full withdrawal (FWR), `> 0` = partial withdrawal (PWR).
+
+The current  `DATA_FORMAT_LIST_WITH_KEY_INDEX = 1` and `DATA_FORMAT_LIST_WITH_KEY_INDEX = 2` formats, will be deprecated.
 
 On submission VEBO decodes each record into a `WithdrawalIntent` struct — a withdrawal request intention, not yet a real withdrawal request on the CL — and appends it to the `ValidatorWithdrawalsQueue` via the role-gated `addWithdrawalIntents` call.
 
