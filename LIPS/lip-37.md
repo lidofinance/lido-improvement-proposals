@@ -402,7 +402,7 @@ All components in the table are migrated together.
 
 **Authorization model:** `HashConsensus` and the report processors (`AccountingOracle`, `ValidatorsExitBusOracle`, and CSM's `CSFeeOracle`) check `msg.sender` against the registered oracle committee member set. After migration, `msg.sender` is the `DelegationContract` address, which governance must have registered as the committee member.
 
-**Daemon configuration:** `DELEGATION_CONTRACT_ADDRESS` environment variable. When set, oracle contract calls are sent through `DelegationContract.execute()` from the delegate key. There are no startup checks: on every cycle the daemon's `SignerModule` picks the configured key that matches `getDelegate()` of the `DelegationContract` registered in `HashConsensus`. If no key matches (for example, during a rotation cooldown), the daemon runs the cycle in dry mode and retries on the next one.
+**Daemon configuration:** `DELEGATION_CONTRACT_ADDRESS` environment variable. When set, oracle contract calls are sent through `DelegationContract.execute()` from the delegate key. There are no startup checks: on every cycle the daemon's `SignerModule` picks the configured key that matches `getDelegate()`. If no key matches, the daemon runs the cycle in dry mode and retries on the next one.
 
 **Transitional behavior:** When `DELEGATION_CONTRACT_ADDRESS` is unset, calls are sent directly from the hot key EOA as before. This path exists for development, for the migration window, and as a long-term fallback.
 
@@ -533,7 +533,7 @@ The council daemon produces ECDSA signatures over the DSM message using the **de
 
 The **validator ejector** is the off-chain daemon run by each node operator that watches `ValidatorsExitBusOracle` (VEBO) — the oracle that publishes which validators must exit — and broadcasts the corresponding signed voluntary-exit messages to the consensus layer.
 
-To accept those messages the ejector keeps an **allowlist** of trusted oracle signing addresses (`ORACLE_ADDRESSES_ALLOWLIST`). Under EDF the report transaction is sent by the **delegate EOA** and wraps the call in `DelegationContract.execute()`. The ejector unwraps `execute()` but still checks the transaction signer, so the allowlist must contain the **delegate EOA**, not the `DelegationContract`. On rotation, node operators add the new delegate before it becomes effective and keep the old one for the lookback window (`BLOCKS_PRELOAD`, one week by default).
+To accept those messages the ejector keeps an **allowlist** of trusted oracle signing addresses. Under EDF the report transaction is sent by the **delegate EOA** and wraps the call in `DelegationContract.execute()`. The ejector unwraps `execute()` but still checks the transaction signer, so the allowlist must contain the **delegate EOA**, not the `DelegationContract`. On rotation, node operators add the new delegate before it becomes effective and keep the old one for a while, so that earlier reports are still accepted.
 
 ---
 
@@ -543,7 +543,7 @@ Migration is designed to be zero-downtime. All preparatory steps are completed o
 
 1. **Deploy and configure contracts (operators)**: each operator generates a **new** delegate hot key (the current seat EOA is not reused) and deploys its `DelegationContract` via `DelegationFactory.deploy(ownerAddress, newDelegate, cooldown)` — the owner being a Safe multisig, fixed for the contract's lifetime (see Owner Immutability in Part 1), and a `cooldown` set according to policy for both Oracle and DSM services.
 2. **Publish and verify addresses (operators)**: each operator publishes its `DelegationContract` and owner addresses on the Lido research forum, so the DAO and other operators can verify them ahead of the vote.
-3. **Prepare daemons for rotation (operators)**: each operator sets `DELEGATION_CONTRACT_ADDRESS` in its Oracle and Council daemons, keeps the current key as `MEMBER_PRIV_KEY` / `WALLET_PRIVATE_KEY` and adds the new delegate key as `MEMBER_PRIV_KEY_2` / `WALLET_PRIVATE_KEY_2`. The daemons keep running from the old EOA until the vote lands and then switch to the new delegate on their own. After that, the old key is removed from the configuration.
+3. **Prepare daemons for rotation (operators)**: each operator configures the `DelegationContract` address and the new delegate key in its Oracle and Council daemons, next to the current key. The daemons keep running from the old EOA until the vote lands and then switch to the new delegate on their own. After that, the old key is removed from the configuration.
 4. **Set up monitoring (Lido team)**: the Lido team registers every delegation contract in the monitoring infrastructure and begins watching the owner and delegate addresses for unexpected activity, so anomalies are caught both before and after the seat reassignment.
 5. **Governance vote**: a single DAO vote reassigns each Oracle committee and DSM guardian seat from the operator's hot EOA to its `DelegationContract` address — a `HashConsensus` member update for oracles, a `DepositSecurityModule` guardian replacement for guardians; the pre-configured daemons begin routing through the delegation contract without interruption.
 
@@ -560,9 +560,9 @@ Until the governance vote in step 5 executes, operators continue to run as EOA p
 
 **Redeployed at a new address:**
 
-| Contract                | Repointing required                                                                                                                        |
-|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `DepositSecurityModule` | New `LidoLocator` implementation pointing at the new DSM; the roles of the old DSM (e.g. `STAKING_MODULE_UNVETTING_ROLE`) are moved to the new one. |
+| Contract                | Repointing required                                                                              |
+|-------------------------|--------------------------------------------------------------------------------------------------|
+| `DepositSecurityModule` | New `LidoLocator` implementation pointing at the new DSM; the roles of the old DSM are moved to it. |
 
 ## Links
 
