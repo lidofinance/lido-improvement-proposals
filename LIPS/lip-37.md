@@ -5,7 +5,7 @@ status: Proposed
 author: Raman Siamionau, Matsvei Talstalutski
 discussions-to: https://research.lido.fi/t/lip-37-execution-delegation-framework-edf/11746
 created: 2026-06-01
-updated: 2026-07-30
+updated: 2026-09-15
 ---
 
 ## Simple Summary
@@ -371,7 +371,7 @@ The specific cadence for routine rotation is not mandated here; recommended prac
 
 ##### Owner Address Requirements
 
-The owner is the critical security boundary of the delegation model. The principles below apply; the detailed operational requirements — hardware-wallet models, multisig quorums — are maintained in a dedicated "Key Handling Policy" document on the Lido research forum.
+The owner is the critical security boundary of the delegation model. The principles below apply; the detailed operational requirements — hardware-wallet models, multisig quorums — are maintained in the "EDF Operator Key Custody Policy" document in the Lido docs.
 
 **Strongly recommended: Safe (Gnosis Safe) multisig.** Safe is the preferred owner implementation because it is battle-tested at Lido scale and its upgrade path is expected to include post-quantum (PQ) signature support — an assumption this design explicitly relies on. A Safe-based owner should be upgradeable to PQ-compatible signing without replacing the multisig address or requiring a governance vote for the delegation contract.
 
@@ -390,7 +390,7 @@ This section defines which components are migrated to the delegation model in th
 | Council daemon                         | Push, for pause and unvetting — calls DSM directly via its `DelegationContract`'s `execute()`. Pull, for deposits — signs the DSM message and publishes its `DelegationContract` address with each signature for the depositor bot to relay |
 | Depositor bot                          | Pull — claims the council-provided `(signature, DelegationContract address)` pairs for deposits; re-sorts the deposit array by delegation contract address. See DSM section below                                                           |
 | Pauser / unvet bots                    | Pull — relay a council-signed `GuardianSignature` for `pauseDeposits`/`unvetSigningKeys` as an alternative to the daemon's direct push call. See DSM section below                                                                          |
-| Validator ejector (node-operator side) | Off-chain only — must resolve the active delegate via `getDelegate()`. See Validator Ejector section below                                                                                                                                  |
+| Validator ejector (node-operator side) | Off-chain only — the allowlist holds the delegate EOA. See Validator Ejector section below                                                                                                                                                  |
 
 All components in the table are migrated together.
 
@@ -402,7 +402,7 @@ All components in the table are migrated together.
 
 **Authorization model:** `HashConsensus` and the report processors (`AccountingOracle`, `ValidatorsExitBusOracle`, CM's `FeeOracle`, and CSM's `FeeOracle`) check `msg.sender` against the registered oracle committee member set. After migration, `msg.sender` is the `DelegationContract` address, which governance must have registered as the committee member.
 
-**Daemon configuration:** `DELEGATION_CONTRACT_ADDRESS` environment variable. When set, all oracle contract calls are routed through `DelegationModule`, a Web3py extension that wraps `execute()` dispatch. Startup validation checks: (a) `getDelegate() == configuredHotKey`, and (b) `delegationContract` address holds oracle committee membership in `HashConsensus`.
+**Daemon configuration:** `DELEGATION_CONTRACT_ADDRESS` environment variable. When set, oracle contract calls are sent through `DelegationContract.execute()` from the delegate key. There are no startup checks: on every cycle the daemon's `SignerModule` picks the configured key that matches `getDelegate()`. If no key matches, the daemon runs the cycle in dry mode and retries on the next one.
 
 **Transitional behavior:** When `DELEGATION_CONTRACT_ADDRESS` is unset, calls are sent directly from the hot key EOA as before. This path exists for development, for the migration window, and as a long-term fallback.
 
@@ -441,27 +441,19 @@ function _isValidGuardianSignature(
 **Binding the digest and rejecting duplicate guardians.** The signer (a delegate) is no longer the same address as the guardian being counted, so an unbound signature would validate for *every* guardian currently delegating to that signer. The signed digest therefore binds the guardian address, added to the existing chain id / DSM address / action-type prefix (`keccak256(ATTEST_MESSAGE, block.chainid, address(this))`). DSM also rejects a repeated guardian by requiring the batch to be strictly ascending by guardian address, which rejects both an unsorted array and any duplicate in one comparison:
 
 ```solidity
-// Digest now binds the guardian; the prefix already binds chainId/DSM/action.
-function _hashDepositMessage(address guardian, /* ...existing fields... */)
-    internal view returns (bytes32)
-{
-    return keccak256(abi.encodePacked(
-        ATTEST_MESSAGE_PREFIX, guardian,
-        blockNumber, blockHash, depositRoot, stakingModuleId, nonce
-    ));
-}
-
 // The loop below runs inside _verifyAttestSignatures (the signature verification path).
 address prevGuardian;
 for (uint256 i = 0; i < sortedGuardianSignatures.length; ++i) {
     GuardianSignature calldata gs = sortedGuardianSignatures[i];
 
-    bytes32 msgHash = _hashDepositMessage(gs.guardian, /* ...existing fields... */);
+    // Distinct guardians: strictly ascending by guardian address.
+    if (gs.guardian <= prevGuardian) revert SignaturesNotSorted();
+
+    // Digest now binds the guardian; the prefix already binds chainId/DSM/action.
+    bytes32 msgHash = keccak256(abi.encodePacked(ATTEST_MESSAGE_PREFIX, gs.guardian, /* ...existing fields... */));
     // _isValidGuardianSignature checks _isGuardian + the guardian's ERC-1271 signature.
     if (!_isValidGuardianSignature(gs.guardian, msgHash, gs.signature)) revert InvalidSignature();
 
-    // Distinct guardians: strictly ascending by guardian address.
-    if (gs.guardian <= prevGuardian) revert GuardiansNotSortedOrDuplicate();
     prevGuardian = gs.guardian;
 }
 ```
@@ -477,7 +469,6 @@ function depositBufferedEther(
     bytes32 depositRoot,
     uint256 stakingModuleId,
     uint256 nonce,
-    bytes calldata depositCalldata,
     // Changed in LIP-37, was Signature[] before
     GuardianSignature[] calldata sortedGuardianSignatures
 ) external;
@@ -504,14 +495,15 @@ function unvetSigningKeys(
 
 **No EOA-guardian path.** The redeployed DSM does not retain the legacy ECDSA-against-an-EOA verification: every registered guardian must be a contract that supports ERC-1271.
 
-**`addGuardian` checks ERC-1271 at registration.** `addGuardian` is extended to check, via [ERC-165](https://eips.ethereum.org/EIPS/eip-165) `supportsInterface`, that the incoming guardian address advertises the ERC-1271 interface id before adding it to the guardian set.
+**`addGuardian` / `addGuardians` check ERC-1271 at registration.** Both go through `_addGuardian`, which checks via [ERC-165](https://eips.ethereum.org/EIPS/eip-165) `supportsInterface` that the guardian address supports ERC-1271 before adding it to the guardian set.
 
 ```solidity
-function addGuardian(address guardian, uint256 newQuorum) external {
-    if (!IERC165(guardian).supportsInterface(type(IERC1271).interfaceId)) {
+// Shared by addGuardian and addGuardians.
+function _addGuardian(address guardian) internal {
+    if (!ERC165Checker.supportsInterface(guardian, type(IERC1271).interfaceId)) {
         revert GuardianDoesNotSupportERC1271();
     }
-    // ...existing add-to-set and quorum-update logic...
+    // ...existing add-to-set logic...
 }
 ```
 
@@ -541,7 +533,7 @@ The council daemon produces ECDSA signatures over the DSM message using the **de
 
 The **validator ejector** is the off-chain daemon run by each node operator that watches `ValidatorsExitBusOracle` (VEBO) — the oracle that publishes which validators must exit — and broadcasts the corresponding signed voluntary-exit messages to the consensus layer.
 
-To accept those messages the ejector keeps an **allowlist** of trusted oracle signing addresses. Oracle messages are always signed by the **delegate EOA**, never by the `DelegationContract`, so the allowlist must contain the **delegate EOA** and be refreshed to the new EOA whenever the delegate is rotated.
+To accept those messages the ejector keeps an **allowlist** of trusted oracle signing addresses. Under EDF the report transaction is sent by the **delegate EOA** and wraps the call in `DelegationContract.execute()`. The ejector unwraps `execute()` but still checks the transaction signer, so the allowlist must contain the **delegate EOA**, not the `DelegationContract`. On rotation, node operators add the new delegate before it becomes effective and keep the old one for a while, so that earlier reports are still accepted.
 
 ---
 
@@ -549,9 +541,9 @@ To accept those messages the ejector keeps an **allowlist** of trusted oracle si
 
 Migration is designed to be zero-downtime. All preparatory steps are completed off the critical path, leaving a single irreversible governance vote that flips every prepared seat to delegation at once.
 
-1. **Deploy and configure contracts (operators)**: each operator deploys its `DelegationContract` via `DelegationFactory.deploy(ownerAddress, hotKey, cooldown)` — the owner being a Safe multisig, fixed for the contract's lifetime (see Owner Immutability in Part 1); the active delegate (its existing hot key) set in the same transaction; and a `cooldown` set according to policy for both Oracle and DSM services.
+1. **Deploy and configure contracts (operators)**: each operator generates a **new** delegate hot key (the current seat EOA is not reused) and deploys its `DelegationContract` via `DelegationFactory.deploy(ownerAddress, newDelegate, cooldown)` — the owner being a Safe multisig, fixed for the contract's lifetime (see Owner Immutability in Part 1), and a `cooldown` set according to policy for both Oracle and DSM services.
 2. **Publish and verify addresses (operators)**: each operator publishes its `DelegationContract` and owner addresses on the Lido research forum, so the DAO and other operators can verify them ahead of the vote.
-3. **Prepare daemons for rotation (operators)**: each operator stages the delegate key and the `DELEGATION_CONTRACT_ADDRESS` configuration in its Oracle and Council daemons, so they are ready to operate via the delegation contract the moment the seat is reassigned. No key material changes, and the daemons keep operating from the hot EOA until the vote lands.
+3. **Prepare daemons for rotation (operators)**: each operator configures the `DelegationContract` address and the new delegate key in its Oracle and Council daemons, next to the current key. The daemons keep running from the old EOA until the vote lands and then switch to the new delegate on their own. After that, the old key is removed from the configuration.
 4. **Set up monitoring (Lido team)**: the Lido team registers every delegation contract in the monitoring infrastructure and begins watching the owner and delegate addresses for unexpected activity, so anomalies are caught both before and after the seat reassignment.
 5. **Governance vote**: a single DAO vote reassigns each Oracle committee and DSM guardian seat from the operator's hot EOA to its `DelegationContract` address — a `HashConsensus` member update for oracles, a `DepositSecurityModule` guardian replacement for guardians; the pre-configured daemons begin routing through the delegation contract without interruption.
 
@@ -568,15 +560,17 @@ Until the governance vote in step 5 executes, operators continue to run as EOA p
 
 **Redeployed at a new address:**
 
-| Contract                | Repointing required                 |
-|-------------------------|-------------------------------------|
-| `DepositSecurityModule` | Update the `LidoLocator` reference. |
+| Contract                | Repointing required                                                                              |
+|-------------------------|--------------------------------------------------------------------------------------------------|
+| `DepositSecurityModule` | New `LidoLocator` implementation pointing at the new DSM; the roles of the old DSM are moved to it. |
 
 ## Links
 
-- Delegation contracts repository (`lidofinance/execution-delegation-framework`): https://github.com/lidofinance/execution-delegation-framework
-- Oracle daemon (`lidofinance/lido-oracle`): https://github.com/lidofinance/lido-oracle
-- Core repository (`lidofinance/core`, contains `DepositSecurityModule`): https://github.com/lidofinance/core
+- Delegation contracts repository (`lidofinance/execution-delegation-framework`): https://github.com/lidofinance/execution-delegation-framework — audited and deployed revision [`5572991`](https://github.com/lidofinance/execution-delegation-framework/tree/557299104ad3eb1a74198933bd016328c490e276)
+- Core repository (`lidofinance/core`, contains `DepositSecurityModule`): https://github.com/lidofinance/core — DSM v5 at the audited revision [`8c4cee2`](https://github.com/lidofinance/core/tree/8c4cee2be76a4ed8067026e30b5bdc64a4e3cb29)
+- Oracle daemon (`lidofinance/lido-oracle`): https://github.com/lidofinance/lido-oracle — release [8.1.0](https://github.com/lidofinance/lido-oracle/tree/032c228c767759e67da43e6c40fa81732257879d)
+- Council daemon (`lidofinance/lido-council-daemon`): https://github.com/lidofinance/lido-council-daemon — release [4.1.2](https://github.com/lidofinance/lido-council-daemon/tree/d3bc5e8fe968293530f3ec976c30230d98f671de)
+- Depositor bot (`lidofinance/depositor-bot`): https://github.com/lidofinance/depositor-bot — release [5.7.0](https://github.com/lidofinance/depositor-bot/tree/b5ea173eb86c27bf164c5f6ca8bc862be869736e)
 
 ## Copyright
 
