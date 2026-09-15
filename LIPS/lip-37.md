@@ -400,7 +400,7 @@ All components in the table are migrated together.
 
 **Pattern:** Push via `execute()`.
 
-**Authorization model:** `HashConsensus` and the report processors (`AccountingOracle`, `ValidatorsExitBusOracle`, and CSM's `CSFeeOracle`) check `msg.sender` against the registered oracle committee member set. After migration, `msg.sender` is the `DelegationContract` address, which governance must have registered as the committee member.
+**Authorization model:** `HashConsensus` and the report processors (`AccountingOracle`, `ValidatorsExitBusOracle`, CM's `FeeOracle`, and CSM's `FeeOracle`) check `msg.sender` against the registered oracle committee member set. After migration, `msg.sender` is the `DelegationContract` address, which governance must have registered as the committee member.
 
 **Daemon configuration:** `DELEGATION_CONTRACT_ADDRESS` environment variable. When set, oracle contract calls are sent through `DelegationContract.execute()` from the delegate key. There are no startup checks: on every cycle the daemon's `SignerModule` picks the configured key that matches `getDelegate()`. If no key matches, the daemon runs the cycle in dry mode and retries on the next one.
 
