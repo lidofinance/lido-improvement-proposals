@@ -155,15 +155,21 @@ Example:
 
 ### Non-ValMart changes
 
-#### Bond claim block on unresolved slashing
+#### Transition from ET-setteled to immediate automatic slashing penalties
 
 > This feature applies to both CMv2 and CSM.
 
-One of the non-ValMart-related changes is the introduction of a bond claim block on unresolved slashing events. This mechanism ensures that Node Operators cannot immediately claim their bond if there is an ongoing slashing process, even if they exit other non-slashed validators, providing additional security and accountability within the protocol.
+Since [LIP-33](./lip-33.md) implementation, slashing penalties in CMv2 and CSM are [applied via Easy Track motions](./lip-33.md#slashed-validators) initiated by CMC and CSMC respectively. While offering maximal precision in slashing penalty calculation, this approach introduces delays and additional procedural overhead.
 
-A new per-Node-Operator counter of unresolved slashing events is introduced. This counter keeps track of the number of slashings reported via `reportValidatorSlashing` and not resolved via `ReportWithdrawalsForSlashedValidators` Easy Track motion. The bond claim for a Node Operator is blocked as long as this counter is non-zero, ensuring that bonds cannot be claimed while there are unresolved slashing events.
+![Slashing Penalties](./assets/lip-42/slashing.png)
 
-Bond claim restriction is also applied to [reward splitters](./lip-33.md#rewards-claim). Neither Node Operator nor split recipients can claim bond if the restriction is active. Pulling rewards from `FeeDistributor` to Node Operator's bond is still permitted.
+It is proposed to replace the current Easy Track-based slashing penalty mechanism with an immediate automatic slashing penalty system. Once validator is marked as slashed on CL, a permissionless proof can be delivered to the the staking module. Upon delivery, a fixed penalty is applied immediately ensuring timely compensation of the approximate projected losses for stETH holders. Base value for the penalty is determined upon contracts deployment (new parameter in `ParametersRegistry` contract) and can be changed by the DAO later. To ensure fair penalization, `keyAllocatedBalance` is used to scale base penalty according to the amount of stake allocated to the particular validator key.
+
+Fixed penalty comes with the potential caveat that it may not perfectly reflect the actual losses incurred by stETH holders in cases of large correlated slashings. In case of normal module operation (CMC and CSMC are functioning correctly), any additional loss that might be not accounted for during the application of the fixed penalty is expected to be reported in a form of a [General Delayed Penalty](./lip-33.md#general-penalty-with-confirmation). Since the settlement of the General Delayed Penalty is Easy Track gated, the trust assumptions and Node Operator security remains unchanged compared to the LIP-33 approach.
+
+To ensure that CMC and CSMC have sufficient time to determine and report additional losses, bond claims are blocked for the Node Operator with the slashed validator for `withdrawable_epoch` + 10 days delay determined by the last report of the slashed validator.
+
+The other benefit of the proposed system is that it allow both CMv2 and CSM to enforce fixed slashing penalties even in the case of committees absence, making both modules more resilient and reducing reliance on committee actions for timely penalty enforcement compared to the current Easy Track-based approach.
 
 #### Late Exit Penalty Deprecation
 
@@ -249,34 +255,6 @@ The only historical method is `processHistoricalPartialWithdrawalProof`. Other m
 - `processSlashedProof` - once slashed, a validator remains slashed forever, and any future state of this validator can be used.
 - `processValidatorWithdrawnProof` - once set, `withdrawable_epoch` remains unchanged, and any future state of this validator can be used.
 - `processBalanceProof` - due to the fact that `CuratedModule` accepts balance reports with the increased balance for the slots newer than `lastAccountingProofSlot`, and features no high-water mark mechanism, historical versions are unnecessary.
-
-#### "Bahamas" mode (autonomous operation mode)
-
-Currently, both CMv2 and CSM assume an active overseeing committee (CMC for CMv2 and CSMC for CSM) to act in case of validator slashing (report slashing penalty via Easy Track). CMv2 also relies on CMC to monitor the module's performance and take necessary actions in case of poor performance (issue node operator strikes or general delayed penalties). Should these committees become inactive or fail to perform their duties, the modules may face operational risks like permanent inability to process slashing penalties or unactionable poor performance cases for CMv2.
-
-It is proposed to introduce a "Bahamas" mode (autonomous operation mode) that, if active, will enable automated validator performance management in CMv2 identical to the one used in CSM (see [LIP-33](./lip-33.md#validator-ejection-due-to-strikes)), and replace slashing penalty reporting by committees via Easy Track with automated application of the DAO-defined slashing penalty upon permissionless reporting of the validator slashings.
-
-##### "Bahamas" mode in CMv2
-
-A new method `switchAutomatedPenaltiesMode(uint256 slashingPenaltyPer32Eth)` is introduced on the `CuratedModule` contract. This method is callable by the DAO (optionally can be callable by CMC as well). 
-
-When called with `slashingPenaltyPer32Eth > 0` (activation), this value is stored in the contract storage, and a call is made to the `ParametersRegistry` contract's method `setDefaultPerformanceLeeway(DEFAULT_PERFORMANCE_LEEWAY_AUTO)`, where `DEFAULT_PERFORMANCE_LEEWAY_AUTO` is a constant defined in the `CuratedModule` contract. `DEFAULT_PERFOMANCE_LEEWAY_AUTO` should be pre-defined by the DAO before the contract deployment and represent the acceptable deviation of the validator's performance from the observed network average validator performance.
-
-When called with `slashingPenaltyPer32Eth == 0` (deactivation), the automated slashing penalties mode is disabled (the stored slashing penalty value is cleared), and a call is made to the `ParametersRegistry` contract's method `setDefaultPerformanceLeeway(10000)`, where `10000` means that any performance deviation is acceptable by the CMv2 Performance Oracle, effectively disabling the automated performance management.
-
-If stored `slashingPenaltyPer32Eth > 0`, the method `reportValidatorSlashing` automatically applies `slashingPenaltyPer32Eth` scaled using `keyAllocatedBalance` recorded for the slashed validator to the Node Operator's bond. The validator is also immediately marked as `withdrawn` to release its bond for withdrawal (if any left) and prevents future reporting of the slashing penalty via Easy Track. This ensures that if the committee becomes active again, it will not be able to apply a duplicated slashing penalty. If the slashing for the given validator has already been reported before the "Bahamas" mode was activated, but has not been resolved via Easy Track motion, the `reportValidatorSlashing` method will still accept the report, apply automated penalty, and decrease the unresolved slashing counter accordingly.
-
-If stored `slashingPenaltyPer32Eth == 0`, the method `reportValidatorSlashing` will operate in the normal mode with no automated slashing penalties applied.
-
-Strikes parameters (lifetime and threshold) are already configured for CMv2 in the corresponding `ParametersRegistry` contract instance. Hence, there is no need to change it upon activation of the "Bahamas" mode. When `performanceLeeway` is set to `10000` during normal operation, these parameters are effectively ignored by the CMv2 Performance Oracle. Current values set for CMV2 are `lifetime = 6 oracle frames` and `threshold = 3 strikes`. Should the DAO consider changing these parameters, it can do so via the `ParametersRegistry` contract within the vote to upgrade CMv2 to Phase 2, or at any time earlier if necessary.
-
-For the correct operation of the "Bahamas" mode in CMv2, `CuratedModule` should hold `MANAGE_PERFORMANCE_PARAMETERS_ROLE` on the `ParametersRegistry` contract.
-
-In case the DAO wants to change `slashingPenaltyPer32Eth` while the "Bahamas" mode is active, it can simply call `switchAutomatedPenaltiesMode` again with the new value. This will update the stored slashing penalty and continue the automated enforcement with the new parameter.
-
-##### "Bahamas" mode in CSM
-
-In CSM, the "Bahamas" mode will operate according to the same rules as in CMv2, with the difference being that `performanceLeeway` remains unchanged, as it is already set in a correct way during normal operation.
 
 ### Upgradability
 
