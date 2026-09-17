@@ -17,7 +17,7 @@ Alongside ValMart, several technical and operational improvements are proposed f
 
 ## Motivation
 
-Since the very inception of the Lido protocol, the Node Operators have been the backbone of its operations. Their performance and reliability directly impact the protocol's efficiency and security. However, the current system lacks a mechanism for Node Operators to actively influence their stake allocation weight based on their performance and offerings. This limitation has led to a static environment with even stake distribution and minimal differentiation based on performance, where Node Operators have little incentive to innovate or improve their services.  
+Since the very inception of the Lido protocol, the Node Operators have been the backbone of its operations. Their performance and reliability directly impact the protocol's efficiency and security. However, the current system lacks a mechanism for Node Operators to actively influence their stake allocation weight based on their performance and offerings. This limitation has led to a level playing field with even stake distribution and minimal differentiation based on performance, where Node Operators have little incentive to innovate or improve their services.  
 
 ValMart is aimed at improving both protocol economics and the overall performance of the Lido network by creating a competitive environment for Node Operators, incentivizing them to offer better conditions and maintain high standards of operation.
 
@@ -45,9 +45,9 @@ All ValMart features listed below are applicable to CMv2 only.
 
 The key component of ValMart's architecture is the concept of weight boost providers. Weight boost providers are responsible for determining the weight multiplier of each Node Operator based on various factors. These weights are then used to calculate the overall stake allocation weight of the Node Operator within the protocol.
 
-Weight boost providers are added to `MetaRegistry` via `DEFAULT_ADMIN_ROLE` by the DAO. Due to limited plans on changes in the set of weight boost providers, there is no method to remove them once added. However, the DAO can disable provider via `setWeightBoostProviderEnabled(uint256 providerId, bool enabled)` and information from this provider will no longer be used in weight calculations.
-
 Weight boosts are applied by simple multiplication of the Node Operator's base weight (defined by Node Operator's type) with the weight multiplier provided by each active weight boost provider. The final weight of the Node Operator is the product of its base weight and all applicable weight multipliers.
+
+Weight boost providers are added to `MetaRegistry` via `DEFAULT_ADMIN_ROLE` by the DAO. Due to limited plans on changes in the set of weight boost providers, there is no method to remove them once added. However, the DAO can disable a provider via `setWeightBoostProviderEnabled(uint256 providerId, bool enabled)` and the data from this provider will no longer be used in weight calculations.
 
 #### LDO Lock Provider (`ERC20LockBoostProvider.sol`)
 
@@ -63,17 +63,19 @@ Deposited LDO tokens are held on the Node Operator's vault (`LidoGovernanceLockV
 
 `MetaRegistry` is notified about weight multiplier changes when Node Operators deposit or withdraw their LDO tokens. `MetaRegistry` pulls the recent weight multiplier from the provider should the Node Operator weight need recalculation due to changes in the other weight providers or changes to the Node Operator's type.
 
-Unlike other providers that provide weight boost for the exact Node Operator, LDO Lock Provider provides weight boost for all Node Operators in the Node Operator Group the Node Operator belongs to. If several operators in the same group weight boost from the LDO Lock provider, the largest boost is used to avoid situations of staked boosts from the same provider.
+Unlike other providers that provide weight boost for the exact Node Operator, LDO Lock Provider provides weight boost for all Node Operators in the Node Operator Group the Node Operator belongs to. This design decision is motivated by the fact that, unlike other providers, LDO lock does not have any direct impact on the particular Node Operator in the group, and rather indicates overall alignment of the group owner with the goals and values of the Lido DAO. If several operators in the same group weight boost from the LDO Lock provider, the largest boost is used to avoid situations of staked boosts from the same provider.
 
 Weight multiplier is defined based on the current amount of LDO tokens deposited by the Node Operator to the vault. The weight multiplier values are set for ranges of LDO token amounts. The number of ranges and corresponding weight multipliers are determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
 Example:
 
-| LDO Amount Deposited | Weight Multiplier |
-|----------------------|-------------------|
-| 0 - X LDO            | 1x                |
-| X+1 - Y LDO          | Mx                |
-| Y+1 LDO and above    | Nx                |
+| LDO Amount Deposited   | Weight Multiplier |
+|------------------------|-------------------|
+| From 0 to X LDO        | 1x                |
+| From X+1 to Y LDO      | Mx                |
+| From Y+1 LDO and above | Nx                |
+
+It is assumed that 0 < X < Y and 1 < M < N.
 
 #### Additional Bond Provider (`AdditionalBondRegistry.sol`)
 
@@ -97,11 +99,13 @@ Weight multiplier is defined based on the current bonding ratio set or requested
 
 Example:
 
-| Bonding Ratio  | Weight Multiplier |
-|----------------|-------------------|
-| Qx and below   | 1x                |
-| Qx+1 - Rx      | Mx                |
-| Rx+1 and above | Nx                |
+| Bonding Ratio       | Weight Multiplier |
+|---------------------|-------------------|
+| From 1 to Qx        | 1x                |
+| From Qx+1 to Rx     | Mx                |
+| From Rx+1 and above | Nx                |
+
+It is assumed that 0 < Q < R and 1 < M < N.
 
 #### Custom Fee Provider (`CustomFeeRegistry.sol`)
 
@@ -125,17 +129,19 @@ Weight multiplier is defined based on the current fee discount set or requested 
 
 Example:
 
-| Fee Discount     | Weight Multiplier |
-|------------------|-------------------|
-| Q% or below      | 1x                |
-| (Q+1)% - R%      | Mx                |
-| (R+1)% and above | Nx                |
+| Fee Discount          | Weight Multiplier |
+|-----------------------|-------------------|
+| From 0% to Q%         | 1x                |
+| From (Q+1)% to R%     | Mx                |
+| From (R+1)% and above | Nx                |
+
+It is assumed that 0 < Q < R, 1 < M < N, and Q and R are integers.
 
 #### Node Operator Strikes Provider (`NodeOperatorStrikes.sol`)
 
 ![Node Operator Strikes](./assets/lip-42/strikes.png)
 
-Poor performance, standard node operator protocol (SNOP) violations, and other misbehavior by Node Operators should have a clear reflection in their stake allocation weight. Node Operator Strikes Provider is the way to achieve this accountability.
+Poor performance, standard node operator protocol (SNOP) violations, and other misbehavior by Node Operators should have a clear reflection in their stake allocation weight. Node Operator Strikes Provider is the way to achieve this accountability. Weight multipliers in this provider are below 1 and decrease as the number of active strikes increases. This effectively means that more strikes leads to a decrease in the total stake allocation weight for the Node Operator.
 
 The overseeing party (likely CMC - Curated Module Committee) can issue strikes to Node Operators and remove already issued strikes via `STRIKES_COMMITTEE_ROLE`. Each strike is an independent record that comes with the category, description, and lifetime. Category and description provide context for the strike, while the lifetime determines how long the strike affects the Node Operator's stake allocation weight.
 
@@ -147,11 +153,13 @@ Weight multiplier is defined based on the current number of active strikes for t
 
 Example:
 
-| Active Strikes | Weight Multiplier |
-|----------------|-------------------|
-| Q or below     | 1x                |
-| Q+1 - R        | 0.Mx              |
-| R+1 and above  | 0.Nx              |
+| Active Strikes     | Weight Multiplier |
+|--------------------|-------------------|
+| From 0 to Q        | 1x                |
+| From Q+1 to R      | 0.Mx              |
+| From R+1 and above | 0.Nx              |
+
+It is assumed that 0 < Q < R and M < N.
 
 ### Non-ValMart changes
 
@@ -159,7 +167,7 @@ Example:
 
 > This feature applies to both CMv2 and CSM.
 
-Since [LIP-33](./lip-33.md) implementation, slashing penalties in CMv2 and CSM are [applied via Easy Track motions](./lip-33.md#slashed-validators) initiated by CMC and CSMC respectively. While offering maximal precision in slashing penalty calculation, this approach introduces delays and additional procedural overhead.
+Since [LIP-33](./lip-33.md) implementation, slashing penalties in CMv2 and CSM are [applied via Easy Track motions](./lip-33.md#slashed-validators) initiated by CMC and CSMC respectively. While offering maximal precision in slashing penalty calculation, this approach introduces delays and additional operational overhead.
 
 ![Slashing Penalties](./assets/lip-42/slashing.png)
 
@@ -167,7 +175,7 @@ It is proposed to replace the current Easy Track-based slashing penalty mechanis
 
 Fixed penalty comes with the potential caveat that it may not perfectly reflect the actual losses incurred by stETH holders in cases of large correlated slashings. In case of normal module operation (CMC and CSMC are functioning correctly), any additional loss that might be not accounted for during the application of the fixed penalty is expected to be reported in a form of a [General Delayed Penalty](./lip-33.md#general-penalty-with-confirmation). Since the settlement of the General Delayed Penalty is Easy Track gated, the trust assumptions and Node Operator security remains unchanged compared to the LIP-33 approach.
 
-To ensure that CMC and CSMC have sufficient time to determine and report additional losses, bond claims are blocked for the Node Operator with the slashed validator for `withdrawable_epoch` + 10 days delay determined by the last report of the slashed validator.
+To ensure that CMC and CSMC have sufficient time to determine and report additional losses, bond claims are blocked for the Node Operator with the slashed validator for `withdrawable_epoch` + 14 days delay, where `withdrawable_epoch` is taken for the last reported slashed validator reported for the given Node Operator.
 
 The other benefit of the proposed system is that it allow both CMv2 and CSM to enforce fixed slashing penalties even in the case of committees absence, making both modules more resilient and reducing reliance on committee actions for timely penalty enforcement compared to the current Easy Track-based approach.
 
@@ -253,7 +261,7 @@ This method is the version of `processPartialWithdrawalProof` that handles histo
 The only historical method is `processHistoricalPartialWithdrawalProof`. Other methods do not need historical versions due to:
 
 - `processSlashedProof` - once slashed, a validator remains slashed forever, and any future state of this validator can be used.
-- `processValidatorWithdrawnProof` - once set, `withdrawable_epoch` remains unchanged, and any future state of this validator can be used.
+- `processValidatorWithdrawnProof` - once `withdrawable_epoch` is set for the given validator, we can be sure that the validator will eventually be withdrawn, and any future state of this validator can be used.
 - `processBalanceProof` - due to the fact that `CuratedModule` accepts balance reports with the increased balance for the slots newer than `lastAccountingProofSlot`, and features no high-water mark mechanism, historical versions are unnecessary.
 
 ### Upgradability
@@ -265,12 +273,6 @@ Instances of `LidoGovernanceLockVault.sol` are deployed using [BeaconProxy](http
 ### Known Issues
 
 [LIP-33](./lip-33.md) mentions ["Permissionless withdrawal reporting vulnerability"](./lip-33.md#permissionless-withdrawal-reporting-vulnerability). This issue is no longer applicable to CMv2 due to the removal of the penalty applied upon validator exit and calculated based on the recorded validator balance. This penalty was initially introduced in CSM, a highly autonomous and permissionless staking module. CMv2, in turn, assumes a dedicated overseeing committee (CMC) responsible for monitoring the module's performance and acting accordingly (reporting general delayed penalties for cases of poor performance, see [snapshot vote](https://snapshot.org/#/s:lido-snapshot.eth/proposal/0xa4179234377bab093a8ee46da0f430d51bb343d00ca74ce8bf1d7d8cdb0db9dd)). Hence, the vulnerable mechanism is no longer needed in CMv2 and is removed in this LIP.
-
-#### Slashing event reported but unresolved before module upgrade can reduce bond claim block time for future slashing events
-
-If a slashing event is reported but remains unresolved before a module upgrade, the ongoing slashings counter will remain zero after the module upgrade. If another slashing occurs after the upgrade, resolution of the slashing started before the upgrade will null out the ongoing slashings counter that should have been incremented, potentially allowing Node Operators to claim their bonds prematurely.
-
-Because this scenario is highly unlikely in practice, the impact can be accepted as a minor risk. Alternatively, the module upgrade can be postponed until all unresolved slashing events are resolved, ensuring that the ongoing slashings counter accurately reflects the true state of unresolved slashings.
 
 #### Race condition in `keyAllocatedBalance` updates between top-ups and partial withdrawals
 
