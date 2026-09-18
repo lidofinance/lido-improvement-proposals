@@ -266,7 +266,7 @@ On `submitReportData`, VEBO-7002 **MUST validate that every record with `amount 
 
 - **`addWithdrawalIntents`** — role-gated append; VEBO-7002 is the only expected role holder, adding decoded report records to the tail of the queue in report order.
 - **`processWithdrawalIntents`** — the permissionless Flow 2 handle: pops up to `count` intentions from the head of the queue and executes each down the TWG → WithdrawalVault → EIP-7002 path, with the caller forwarding the per-request fee and naming a refund recipient for the unused remainder. Returns the number of intentions actually processed, which may be less than `count` if the queue holds fewer intentions or the TWG rate limit is exhausted.
-- **`unprocessedIntentsCount` / `getWithdrawalIntent`** — views that let permissionless executors and monitoring tools inspect the queue before processing it.
+- **`unprocessedIntentsCount` / `getWithdrawalIntents`** — views that let permissionless executors and monitoring tools inspect the queue before processing it; `getWithdrawalIntents` pages through the queued intentions in execution order.
 
 ```solidity
 interface IValidatorWithdrawalsQueue {
@@ -297,10 +297,9 @@ interface IValidatorWithdrawalsQueue {
     /// Number of intentions waiting in the FIFO queue.
     function unprocessedIntentsCount() external view returns (uint256);
 
-    /// Returns the queued intention at FIFO offset `index` from the head of the queue
-    /// (`index == 0` is the next intention `processWithdrawalIntents` will execute), letting
-    /// permissionless executors and monitoring tools inspect the queue before calling it.
-    function getWithdrawalIntent(uint256 index) external view returns (WithdrawalIntent memory);
+    /// Returns up to `limit` queued intentions starting from position `offset` in execution order.
+    /// `offset == 0` is the next intention `processWithdrawalIntents` will execute.
+    function getWithdrawalIntents(uint256 offset, uint256 limit) external view returns (WithdrawalIntent[] memory);
 }
 ```
 
