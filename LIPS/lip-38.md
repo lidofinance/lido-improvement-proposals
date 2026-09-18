@@ -58,7 +58,7 @@ Because the protocol now submits withdrawal requests itself through the EIP-7002
 
 #### Oracle withdrawals flow
 
-1. **The off-chain Oracle computes exit demand.** The Oracle daemon reads its parameters from `OracleDaemonConfig` and builds the ordered list of withdrawal request intentions — each a PWR against a `0x02` validator or an FWR — in three sequential phases:
+1. **The off-chain Oracle computes withdrawal request intentions.** The Oracle daemon reads its parameters from `OracleDaemonConfig` and builds the ordered list of withdrawal request intentions — each a PWR against a `0x02` validator or an FWR — in three sequential phases:
     - Phase 1 — cover regular **withdrawal-queue demand**;
     - Phase 2 — issue **forced validator exits**;
     - Phase 3 — add **active rebalancing** within CMv2. Phase 3 is optional and can be switched off (leaving only Phases 1–2).
