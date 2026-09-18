@@ -72,7 +72,7 @@ Off-chain Oracle Daemon  ->  Validators Exit Bus Oracle  ->  Validator Withdrawa
    report submission             report validation             enqueue requests 
 ```
 
-3. **Execute queued intentions from `ValidatorWithdrawalsQueue`.** An executor (the **Validator Withdrawals Queue Bot** or any other caller) calls the permissionless `processWithdrawalIntents`, passing the number of intentions to process and the required EIP-7002 fee. The queue pops that many intentions from its head, in order, and hands them with the fee to the TWG, which turns each into an actual withdrawal request as described above.
+1. **Execute queued intentions from `ValidatorWithdrawalsQueue`.** An executor (the **Validator Withdrawals Queue Bot** or any other caller) calls the permissionless `processWithdrawalIntents`, passing the maximum number of intentions to process and the required EIP-7002 fee. The queue pops up to that many intentions from its head, in order, and hands them with the fee to the TWG, the TWG turns intent into an actual withdrawal request only up to its global per-frame limit; the rest stay at the head of the queue.
 ```
 Validator Withdrawals Queue Bot  ->  Validator Withdrawals Queue  ->  Triggerable Withdrawals Gateway  ->  WithdrawalVault  ->  EIP-7002 predeploy
   permissionless call with fee            dequeue requests                      rate limits                   encoding          withdrawal requests
@@ -89,7 +89,7 @@ The CSM and CMv2 modules trigger withdrawals directly, bypassing the Oracle and 
 - **Voluntary exit** — a Node Operator requests the exit of its own validators.
 - **Forced exit of a bad performer** — a validator that has accumulated strikes reported by the Bad Performance Oracle is ejected.
 
-The module sends the exit intentions and the fee to the same TWG entry point (`triggerWithdrawals`), which processes them under the shared rate limit and refunds the remaining fee to the refund recipient, exactly as in the Oracle flow.
+The module sends the exit intentions and the fee to the same TWG entry point (`triggerWithdrawals`), which processes them under the shared rate limit, refunds the remaining fee to the refund recipient, and returns the number of intentions actually processed, exactly as in the Oracle flow.
 
 ### Rationale
 
@@ -265,7 +265,7 @@ On `submitReportData`, VEBO-7002 **MUST validate that every record with `amount 
 **New contract.** It stores the single FIFO queue of withdrawal request intentions and exposes the full queue surface:
 
 - **`addWithdrawalIntents`** — role-gated append; VEBO-7002 is the only expected role holder, adding decoded report records to the tail of the queue in report order.
-- **`processWithdrawalIntents`** — the permissionless Flow 2 handle: pops intentions from the head of the queue and executes each down the TWG → WithdrawalVault → EIP-7002 path, with the caller forwarding the per-request fee and naming a refund recipient for the unused remainder.
+- **`processWithdrawalIntents`** — the permissionless Flow 2 handle: pops up to `count` intentions from the head of the queue and executes each down the TWG → WithdrawalVault → EIP-7002 path, with the caller forwarding the per-request fee and naming a refund recipient for the unused remainder. Returns the number of intentions actually processed, which may be less than `count` if the queue holds fewer intentions or the TWG rate limit is exhausted.
 - **`unprocessedIntentsCount` / `getWithdrawalIntent`** — views that let permissionless executors and monitoring tools inspect the queue before processing it.
 
 ```solidity
@@ -287,10 +287,12 @@ interface IValidatorWithdrawalsQueue {
     /// FIFO queue. Role-gated; VEBO is the only expected holder of the role.
     function addWithdrawalIntents(WithdrawalIntent[] calldata intents) external;
 
-    /// Permissionless — pop the next `count` queued intentions and execute each as an
+    /// Permissionless — pop up to `count` queued intentions and execute each as an
     /// actual withdrawal request down the EIP-7002 path (TWG -> WithdrawalVault -> predeploy).
     /// Caller forwards the per-request fee; unused fee is refunded to `refundRecipient`.
-    function processWithdrawalIntents(uint256 count, address refundRecipient) external payable;
+    /// Returns the number of intentions actually processed: fewer than `count` when the
+    /// queue holds fewer intentions or the TWG rate limit is exhausted mid-batch.
+    function processWithdrawalIntents(uint256 count, address refundRecipient) external payable returns (uint256 processedCount);
 
     /// Number of intentions waiting in the FIFO queue.
     function unprocessedIntentsCount() external view returns (uint256);
@@ -320,14 +322,15 @@ interface ITriggerableWithdrawalsGateway {
         bytes   pubkey;         // dynamic type placed last, consistent with the queue's WithdrawalIntent
     }
 
-    /// The single path for all partial and full withdrawal requests
-    /// (used by VEBO-7002 and the CSM Ejector).
-    /// Applies the extracted-balance rate limit, forwards each request to the WithdrawalVault,
-    /// and refunds any unused EIP-7002 fee to `refundRecipient`.
+    /// Processes `intents` in order until the remaining frame budget is exhausted;
+    /// reverts if not even the first intent fits.
+    /// Forwards each processed intent to the WithdrawalVault and refunds any unused
+    /// EIP-7002 fee to `refundRecipient`.
+    /// Returns the number of intents processed: `0 < processedCount <= intents.length`.
     function triggerWithdrawals(
         WithdrawalIntent[] calldata intents,
         address refundRecipient
-    ) external payable;
+    ) external payable returns (uint256 processedCount);
 }
 ```
 
