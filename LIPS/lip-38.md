@@ -66,13 +66,13 @@ Because the protocol now submits withdrawal requests itself through the EIP-7002
     - checks the report's total requested withdrawal balance in ETH against the sanity checker limit and that every PWR targets a `0x02` validator;
     - retrieve operators’ public keys from the modules using their key indices;
     - appends the intentions, in report order, to the single FIFO queue in the `ValidatorWithdrawalsQueue` contract;
-    - emits an `ExitRequested` event per intention, which lets an Ejector pick up FWRs in the fallback mode described below.
+    - emits a `WithdrawalRequested` event per intention, which lets an Ejector pick up FWRs in the fallback mode described below.
 ```
 Off-chain Oracle Daemon  ->  Validators Exit Bus Oracle  ->  Validator Withdrawals Queue 
    report submission             report validation             enqueue requests 
 ```
 
-1. **Execute queued intentions from `ValidatorWithdrawalsQueue`.** An executor (the **Validator Withdrawals Queue Bot** or any other caller) calls the permissionless `processWithdrawalIntents`, passing the maximum number of intentions to process and the required EIP-7002 fee. The queue pops up to that many intentions from its head, in order, and hands them with the fee to the TWG, the TWG turns intent into an actual withdrawal request only up to its global per-frame limit; the rest stay at the head of the queue.
+3. **Execute queued intentions from `ValidatorWithdrawalsQueue`.** An executor (the **Validator Withdrawals Queue Bot** or any other caller) calls the permissionless `processWithdrawalIntents`, passing the maximum number of intentions to process and the required EIP-7002 fee. The queue pops up to that many intentions from its head, in order, and hands them with the fee to the TWG, the TWG turns intent into an actual withdrawal request only up to its global per-frame limit; the rest stay at the head of the queue.
 ```
 Validator Withdrawals Queue Bot  ->  Validator Withdrawals Queue  ->  Triggerable Withdrawals Gateway  ->  WithdrawalVault  ->  EIP-7002 predeploy
   permissionless call with fee            dequeue requests                      rate limits                   encoding          withdrawal requests
@@ -80,7 +80,7 @@ Validator Withdrawals Queue Bot  ->  Validator Withdrawals Queue  ->  Triggerabl
 
 ##### FWR-only fallback
 
-An **`enablePartialWithdrawals` / `disablePartialWithdrawals` switch** can turn partial withdrawals off, making VEBO accept FWR intentions only. `ExitRequested` events for FWRs let an Ejector fulfill them through voluntary exits without EIP-7002 fees.
+An **`enablePartialWithdrawals` / `disablePartialWithdrawals` switch** can turn partial withdrawals off, making VEBO accept FWR intentions only. `WithdrawalRequested` events for FWRs let an Ejector fulfill them through voluntary exits without EIP-7002 fees.
 
 #### Modules withdrawals flow
 
@@ -250,7 +250,7 @@ interface IValidatorsExitBusOracle {
 
 **Cutover.** The hash-delivery entry points `submitExitRequestsHash` and `submitExitRequestsData` are removed, and the `SUBMIT_REPORT_HASH_ROLE` held by EasyTrack is revoked. Legacy report hashes with exit data not yet delivered at the moment of the upgrade are **abandoned** — the new format cannot deliver them, and no legacy delivery path is retained. The underlying exit demand re-emerges organically from validator balances and is re-covered by subsequent VEBO-7002 reports.
 
-The `disablePartialWithdrawals` / `enablePartialWithdrawals` toggle is the FWR-only fallback: when disabled, the contract accepts FWRs only. `ExitRequested` still fires for every FWR so a Validator Ejector can fulfill them via voluntary exits without EIP-7002 fees. This is the safe mode under sustained extreme EIP-7002 fees.
+The `disablePartialWithdrawals` / `enablePartialWithdrawals` toggle is the FWR-only fallback: when disabled, the contract accepts FWRs only. `WithdrawalRequested` still fires for every FWR so a Validator Ejector can fulfill them via voluntary exits without EIP-7002 fees. This is the safe mode under sustained extreme EIP-7002 fees.
 
 **Switch semantics:**
 
