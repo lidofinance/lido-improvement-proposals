@@ -11,7 +11,7 @@ created: 2026-08-26
 
 ## Simple Summary
 
-[Curated Module v2](./lip-33) (CMv2) has laid the foundation for the next phase of the Lido protocol's evolution. The stake allocation mechanism in CMv2 already supports weight-based stake allocation. The missing piece is the way for the Node Operators to influence their stake allocation weight. CMv2 Phase 2 closes this gap with the introduction of the Validation Market (ValMart). The ability to set custom fee values, increase the bonding ratio, lock LDO tokens, and the Node Operator strike system are key components of ValMart. Node Operators can increase their stake allocation weight by offering more favorable conditions to the Lido protocol, which will be reflected in their stake allocation weight. At the same time, CMC, the party responsible for overseeing the Curated Module, will have the ability to issue Node Operator Strikes in case of underperformance or other violations of the standard node operator protocols (SNOPs), consequently reducing the stake allocation weight of the Node Operator. The combination of these mechanisms will create a dynamic and competitive environment for Node Operators, fostering innovation and efficiency in the Lido protocol.
+[Curated Module v2](./lip-33) (CMv2) has laid the foundation for the next phase of the Lido protocol's evolution. The stake allocation mechanism in CMv2 already supports weight-based stake allocation. The missing piece is the way for the Node Operators to influence their stake allocation weight. CMv2 Phase 2 closes this gap with the introduction of the Validator Market (ValMart). The ability to set custom fee values, increase the bonding ratio, lock LDO tokens, and the Node Operator strike system are key components of ValMart. Node Operators can increase their stake allocation weight by offering more favorable conditions to the Lido protocol. At the same time, CMC, the party responsible for overseeing the Curated Module, will have the ability to issue Node Operator Strikes in case of underperformance or other violations of the standard node operator protocols (SNOPs), consequently reducing the stake allocation weight of the Node Operator. The combination of these mechanisms aims to foster a competitive landscape that encourages Node Operators to optimize their service offerings and maintain high performance standards for the Lido protocol.
 
 Alongside ValMart, several technical and operational improvements are proposed for both CMv2 and CSM.
 
@@ -45,7 +45,22 @@ All ValMart features listed below are applicable to CMv2 only.
 
 The key component of ValMart's architecture is the concept of weight boost providers. Weight boost providers are responsible for determining the weight multiplier of each Node Operator based on various factors. These weights are then used to calculate the overall stake allocation weight of the Node Operator within the protocol.
 
-Weight boosts are applied by simple multiplication of the Node Operator's base weight (defined by Node Operator's type) with the weight multiplier provided by each active weight boost provider. The final weight of the Node Operator is the product of its base weight and all applicable weight multipliers.
+##### Weight Calculation Mechanism
+
+The total weight of a Node Operator is calculated as the product of its base weight and all applicable weight multipliers:
+
+$$
+TotalWeight = BaseWeight_{Type} \times \prod_{i \in active} ProviderMultiplier_{i}
+$$
+
+MetaRegistry triggers a recalculation of this total weight under two scenarios:
+
+- Provider-driven changes: A provider notifies MetaRegistry of a change (e.g., a change in bonding ratio or LDO lock status).
+- Base-weight changes: A change to the Node Operator's base weight (e.g., a change in Node Operator type).
+
+In either case, MetaRegistry fetches the most recent multipliers from all active providers to ensure an accurate total weight.
+
+##### Adding and Disabling Weight Boost Providers
 
 Weight boost providers are added to `MetaRegistry` via `DEFAULT_ADMIN_ROLE` by the DAO. Due to limited plans on changes in the set of weight boost providers, there is no method to remove them once added. However, the DAO can disable a provider via `setWeightBoostProviderEnabled(uint256 providerId, bool enabled)` and the data from this provider will no longer be used in weight calculations.
 
@@ -60,8 +75,6 @@ Depositing LDO starts a lock period during which the tokens cannot be withdrawn.
 Lock period duration is configurable and determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
 Deposited LDO tokens are held on the Node Operator's vault (`LidoGovernanceLockVault.sol`) created upon first deposit and can be used in the protocol's governance. Delegation on both Aragon Voting and Snapshot voting is supported. It is also possible to vote on Aragon proposals directly.
-
-`MetaRegistry` is notified about weight multiplier changes when Node Operators deposit or withdraw their LDO tokens. `MetaRegistry` pulls the recent weight multiplier from the provider should the Node Operator weight need recalculation due to changes in the other weight providers or changes to the Node Operator's type.
 
 Unlike other providers that provide weight boost for the exact Node Operator, LDO Lock Provider provides weight boost for all Node Operators in the Node Operator Group the Node Operator belongs to. This design decision is motivated by the fact that, unlike other providers, LDO lock does not have any direct impact on the particular Node Operator in the group, and rather indicates overall alignment of the group owner with the goals and values of the Lido DAO. If several operators in the same group weight boost from the LDO Lock provider, the largest boost is used to avoid situations of staked boosts from the same provider.
 
@@ -93,8 +106,6 @@ Cooldown duration is configurable and determined by the DAO via `DEFAULT_ADMIN_R
 
 An additional bond provider is attached to the `Accounting` contract via `SET_BOND_CURVE_MULTIPLIER_ROLE`.
 
-`MetaRegistry` is notified about weight multiplier changes when Node Operators increase or request a decrease of their bonding ratio. `MetaRegistry` pulls the recent weight multiplier from the provider should the Node Operator weight need recalculation due to changes in the other weight providers or changes to the Node Operator's type.
-
 Weight multiplier is defined based on the current bonding ratio set or requested by the Node Operator. The weight multiplier values are set for ranges of bonding ratios. The number of ranges and corresponding weight multipliers are determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
 Example:
@@ -123,8 +134,6 @@ Cooldown duration is configurable and determined by the DAO via `DEFAULT_ADMIN_R
 
 CMv2 Oracle uses active fee discounts set by Node Operators as of the report's `refSlot`. That indirectly means that the discount reduction cooldown period should be at least as long as the interval between Oracle reports to prevent Node Operators from bypassing the cooldown by timing their discount reductions around Oracle reports.
 
-`MetaRegistry` is notified about weight multiplier changes when Node Operators increase or request a decrease of their fee discount. `MetaRegistry` pulls the recent weight multiplier from the provider should the Node Operator weight need recalculation due to changes in the other weight providers or changes to the Node Operator's type.
-
 Weight multiplier is defined based on the current fee discount set or requested by the Node Operator. The weight multiplier values are set for ranges of fee discounts. The number of ranges and corresponding weight multipliers are determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
 Example:
@@ -146,8 +155,6 @@ Poor performance, standard node operator protocol (SNOP) violations, and other m
 The overseeing party (likely CMC - Curated Module Committee) can issue strikes to Node Operators and remove already issued strikes via `STRIKES_COMMITTEE_ROLE`. Each strike is an independent record that comes with the category, description, and lifetime. Category and description provide context for the strike, while the lifetime determines how long the strike affects the Node Operator's stake allocation weight.
 
 Node Operators should submit a separate TX to remove the strike once it has expired to restore their stake allocation weight.
-
-`MetaRegistry` is notified about weight multiplier changes when strikes are issued or removed for the Node Operator. `MetaRegistry` pulls the recent weight multiplier from the provider should the Node Operator weight need recalculation due to changes in the other weight providers or changes to the Node Operator's type.
 
 Weight multiplier is defined based on the current number of active strikes for the Node Operator. The weight multiplier values are set for ranges of strike counts. The number of ranges and corresponding weight multipliers are determined by the DAO via `DEFAULT_ADMIN_ROLE`.
 
@@ -278,7 +285,7 @@ Instances of `LidoGovernanceLockVault.sol` are deployed using [BeaconProxy](http
 
 A top-up is recorded immediately but may not yet be reflected on the consensus layer. If an earlier partial-withdrawal proof arrives during this window, its checkpoint replaces the tracked balance and temporarily excludes the pending top-up from `keyAllocatedBalance`. A newer proof restores it once the deposit is applied.
 
-Current design prefers temporary underestimation, which may allow additional deposits, over advancing the `lastAccountingProofSlot` on top-up, which would reject the unreported partial-withdrawal proof and temporarily overestimate allocation, unnecessarily restricting deposits.
+The current design prioritizes temporary underestimation, which may allow for some additional deposits. This is a deliberate choice to avoid a more severe failure mode. If we were to advance the `lastAccountingProofSlot` immediately during a top-up, the system would reject valid partial-withdrawal proofs because they would appear to be from an old slot. This would lead to an overestimated allocation, which would ultimately and unnecessarily restrict user deposits.
 
 ## Links
 
