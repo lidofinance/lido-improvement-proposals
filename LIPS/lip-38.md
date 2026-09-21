@@ -146,6 +146,8 @@ All three phases reuse the same machinery. Two governance-tunable parameters dri
 
 **No FWR over an unprocessed PWR.** The Oracle MUST NOT issue an FWR for a validator that has an unprocessed PWR, including one still in the FIFO queue. It can use an FWR only in a later report, after the PWR has executed on the CL. See [Security Considerations](#security-considerations).
 
+**Exit-eligibility floor for freshly activated validators.** The CL silently drops any EIP-7002 withdrawal request — PWR or FWR — for a validator that has not yet been active for `SHARD_COMMITTEE_PERIOD` (256 epochs, ~27.3 hours) since its `activation_epoch`. The iterator MUST NOT select such a validator for withdrawal in any phase. This affects selection only: a validator still inside its `SHARD_COMMITTEE_PERIOD` window continues to count normally toward all stake and weight accounting.
+
 **Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report limit. All three phases share this limit. Requests are weighed with the **same formula as the on-chain TWG limiter** — `amount` for a PWR, max effective balance by WC type (32/2048 ETH) for an FWR; see [rate limiter invariants](#triggerablewithdrawalsgateway-twg).
 
 #### Phase 1 — Cover withdrawal-queue demand
