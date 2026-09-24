@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-09-08
+updated: 2026-09-24
 ---
 
 ## Simple Summary
@@ -63,7 +63,7 @@ Because the protocol now submits withdrawal requests itself through the EIP-7002
     - Phase 2 — issue **forced validator exits**;
     - Phase 3 — add **active rebalancing** within CMv2. Phase 3 is optional and can be switched off (leaving only Phases 1–2).
 2. **The off-chain Oracle submits the report to VEBO contract.** On submission, VEBO:
-    - checks the report's total requested withdrawal balance in ETH against the sanity checker limit and that every PWR targets a `0x02` validator;
+    - checks the report's total requested withdrawal balance in ETH against the sanity checker limit and that every PWR targets a module with `partialWithdrawalsAllowed` set in the `StakingRouter`;
     - retrieve operators’ public keys from the modules using their key indices;
     - appends the intentions, in report order, to the single FIFO queue in the `ValidatorWithdrawalsQueue` contract;
     - emits a `WithdrawalRequested` event per intention, which lets an Ejector pick up FWRs in the fallback mode described below.
@@ -142,7 +142,7 @@ All three phases reuse the same machinery. Two governance-tunable parameters dri
 
 **Iteration granularity.** The iterator processes exit demand in fixed `EXIT_ITERATION_CHUNK` (32 ETH) steps. Each step gives one chunk of demand to the highest-ranked operator and one of its validators, then ranks again. This keeps the order balanced across operators. A chunk becomes a PWR of up to `EXIT_ITERATION_CHUNK` from a `0x02` validator, or an FWR.
 
-**PWR vs. FWR threshold.** A validator can serve a PWR only when it can give up enough balance while keeping the min-effective-balance floor. If **no** validator for the highest-ranked Node Operator has more than `MIN_PARTIAL_WITHDRAWAL` (2 ETH) available above that floor, the Oracle uses an **FWR** for the highest-ranked validator. Otherwise, it takes a partial withdrawal of `[MIN_PARTIAL_WITHDRAWAL, EXIT_ITERATION_CHUNK]` (2–32 ETH) in that iteration step. More than one step can select the same validator in one report. These allocations are combined into one PWR intention, so the final PWR can be larger than `EXIT_ITERATION_CHUNK`.
+**PWR vs. FWR threshold.** A validator can serve a PWR only when its module has `partialWithdrawalsAllowed` set in the `StakingRouter` (CMv2) and it can give up enough balance while keeping the min-effective-balance floor. If **no** validator for the highest-ranked Node Operator has more than `MIN_PARTIAL_WITHDRAWAL` (2 ETH) available above that floor, the Oracle uses an **FWR** for the highest-ranked validator. Otherwise, it takes a partial withdrawal of `[MIN_PARTIAL_WITHDRAWAL, EXIT_ITERATION_CHUNK]` (2–32 ETH) in that iteration step. More than one step can select the same validator in one report. These allocations are combined into one PWR intention, so the final PWR can be larger than `EXIT_ITERATION_CHUNK`.
 
 **No FWR over an unprocessed PWR.** The Oracle MUST NOT issue an FWR for a validator that has an unprocessed PWR, including one still in the FIFO queue. It can use an FWR only in a later report, after the PWR has executed on the CL. See [Security Considerations](#security-considerations).
 
@@ -260,7 +260,7 @@ The `disablePartialWithdrawals` / `enablePartialWithdrawals` toggle is the FWR-o
 - **Validity at submission.** Reports are validated against the **live** switch state in `submitReportData`: while the switch is off, any record with `amount > 0` reverts the whole report. A report built and quorum-agreed before a mid-frame flip therefore reverts; that frame is skipped and the next report is built FWR-only.
 - **Already-queued PWRs.** PWRs in the FIFO when the switch turns off **remain in the queue and must still be executed** — there is no dismissal. The off-chain VEBO **must not count queued but unexecuted PWRs** as WQ coverage in later reports, because high fees may delay them for an unknown time.
 
-On `submitReportData`, VEBO-7002 **MUST validate that every record with `amount > 0` (a PWR) targets a `0x02` (compounding-credentials) validator**.
+On `submitReportData`, VEBO-7002 **MUST validate that every record with `amount > 0` (a PWR) targets a module with `partialWithdrawalsAllowed` set** in the `StakingRouter` (see [StakingRouter](#stakingrouter)), otherwise the whole call reverts.
 
 #### ValidatorWithdrawalsQueue
 
@@ -347,6 +347,20 @@ As part of this, it **drops `_notifyStakingModules`**: the current TWG calls bac
 
 #### StakingRouter
 
+A new `partialWithdrawalsAllowed` field is added to `ModuleStateConfig` — whether VEBO may accept PWRs for the module. It is `true` for CMv2 and `false` for all other modules, including CSM `0x02`. The setter is gated by `STAKING_MODULE_MANAGE_ROLE`; setting `true` requires `withdrawalCredentialsType == 0x02`.
+
+```solidity
+struct ModuleStateConfig {
+    /// Other fields skipped for brevity ...
+
+    uint8 withdrawalCredentialsType;
+    /// Whether partial withdrawal requests (PWRs) are allowed for this module's validators.
+    bool partialWithdrawalsAllowed; // new; uses one of the two reserved bytes, the struct stays in one slot
+}
+
+function setStakingModulePartialWithdrawalsAllowed(uint256 _stakingModuleId, bool _allowed) external;
+```
+
 The two exit-related hooks are removed:
 
 - **`onValidatorExitTriggered`** — the TWG no longer notifies modules on exit, so this callback (and its module-interface counterpart) is deleted.
@@ -399,6 +413,7 @@ A new EasyTrack factory is **added**: it lets CMC update the five `ACTIVE_REBALA
 
 - **Interference / DDoS by public callers.** The single FIFO queue keeps request order fixed by the Oracle report and avoids the FWR-replay attack surface.
 - **PWR/FWR concurrency for one validator.** The CL rejects an FWR while the validator has an unprocessed PWR. The FWR fee is lost and the request must be sent again. **VEBO MUST NOT issue an FWR for a validator that has an unprocessed PWR**. It may use an FWR only after the PWR has cleared, and MUST never select a validator that already has an in-flight FWR, except in FWR-only mode.
+- **PWRs to non-PWR modules.** A PWR for a CSM `0x02` validator cannot be dismissed once queued, and its effect on CSM stake and bond accounting would be hard to unwind. VEBO therefore enforces `partialWithdrawalsAllowed` on-chain instead of relying on the off-chain Oracle.
 - **Balance-based TWG limit.** Changing the TWG rate limiter to bound extracted balance (instead of request count) caps how much stake can leave per frame, so a stream of large partial withdrawals cannot exceed the intended ETH-denominated limit. Note this makes FWRs the expensive request against the limit: an FWR consumes the validator's full max effective balance (up to 2048 ETH for `0x02`) from the frame budget, so a burst of FWRs can exhaust the TWG limit far faster than PWRs. The frame-budget floor (≥ 2048 ETH) guarantees the queue still advances at least one request per frame in the worst case.
 - **EIP-7002 fee risk.** Modeling of normal usage shows that high fees are unlikely at realistic batch sizes. `disablePartialWithdrawals` enables FWR-only operation during a long extreme-fee period, but it does not remove old queued PWRs or the related duplicate-withdrawal exposure. [EIP-7002 Partial Withdrawal Economics](https://hackmd.io/G82dyK7lQZWmO9vYNJ7fjA?view#EIP-7002-Fee-Dynamics)
 - **No cost enforcement in FWR-only mode.** With the bond charge-back removed, the FWR-only fallback (exits fulfilled by the Validator Ejector via fee-less voluntary exits) carries no economic penalty for an operator that ignores an exit request — precisely the mode where the protocol prefers not to pay EIP-7002 fees itself. Accepted: the fallback is expected to be short-lived (fee spikes historically resolve quickly), and the protocol can still force any individual exit through EIP-7002 by paying the spiked fee if an operator stalls.
