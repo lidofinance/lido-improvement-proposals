@@ -159,7 +159,7 @@ Phase 1 covers the current **withdrawal-queue (WQ) demand**, preferring PWRs ove
 3. **Module share-rate deviation** — modules above their `priority_exit_share_threshold` (relative to total protocol balance) get elevated priority.
 4. **Target-stake deviation** — operators furthest **above** their target stake exit first, where `targetStake = moduleStake × operatorWeight / moduleTotalWeight`. Operator weights come from [LIP-35](lip-35.md): read on-chain via `getOperatorWeights` for CMv2, aggregated via the Meta Registry for CMv1, and a uniform baseline weight elsewhere.
 5. **Already-requested validators** — validators that already have PWR demand allocated to them **within this report** rank first, but only while their remaining balance stays above `MIN_ACTIVATION_BALANCE`. This concentrates exited balance into as few validators as possible, taking more balance from one validator before moving to the next.
-6. **Biggest validator first** — among the operator's validators, prefer the one with the **largest balance**. This maximizes the balance a single PWR can extract while leaving the validator active, favoring partial over full withdrawals.
+6. **Smallest validator with at least 33 ETH first** — among the operator's validators, prefer the one with the **smallest balance that is greater than or equal to 33 ETH**. This leaves the validator active, favoring partial over full withdrawals.
 7. **Lowest validator index** — within an operator, ascending validator index.
 
 #### Phase 2 — Forced validator exits
@@ -205,7 +205,7 @@ A **new-operator grace period** applies: an operator whose first key was deposit
 
 1. **Target-stake deviation** — node operators rank by the deviation `currentStake − targetStake`; the operator furthest **above** target ranks first.
 2. **Already-requested validators** — validators with PWR demand already allocated **within this report** rank first, concentrating exited balance into as few validators as possible.
-3. **Biggest validator first** — prefer the largest-balance validator so exits stay partial and keep the validator active.
+3. **Smallest validator with at least 33 ETH first** — prefer the validator with the smallest balance that is greater than or equal to 33 ETH, so exits stay partial and keep the validator active.
 4. **Lowest validator index** — within an operator, ascending validator index.
 
 ### On-chain withdrawal intentions
