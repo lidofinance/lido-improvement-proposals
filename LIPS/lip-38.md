@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-09-27
+updated: 2026-09-30
 ---
 
 ## Simple Summary
@@ -253,10 +253,8 @@ interface ITriggerableWithdrawalsBus {
     ///                 extracted-balance rate limit at a flat 2048 ETH.
     /// amount  > 0  -> partial withdrawal (PWR) once executed; weighed at amount.
     struct WithdrawalIntent {
-        uint32  moduleId;       // matches the 3-byte moduleId field width in the packed report record
-        uint64  nodeOperatorId; // matches the 5-byte nodeOpId field width in the packed report record
         uint64  amount;         // gwei; 0 = full withdrawal (FWR), > 0 = partial withdrawal (PWR).
-        bytes   pubkey;         // dynamic type placed last so it doesn't break packing of the fields above
+        bytes   pubkey;         // validator pubkey
     }
 
     /// Called by the TWO: append decoded report intentions to the tail of the
