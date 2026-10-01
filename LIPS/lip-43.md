@@ -26,9 +26,11 @@ On-chain changes comprise only changes to `Verifier` contracts and contract comp
 - Verifiers now use hard-coded generalized indices (GIndices), with item paths derived at runtime.
 - Proof methods for the events that should be proven against the exact beacon block now use `block_roots` from the corresponding beacon state to reach required block roots.
 
+Also, several protocol parameters used in sanity checks are updated to conform with EIP-8061.
+
 ## Motivation
 
-[EIP-7732 (ePBS)](https://eips.ethereum.org/EIPS/eip-7732) separates the execution payload from the beacon block: a slot's payload may be revealed late or withheld. The oracles currently assume the reference slot's own EL block is always available. After the hardfork <TBD>. Verifier contracts use `block_roots` from the corresponding beacon state to reach required block roots.
+[EIP-7732 (ePBS)](https://eips.ethereum.org/EIPS/eip-7732) separates the execution payload from the beacon block: a slot's payload may be revealed late or withheld. The oracles currently assume the reference slot's own EL block is always available. After the hardfork <TBD>. Verifier contracts use `block_roots` from the corresponding beacon state to reach required block roots for the proofs requiring the exact beacon block.
 
 [EIP-8061](https://eips.ethereum.org/EIPS/eip-8061) removes the cap on the exit churn limit. Keeping the old formula overestimates the exit queue wait about five times and makes the Validator Exit Bus Oracle request fewer exits than needed.
 
@@ -40,8 +42,6 @@ Two Beacon API changes also affect the oracles: the proposer-duties `dependent_r
 
 ### 1. Report Read Slot in Oracles
 
-#### Overview
-
 For a report with a post-Gloas `ref_slot`, all three oracle families build their reports from one beacon state: the first non-missed child of `ref_slot`. The EL block for the report is the `state.latest_block_hash` of that same state. As a required step of this read, every oracle adds in-flight withdrawals of Lido validators back to their CL balances.
 
 #### Rationale
@@ -50,13 +50,13 @@ Under Gloas, the latest confirmed EL block and the deposits from a slot's payloa
 
 This change has three consequences:
 
-- **Finality wait.** The oracle must wait for the child state to finalize, which usually takes about one epoch (~6.4 minutes) longer than waiting for `ref_slot`.
+- **Finality wait.** The oracle must wait for the child state to finalize, which usually takes about one epoch (~6.4 minutes) longer than waiting for `ref_slot` to get finalized.
 - **One-time rebase shift.** The first report after the switch covers one additional epoch. For a daily report, its rebase is therefore about `1/225 ≈ 0.44%` higher. This positive rebase is within the sanity-checker limits; later reports return to their normal span.
 - **Time reference.** All derived timestamps (event lookback windows and staking vault report metadata) must stay tied to `ref_slot`. If they used the read slot instead, the lookback window would widen by at least one slot and skewing reward-rate averages.
 
 ##### In-Flight Withdrawal Add-Back
 
-In the child state, validator balances already have the expected withdrawals deducted, but the EL block has not credited them to the Withdrawal Vault yet. The specification exposes this amount as `state.payload_expected_withdrawals`.
+In the child state, validator balances already have the expected withdrawals deducted, but the EL block has not credited them to the Withdrawal Vault yet. The specification exposes this amount as `state.payload_expected_withdrawals` so these amounts can be added back to the CL balances for accurate reporting.
 
 #### Technical Specification
 
@@ -69,8 +69,6 @@ In the child state, validator balances already have the expected withdrawals ded
 - The `payload_expected_withdrawals` amounts of Lido validators, summed per validator index, are added back to the CL balances read from the read slot's state. This step is required for all oracles.
 
 ### 2. Accounting Oracle
-
-#### Overview
 
 It is proposed to:
 
@@ -98,9 +96,7 @@ The staking vault IPFS report takes its `timestamp` from the read slot, while `A
 
 ### 3. Validator Exit Bus Oracle
 
-#### Overview
-
-This proposal:
+It is proposed to:
 
 - Switch to the uncapped exit churn limit after the hardfork;
 - Exclude pending partial withdrawals from the sweep cycle prediction.
@@ -109,7 +105,7 @@ This proposal:
 
 ##### Exit Churn Limit
 
-EIP-8061 replaces the capped exit churn limit (256 ETH/epoch) with an uncapped one, which gives about 1220 ETH/epoch at ~40M ETH staked. With the old formula, the oracle overestimates withdrawal epochs and predicted liquidity, so it requests fewer exits than needed. `CHURN_LIMIT_QUOTIENT_GLOAS` and `MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA` differ across networks, so they are read from the node config instead of being hard-coded. If a parameter is missing after the hardfork, the oracle fails loudly instead of using a default.
+EIP-8061 replaces the capped exit churn limit (256 ETH/epoch) with an uncapped one, which gives about 1311 ETH/epoch at ~43M ETH staked. With the old formula, the oracle overestimates withdrawal epochs and predicted liquidity, so it requests fewer exits than needed. `CHURN_LIMIT_QUOTIENT_GLOAS` and `MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA` differ across networks, so they are read from the node config instead of being hard-coded. If a parameter is missing after the hardfork, the oracle fails loudly instead of using a default.
 
 ##### Sweep Cycle Prediction
 
@@ -139,8 +135,6 @@ else:
 ```
 
 ### 4. Beacon API Compatibility in Oracles
-
-#### Overview
 
 This proposal supports the v2 proposer-duties endpoint at Gloas and the `SLOT_DURATION_MS` config field. The config-field change is independent of the Gloas activation date.
 
@@ -341,6 +335,7 @@ EIP-8061 changes the **network exit churn** and the **consolidation churn**; ent
   - [EIP-7688: Forward compatible consensus data structures](https://eips.ethereum.org/EIPS/eip-7688)
 - [beacon-APIs#563: proposer duties v2](https://github.com/ethereum/beacon-APIs/pull/563)
 - [consensus-specs#4926: `SLOT_DURATION_MS`](https://github.com/ethereum/consensus-specs/pull/4926)
+- [LIP-35. Staking Router v3](./lip-35.md)
 
 ## Copyright
 
