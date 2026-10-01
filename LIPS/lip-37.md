@@ -1,12 +1,14 @@
 ---
 lip: 37
-title: "Execution Delegation Framework"
-status: Proposed
-author: Raman Siamionau, Matsvei Talstalutski
+title: Execution Delegation Framework
+status: Implemented
+author: Raman Siamionau (@F4ever), Matsvei Talstalutski (@chasingrainbows)
 discussions-to: https://research.lido.fi/t/lip-37-execution-delegation-framework-edf/11746
 created: 2026-06-01
 updated: 2026-09-15
 ---
+
+# LIP-37. Execution Delegation Framework
 
 ## Simple Summary
 
