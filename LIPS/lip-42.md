@@ -271,6 +271,14 @@ The only historical method is `processHistoricalPartialWithdrawalProof`. Other m
 - `processValidatorWithdrawnProof` - once `withdrawable_epoch` is set for the given validator, we can be sure that the validator will eventually be withdrawn, and any future state of this validator can be used.
 - `processBalanceProof` - due to the fact that `CuratedModule` accepts balance reports with the increased balance for the slots newer than `lastAccountingProofSlot`, and features no high-water mark mechanism, historical versions are unnecessary.
 
+#### Intra-module consolidations for CMv2
+
+> This feature applies to CMv2 only. CSM does not support validator consolidations.
+
+Events like Node Operator infra compromise, mutual acquisitions, or simple sunset of the business are increasingly common and require stake re-allocation between Node Operators, which, in turn, poses significant challenges in terms of missed rewards if done via exit and re-entry of validators. The most common case is distribution of the stake controlled by a single Node Operator among multiple Node Operators. Re-allocations of this type can be efficiently handled through intra-module consolidations within CMv2, avoiding the need for costly exits and re-entries.
+
+A new `ConsolidationController` contract is introduced to manage intra-module consolidations within CMv2. CMC holds the power to allow and disallow a particular Node Operator to submit consolidation batches with the source validators belonging to this Node Operator and target validators being CMv2 validators controlled by other Node Operators. Submitted batches are validated and forwarded to [`ConsolidationBus`](./lip-35.md#consolidation-message-bus) for scheduling and further execution. In essence, `ConsolidationController` acts similarly to [`ConsolidationMigrator`](lip-35.md#consolidation-migrator) introduced in LIP-35 but for consolidations within CMv2.
+
 ### Upgradability
 
 `ERC20LockBoostProvider.sol`, `AdditionalBondRegistry.sol`, `CustomFeeRegistry.sol`, `NodeOperatorStrikes.sol` are upgradable using [OssifiableProxy](https://github.com/lidofinance/staking-modules/blob/main/src/lib/proxy/OssifiableProxy.sol) contracts.
