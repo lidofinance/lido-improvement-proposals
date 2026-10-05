@@ -297,6 +297,14 @@ checks the `parent(slot, proposerIndex)` node and anchors through EIP-4788; `CLP
 - **exit** — **dynamic cap**, grows with the stake: `exit_churn = max(128, total_active_balance // 2^15)`; at ~43M ≈ **1,312 ETH/epoch** = **295,200 ETH/day**;
 - **consolidation** — its own quota `total_active_balance // 2^16`; at ~43M ≈ **656 ETH/epoch** = **147,600 ETH/day**;
 
+### Entry and Exit Churn imbalance problem
+
+With the introduction of EIP-8061, the exit churn can grow significantly while the entry churn remains capped. This opens up a potential attack vector on a permissionless liquid staking protocol like Lido. If the attacker controls a significant portion of the protocol's stake (stETH in Lido's case), they can submit withdrawal requests for the entire stake they hold and stake it all immediately after the withdrawal requests finalize. If the protocol follows the updated limits for exits, the time for the stake to be withdrawn can be significantly shorter than the time for this stake to be re-staked, potentially allowing the attacker to dilute protocol APR, or even put the majority of the protocol's stake into the entry queue.
+
+At the current ETH TVL of the Lido protocol, any meaningful attack of this type will require amounts of stETH above 200k stETH. It is also important to note that this attack comes with no explicit profit for the attacker, and primarily serves to disrupt the protocol's operations and potentially harm other participants. The attacker would also face notable opportunity costs and risks associated with locking up a large amount of stETH, which may deter such behavior.
+
+Despite the low probability of such an attack occurring, it is proposed to limit the amount of ETH VEBO can request for exit within a day to match the network activation churn of **57,600 ETH/day**.
+
 ### Proposed limit values
 
 The values for items 1 and 2 are sized for **staking growth up to 60M ETH of active balance**: at that balance they match the network churn allowed by EIP-8061, so the limits do not have to be revisited as the network grows.
@@ -307,7 +315,7 @@ The values for items 1 and 2 are sized for **staking growth up to 60M ETH of act
 2. **`consolidationEthAmountPerDayLimit` = 205,875 ETH/day** — the network
    consolidation churn at a 60M active balance.
 
-3. **`maxBalanceExitRequestedPerReportInEth` = 19,200 ETH** — kept as is since there is no direct impact from EIP-8061 changes, and current limit ensures timely processing of stETH withdrawal requests.
+3. **`maxBalanceExitRequestedPerReportInEth` = 11,520 ETH** — reduced from 19,200 ETH based on the note above.
 
 4. **`ConsolidationGateway`** — the limits configured in this service are left
    unchanged at this stage.
@@ -320,10 +328,10 @@ EIP-8061 changes the **network exit churn** and the **consolidation churn**; ent
 
 | SRv3 parameter | Current | After Glamsterdam | Why |
 |---|---|---|---|
-| `exitedEthAmountPerDayLimit` | 57,600 | **~411,975 ETH/day** | the network releases this much; otherwise a legitimate mass exit hits the cap |
-| `maxBalanceExitRequestedPerReportInEth` | 19,200 | **19,200** (no change) | VEBO can push out more ETH per frame when the network exit churn is higher |
-| `consolidationEthAmountPerDayLimit` | 93,375 | **205,875 ETH/day** | the network consolidation churn, with headroom up to 60M |
-| `appearedEthAmountPerDayLimit` | 57,600 | **57,600** (no change) | activation churn is capped (256), entry does not speed up |
+| `exitedEthAmountPerDayLimit` | 57,600 | **~411,975 ETH/day** | The network releases this much; otherwise a legitimate mass exit hits the cap |
+| `maxBalanceExitRequestedPerReportInEth` | 19,200 | **11,520** | See rationale above |
+| `consolidationEthAmountPerDayLimit` | 93,375 | **205,875 ETH/day** | The network consolidation churn, with headroom up to 60M |
+| `appearedEthAmountPerDayLimit` | 57,600 | **57,600** (no change) | Activation churn is capped (256), entry does not speed up |
 
 ## Links
 
