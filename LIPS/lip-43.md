@@ -5,6 +5,7 @@ status: draft
 author: Dmitry Gusakov (@dgusakov), Dmitry Chernukhin (@madlabman), Raman Siamionau (@F4ever), Alexander H (@hweawer)
 discussions-to: <create a thread on https://research.lido.fi/ and drop the link here>
 created: 2026-10-01
+updated: 2026-10-08
 ---
 
 # LIP-43: Ensuring Compatibility with Ethereum’s Glamsterdam Upgrade
@@ -19,7 +20,8 @@ For the off-chain components of the [Accounting](https://docs.lido.fi/guides/ora
 - Adds withdrawals deducted on the consensus layer but not yet credited on the execution layer back to Lido CL balances;
 - Identifies bunker-mode balance samples by CL state root instead of EL block number;
 - Switches the Validator Exit Bus Oracle to the uncapped exit churn limit, with parameters read from the network config;
-- Remodels withdrawal capacity in the sweep-cycle prediction;
+- Limits the sweep-cycle prediction to validator withdrawals;
+- Moves the per-report limit on validator exit requests (lowered from 600 to 500 after gas limit issues) from a hard-coded oracle constant to the `OracleDaemonConfig` contract;
 - Updates Beacon API handling and oracle consensus versions.
 
 On-chain changes comprise only changes to `Verifier` contracts and contract components, namely:
@@ -73,7 +75,6 @@ In the child state, validator balances already have the expected withdrawals ded
 It is proposed to:
 
 - Identify bunker-mode samples by CL state root;
-- Derive the staking vault report timestamp from `ref_slot`.
 
 #### Rationale
 
@@ -83,23 +84,18 @@ The in-flight withdrawal add-back from [§1](#in-flight-withdrawal-add-back) is 
 
 With withheld payloads, several finalized CL states can share the same EL block while CL rewards and penalties keep accruing. The current rebase check returns zero whenever two samples have the same EL block number, which hides a negative rebase during exactly the disruption bunker mode is meant to detect. Samples are therefore compared by state root. The vault withdrawal lookup returns zero when there are no EL blocks between the samples.
 
-##### Staking Vault Report Timestamp
-
-The staking vault IPFS report takes its `timestamp` from the read slot, while `AccountingOracle` uses `refSlot`. After the hardfork, the two would differ on every report, so the timestamp is derived from `ref_slot`.
-
 #### Technical Specification
 
 - The in-flight withdrawal add-back from §1 is applied to the total and per-module CL balances.
-- For staking vaults, the amounts are summed per validator index and added to that validator's balance.
 - In bunker mode, each balance sample is corrected from its own state, and samples are compared by state root. Vault withdrawals between two samples are zero when there are no EL blocks between them.
-- The staking vault IPFS report timestamp is computed from `ref_slot`.
 
 ### 3. Validator Exit Bus Oracle
 
 It is proposed to:
 
 - Switch to the uncapped exit churn limit after the hardfork;
-- Exclude pending partial withdrawals from the sweep cycle prediction.
+- Count only validator withdrawals in the sweep cycle prediction;
+- Read the maximum number of validator exit requests per report from the `OracleDaemonConfig` contract instead of a hard-coded constant.
 
 #### Rationale
 
@@ -109,18 +105,25 @@ EIP-8061 replaces the capped exit churn limit (256 ETH/epoch) with an uncapped o
 
 ##### Sweep Cycle Prediction
 
-After the hardfork, pending partial withdrawals take priority over the validator sweep. That queue can be filled by anyone, and a snapshot of it does not predict future load. Excluding it from the prediction errs on the safe side: the oracle may request slightly more exits.
+The validator sweep is no the only consumer of the per-payload withdrawal capacity. Builder pending withdrawals, the builder sweep, and pending partial withdrawals are processed before it.
 
-Builder pending withdrawals and the builder sweep also consume the per-payload withdrawal capacity before the validator sweep. The prediction must include their current queues and position in that shared capacity. An empty parent payload makes no withdrawal-pointer progress. Because future builder load and empty-parent periods have no protocol-level upper bound, the implementation must use and expose a documented operational assumption or cap for them.
+Of these consumers, only the validator sweep is predictable: it walks the validator set in a fixed order at a known rate. The others are periodical. Their load depends on external actors and comes in bursts, so a snapshot of the current queues does not predict future load, and there is no protocol-level upper bound to model them against.
+
+The Validator Exit Bus Oracle does not try to emulate the consensus layer; it only needs a reasonable estimate of when Lido validators will be swept. Therefore, after the hardfork, the sweep cycle prediction counts only validator withdrawals and ignores all other consumers. As a result, VEBO will request to exit slightly more validators in some rare cases.
+
+##### Max Exit Requests per Report
+
+This proposal also closes technical debt from a hotfix. Gas limit issues were found when a report requests the maximum of 600 validator exits, so the limit was lowered to 500 by a constant hard-coded in the oracle. The limit is moved to the `OracleDaemonConfig` contract as `MAX_VALIDATOR_EXIT_REQUESTS_PER_REPORT` with a value of `500`, so it can be adjusted by the DAO without an oracle release.
 
 #### Technical Specification
 
 - For exits processed under Gloas, the per-epoch exit churn is `max(MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA, total_active_balance // CHURN_LIMIT_QUOTIENT_GLOAS)`, rounded down to `EFFECTIVE_BALANCE_INCREMENT`, with no upper cap. For pre-Gloas processing, the current formula is used.
 - Both parameters are read from the node config. If either is missing when the Gloas rule applies, the Validator Exit Bus Oracle stops instead of using a default.
 - At the fork boundary, the selected churn rule must match the consensus rules when the voluntary-exit message is first processed. The report's `ref_slot` alone must not select the rule for an exit that may be processed after activation. The rollout must either prevent such a pre-fork request from being first processed after activation, or model it with the Gloas rule.
-- The sweep cycle prediction ignores pending partial withdrawals after the hardfork.
-- The sweep cycle prediction includes the current builder queues and treats an observed empty parent payload as zero withdrawal-pointer progress. It uses a documented operational assumption or cap for future builder load and empty-parent periods.
+- After the hardfork, the sweep cycle prediction counts only validator withdrawals. Pending partial withdrawals, builder pending withdrawals, the builder sweep, and empty parent payloads are not modeled.
 - Predicted EL liquidity includes in-flight withdrawals of Lido validators once as a pending EL inflow. The corresponding CL validator balances are not restored.
+- A new `MAX_VALIDATOR_EXIT_REQUESTS_PER_REPORT` key is added to the `OracleDaemonConfig` contract with a value of `500`.
+- The Validator Exit Bus Oracle reads this value from `OracleDaemonConfig` and uses it as the maximum number of validators requested for exit in a single report. The hard-coded hotfix constant is removed. If the key is missing, the oracle stops instead of using a default.
 
 ```python
 def get_exit_churn_limit(total_active_balance, min_per_epoch_churn_limit, churn_limit_quotient) -> Gwei:
@@ -326,12 +329,12 @@ The baseline is the **SRv3 ([LIP-35](./lip-35.md))** parameters. SRv3 sanity lim
 
 EIP-8061 changes the **network exit churn** and the **consolidation churn**; entry stays under the activation cap and does not speed up. So here is what should change:
 
-| SRv3 parameter | Current | After Glamsterdam | Why |
-|---|---|---|---|
-| `exitedEthAmountPerDayLimit` | 57,600 | **~411,975 ETH/day** | The network releases this much; otherwise a legitimate mass exit hits the cap |
-| `maxBalanceExitRequestedPerReportInEth` | 19,200 | **11,520** | See rationale above |
-| `consolidationEthAmountPerDayLimit` | 93,375 | **205,875 ETH/day** | The network consolidation churn, with headroom up to 60M |
-| `appearedEthAmountPerDayLimit` | 57,600 | **57,600** (no change) | Activation churn is capped (256), entry does not speed up |
+| SRv3 parameter                          | Current | After Glamsterdam      | Why                                                                           |
+|-----------------------------------------|---------|------------------------|-------------------------------------------------------------------------------|
+| `exitedEthAmountPerDayLimit`            | 57,600  | **~411,975 ETH/day**   | The network releases this much; otherwise a legitimate mass exit hits the cap |
+| `maxBalanceExitRequestedPerReportInEth` | 19,200  | **11,520**             | See rationale above                                                           |
+| `consolidationEthAmountPerDayLimit`     | 93,375  | **205,875 ETH/day**    | The network consolidation churn, with headroom up to 60M                      |
+| `appearedEthAmountPerDayLimit`          | 57,600  | **57,600** (no change) | Activation churn is capped (256), entry does not speed up                     |
 
 ## Links
 
