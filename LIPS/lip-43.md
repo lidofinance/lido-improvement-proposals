@@ -28,7 +28,7 @@ On-chain changes comprise only changes to `Verifier` contracts and contract comp
 - Verifiers now use hard-coded generalized indices (GIndices), with item paths derived at runtime.
 - Proof methods for the events that should be proven against the exact beacon block now use `block_roots` from the corresponding beacon state to reach required block roots.
 
-Also, several protocol parameters used in sanity checks are updated to conform with EIP-8061.
+Also, several protocol parameters used in sanity checks are updated to conform with EIP-8061, and the oracle consensus versions are bumped in the same on-chain vote.
 
 ## Motivation
 
@@ -69,6 +69,7 @@ In the child state, validator balances already have the expected withdrawals ded
 - All CL data is read from the read slot's state. All EL data is read at the block referenced by that state's `latest_block_hash`.
 - `ref_slot` stays in the report and remains the basis for all timestamps. The event lookback cutoff is computed from `ref_slot` and the genesis time instead of the anchor block timestamp.
 - The `payload_expected_withdrawals` amounts of Lido validators, summed per validator index, are added back to the CL balances read from the read slot's state. This step is required for all oracles.
+- Because the report algorithm changes, the consensus version is bumped as part of the on-chain vote in `AccountingOracle`, `ValidatorsExitBusOracle`, and the `CSFeeOracle` contracts of CSM, CSM `0x02`, and CM v2.
 
 ### 2. Accounting Oracle
 
