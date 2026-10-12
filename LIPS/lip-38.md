@@ -124,7 +124,59 @@ All three phases reuse the same machinery. It is driven by one governance-tunabl
 
 **Exit-eligibility floor for freshly activated validators.** The CL silently drops any EIP-7002 withdrawal request — PWR or FWR — for a validator that has not yet been active for `SHARD_COMMITTEE_PERIOD` (256 epochs, ~27.3 hours) since its `activation_epoch`. The iterator MUST NOT select such a validator for withdrawal in any phase. This affects selection only: a validator still inside its `SHARD_COMMITTEE_PERIOD` window continues to count normally toward all stake and weight accounting.
 
-**Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report limit. All three phases share this limit. Requests are weighed with the **same formula as the on-chain TWG limiter** — `amount` for a PWR, max effective balance by WC type (32/2048 ETH) for an FWR; see [rate limiter invariants](#triggerablewithdrawalsgateway-twg).
+**Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report limit. All three phases share this limit. Requests are weighed with the **same formula as the on-chain TWG limiter** — `amount` for a PWR, and a flat 2048 ETH for every FWR regardless of WC type; see [rate limiter invariants](#triggerablewithdrawalsgateway-twg).
+
+#### Income prediction
+
+Phase 1 needs to know how much of the WQ demand will be covered without new requests. The Oracle predicts the ETH that will reach the EL up to a horizon `T` and requests withdrawals only for the remainder:
+
+```
+available(T) = elBalance                // EL rewards vault + WithdrawalVault + withdrawals reserve
+             + liquidRewards(T)         // rewards that actually reach the EL by T
+             + inFlight(T)              // already-requested withdrawals that land by T
+             − depositLock(T)           // ETH expected to be consumed by new deposits
+
+Phase 1 adds requests until  requested + available(T) ≥ unfinalizedStETH
+```
+
+`requested` counts each request at the ETH it brings in: `amount` for a PWR, and for an FWR the validator's balance capped at its maximum effective balance. This is intentionally different from the [rate-limit weight](#shared-iterator-mechanics): weighing an FWR at a flat 2048 ETH is conservative for the rate limit, but would overstate incoming ETH here and under-request exits.
+
+##### Liquid rewards
+
+Only rewards that reach the EL by `T` (see [Prediction horizon](#prediction-horizon)) count. The historical rate is split into two components, both derived over `PREDICTION_DURATION_IN_SLOTS`:
+
+- **EL rewards** — priority fees and MEV are paid to the EL rewards vault regardless of WC type, so they are always liquid. The rate is taken from `executionLayerRewardsWithdrawn` alone.
+- **CL rewards** — normalized per unit of effective balance: `clRatePerEB = Σ(postCLBalance + withdrawalsWithdrawn − preCLBalance) / (timeElapsed × lidoEffectiveBalance)`. They count only for validators the CL sweep skims:
+    - `0x01` validators — all CL rewards are skimmed;
+    - `0x02` validators at the cap (`effective_balance == 2048 ETH`) — all CL rewards are skimmed;
+    - `0x02` validators below the cap — CL rewards compound on the validator and contribute nothing.
+
+```
+liquidRewards(T) = elRate × T
+                 + Σ_skimmed clRatePerEB × effective_balance × T
+```
+
+##### In-flight withdrawals
+
+Withdrawals already requested in earlier reports MUST be counted. `inFlight(T)` sums the withdrawals below whose withdrawable epoch is ≤ `T` (see [Prediction horizon](#prediction-horizon)):
+
+- **CL pending partial withdrawals** — Lido entries in `state.pending_partial_withdrawals`, each counted at `min(amount, balance − MIN_ACTIVATION_BALANCE)`, as the CL will apply it. They arrive after their `withdrawable_epoch`.
+- **Unprocessed `TriggerableWithdrawalsBus` intents** — read via `getWithdrawalIntents`. A PWR counts at `amount`; an FWR at the validator's balance capped at its maximum effective balance. Their exit epoch is projected through the exit churn, as for new requests, starting after the CL's current `earliest_exit_epoch`.
+- **Validators with an exit already initiated on the CL** (`exit_epoch` set) — counted at their balance, using their `withdrawable_epoch`.
+
+In-flight PWRs also reduce the validator's balance for selection: PWR eligibility (balance ≥ 33 ETH) and the PWR amount are evaluated on `balance − in-flight PWRs` of that validator.
+
+##### Prediction horizon
+
+Each request is assigned an expected arrival epoch on the EL. PWRs and FWRs consume the same CL exit churn (`compute_exit_epoch_and_update_churn`), so the churn is simulated over in-flight requests first and then over the requests of this report, in FIFO order. Both request types use the same formula:
+
+```
+arrival = exit_epoch + MIN_VALIDATOR_WITHDRAWABILITY_DELAY
+```
+
+The sweep delay (FWR) and the pending-partials drain delay (PWR) are intentionally ignored. Both only push arrival later, so ignoring them shortens `T` and lowers the predicted rewards. The prediction therefore errs toward requesting slightly more, never less.
+
+The horizon `T` is the latest arrival epoch among the in-flight requests and the requests added to this report so far.
 
 #### Phase 1 — Cover withdrawal-queue demand
 
@@ -163,6 +215,8 @@ This phase applies **only to the CMv2 staking module** and adds exit demand agai
 | `ACTIVE_REBALANCING_OPERATOR_EXCESS_BP` | uint (bp)   | Operator-level trigger: `currentStake` over `targetStake` as a share of `targetStake`.                                               |
 | `ACTIVE_REBALANCING_MODULE_EXCESS_BP`   | uint (bp)   | Module-level trigger: the sum of over-target stake across all operators as a share of total module stake.                            |
 | `ACTIVE_REBALANCING_GRACE_PERIOD`       | uint (days) | Days since the first key deposit before an operator counts toward `moduleStake`/`moduleTotalWeight` and participates in rebalancing. |
+
+All five keys are editable by the CM Committee ([CMC](lip-33.md#cmc)) via EasyTrack, without a full DAO vote per change (see [EasyTrack factories](#easytrack-factories)).
 
 **Trigger.** Phase 3 requires `ACTIVE_REBALANCING_ENABLED` to be set, and runs when **one or more** of the following conditions holds:
 
@@ -404,7 +458,12 @@ This release **adds the following keys** to the contract: the iterator parameter
 
 The EasyTrack factories that submit exit request hashes to VEBO on behalf of Curated and sDVT Node Operators are **removed** in this release, and their `SUBMIT_REPORT_HASH_ROLE` is revoked. They depend on the hash-delivery flow, which the VEBO no longer has (see [Rationale](#removing-exit-requests-hash-delivery-via-easytrack)).
 
-A new EasyTrack factory is **added**: it lets CMC update the five `ACTIVE_REBALANCING_*` keys on `OracleDaemonConfig` (see [`OracleDaemonConfig`](#oracledaemonconfig)) without a full DAO vote per change.
+A new EasyTrack factory is **added**: it lets the CM Committee ([CMC](lip-33.md#cmc)) update the five `ACTIVE_REBALANCING_*` keys on `OracleDaemonConfig` (see [`OracleDaemonConfig`](#oracledaemonconfig)) without a full DAO vote per change.
+
+- **Trusted caller** — the CMC multisig.
+- **Allowed keys** — the factory MUST reject any key other than the five `ACTIVE_REBALANCING_*` keys. `OracleDaemonConfig` gates all keys behind a single `CONFIG_MANAGER_ROLE`, so the factory's key allowlist is the only thing that stops the CMC from changing other Oracle parameters.
+- **Role** — the EasyTrack `EVMScriptExecutor` is granted `CONFIG_MANAGER_ROLE` on `OracleDaemonConfig`.
+- **Initial values** — the keys are set by the DAO vote that enacts this LIP. The factory only updates existing keys.
 
 ### Triggerable Withdrawals Bus Bot
 
