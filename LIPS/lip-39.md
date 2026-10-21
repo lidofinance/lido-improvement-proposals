@@ -1,245 +1,262 @@
 ---
 lip: 39
-title: Simplified Negative Rebase Sanity Check
+title: Lean Oracle Rebase Sanity Check
 status: WIP
 author: George Avsetsin, Dmitry Gusakov, Eugene Mamin
 discussions-to: <research.lido.fi thread to be created>
 created: 2026-07-14
-updated: 2026-07-31
+updated: 2026-08-12
 ---
 
-# Simplified Negative Rebase Sanity Check
+# Lean Oracle Rebase Sanity Check
 
 ## Simple Summary
 
-Replace the stateful 36-day negative CL rebase allowance with a simpler per-report rule:
-
-- no CL loss detected: the report passes;
-- a CL loss within a configurable hard cutoff: an independent committee must confirm the report;
-- a CL loss above the hard cutoff: the report is rejected.
+Replace the rolling negative CL rebase allowance and positive rebase smoothing with one configurable range model. The Accounting Oracle processes normal reports as usual, exceptional CL accounting decreases or increases require an independent second opinion, and reports beyond hard limits revert. Once accepted, reported vault amounts and burn requests are settled in full.
 
 ## Abstract
 
-[LIP-23](./lip-23.md) introduced a CL-spec-derived negative CL rebase allowance and a second-opinion interface. [LIP-35](./lip-35.md) adapted the same design to MaxEB accounting but kept its 36-day report ledger and left the second-opinion provider unset.
+The current checker uses separate mechanisms for decreases and increases: a 36-day history for negative CL rebases, annualized CL growth checks, and a positive rebase limiter that can defer part of vault transfers and share burns. This proposal replaces these aggregate controls with one set of configurable ranges for the CL accounting rebase.
 
-This proposal simplifies both parts. It replaces the modeled allowance with two boundaries: a zero threshold — any detected CL loss requires committee confirmation — and a configurable per-report hard cutoff above which the report is rejected outright. It also makes a DAO-approved committee, independent from the accounting-oracle members, the active second opinion, and fully sunsets the SP1 ZK oracle previously developed for that role. The negative-rebase check no longer needs report history or migration, and a detected negative CL rebase can no longer pass on the accounting-oracle report alone.
+- **Normal range.** Reports are processed on Accounting Oracle consensus as usual.
+- **Exceptional ranges.** A larger increase or decrease may be processed only when an independent committee confirms the exact report hash.
+- **Beyond the hard limits.** The report always reverts, even when confirmed by the committee.
+
+The hard limits are intended to sit beyond normal operating conditions and remain configurable by the DAO.
+
+The limits apply to the CL part of the report, including ETH withdrawn from CL into the Withdrawal Vault. EL rewards and share burns are excluded because their reported amounts are already bounded by live on-chain state. Once a report is accepted, reported vault amounts and share burns are settled in full rather than clipped. The proposal removes the rolling negative-rebase history and positive smoothing; sanity checks unrelated to the aggregate rebase remain unchanged.
 
 ## Motivation
 
-### Current design: calibrated but stateful
+**The negative CL rebase allowance adds complexity for a condition not seen in production.** The current checker stores a rolling report history and models one penalties-and-slashing scenario, requiring window traversal, state migration, and recalibration as CL rules change ([LIP-23](./lip-23.md), [LIP-35](./lip-35.md#ao-cl-balance-decrease)). Historical replay found no negative CL accounting rebase in any mainnet report since Lido V2. Independently, [stETH has never had a negative rebase](https://docs.lido.fi/guides/lido-tokens-integration-guide/#accounting-oracle). Setting the soft decrease limit to zero is simpler and more conservative: no CL accounting decrease can be accepted on Accounting Oracle consensus alone, and the checker no longer needs history or a modeled loss allowance.
 
-The current checker allows a cumulative negative CL rebase of about 3.6% over a window of up to 36 days before requiring a second opinion. The limit is calibrated to a selected natural penalties-and-slashing envelope, not every possible CL loss ([LIP-35](./lip-35.md#ao-cl-balance-decrease), [SRv3 parameter research](https://hackmd.io/0ePemSJtQA6S5NDK2M3mww)). Maintaining it requires stored report history, a sliding-window calculation, migration at checker replacement, and parameter revisions when CL rules change.
+**Positive smoothing adds permanent settlement complexity but has not affected a V2+ report.** It was introduced to reduce sandwiching around unusually large rewards or cover burns ([LIP-6](./lip-6.md), [LIP-12](./lip-12.md)). A replay of 1,185 V2+ reports found no effective deferral of reported vault amounts or burn requests. The known November 2022 and March 2023 cap events occurred under the predecessor 2 BP EL-rewards limit. Across the replay, the largest combined positive movement before Withdrawal Queue processing was 3.57 BP against the current 7.5 BP budget. A reported positive CL balance update consumes this budget but cannot itself be clipped; only the vault and burn inputs applied after it can be deferred. Removing the limiter therefore leaves the observed routine settlement path unchanged while accepting greater one-report sandwich and rate-shock exposure during exceptional EL-reward, backlog, or burn events.
 
-With no second-opinion provider configured, a loss within the modeled allowance can be submitted by the accounting oracle alone, while a larger loss reverts.
-
-### Proposed design: two simple thresholds
-
-The proposal stops trying to classify losses from CL rules:
-
-- non-negative CL rebase: pass;
-- negative CL rebase within the decrease allowed by `maxCLBalanceDecreaseBP`: require the committee;
-- loss above that limit: reject.
-
-The zero threshold removes the modeled oracle-only allowance. As of July 2026, Lido has never had a negative stETH rebase, and daily rebases have never come close to zero. The proposed check is stricter because it excludes EL rewards, so a small genuine CL-side loss may still require the committee. This deliberate false positive is safer than automatically accepting an unusual loss.
-
-The initial hard cutoff is proposed at 5%. It adds modest headroom over the [current penalty-derived 3.6% 36-day allowance](./lip-35.md#ao-cl-balance-decrease), reducing the need to retune the limit after CL parameter changes. The wider cutoff does not increase what the accounting oracle can submit alone: every detected negative CL rebase requires the committee. It also improves liveness during Dual Governance: a genuine loss within the cutoff can be confirmed without a DAO proposal while Rage Quit is active. A loss above the cutoff still requires DAO action.
-
-### Make the second opinion operational
-
-The [SP1 oracle](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747) was completed and deployed on mainnet in advisory mode, but never connected as the protocol's second opinion. It was later [updated for Electra](https://github.com/lidofinance/sp1-lido-accounting-zk/commit/07560d2ca75bde9ec85094212d454bd9a1f3ef90). As part of this proposal, the SP1 oracle is fully sunset: its operation and maintenance stop, and it is not adapted to future forks. No on-chain action is required because it was never connected to the protocol. A separate [RISC Zero/Boundless implementation](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/8) produced working mainnet test reports, but its external audit and production deployment remained outstanding. Its integration was [publicly paused](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/9). Both implementations show the maintenance cost of this approach. A CL proof tracks fork-specific state and proof formats, so Ethereum upgrades require development, testing, and renewed audit work.
-
-[LIP-23](./lip-23.md#second-opinion) explicitly allowed a third-party oracle committee or multisig as an alternative. This proposal uses that option and makes the second opinion part of the active report path.
+**A ZK second opinion is costly to keep production-ready.** Ethereum's consensus layer and Lido's accounting continue to evolve, so relevant upgrades require changes to the ZK program, testing, and renewed audit work. [SP1](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747) and [RISC Zero/Boundless](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/8) both demonstrated generation and on-chain verification of mainnet reports, but neither was connected to the checker or operated as a production second-opinion provider. For an exceptional path, an independent committee is materially simpler to operate and maintain.
 
 ## Specification
 
-### Overview
+### Rebase processing model
 
-```python
-principalCLBalance = previousCLBalance + deposits
-totalPostCLBalance = postCLValidatorsBalance + postCLPendingBalance
-clRebase = totalPostCLBalance + withdrawalsVaultTransfer - principalCLBalance
+Four configurable limits divide the CL accounting rebase into five intervals and three outcomes. A value at or inside the corresponding soft limit is processed on Accounting Oracle consensus. A value beyond a soft limit but at or inside the hard limit additionally requires the second-opinion committee. A value beyond a hard limit reverts. Hard limits are evaluated before consulting the second-opinion provider and cannot be overridden by it.
+
+<img src="./assets/lip-39/cl-rebase-ranges.svg" alt="CL accounting rebase authority ranges" width="700" height="140" style="max-width: 100%; height: auto;">
+
+The aggregate check uses the values already passed to `checkAccountingOracleReport(...)`. Its conceptual flow is:
+
+```solidity
+// Deposits are principal rather than rewards.
+preCLBalance =
+    preCLValidatorsBalance +
+    preCLPendingBalance +
+    deposits;
+
+// New in LIP-39: account for ETH withdrawn from CL into the vault.
+postCLAccountingBalance =
+    postCLValidatorsBalance +
+    postCLPendingBalance +
+    withdrawalVaultBalance;
+
+if (postCLAccountingBalance < preCLBalance) {
+    outcome = classifyPerReportDecrease(
+        preCLBalance - postCLAccountingBalance
+    );
+} else {
+    outcome = classifyAnnualizedIncrease(
+        postCLAccountingBalance - preCLBalance,
+        timeElapsed
+    );
+}
+
+if (outcome == SECOND_OPINION) requireMatchingReportHash();
+if (outcome == REVERT) revert;
 ```
 
-- `clRebase >= 0`: pass without a second opinion;
-- `clRebase < 0 and -clRebase <= principalCLBalance * maxCLBalanceDecreaseBP / 10_000`: require the committee;
-- otherwise: revert before calling the committee.
+Decrease limits are fixed percentages of `preCLBalance` per report. Increase limits are annualized percentages of `preCLBalance` and are prorated by `timeElapsed`; the existing one-hour fallback is retained when the elapsed time is zero. The asymmetry is intentional: CL rewards accrue continuously, while losses may occur as discrete events. After a missed report, the next report is measured from the last processed state, so loss and recovery are netted while the positive allowance spans the full elapsed interval.
 
-### Rebase calculation
+The reported Withdrawal Vault balance is included so that ETH moved from CL to the vault is not treated as a loss. EL rewards and share burns remain outside the checked value because they are independently bounded by live on-chain state.
 
-The check limits the CL-side effect of the report on protocol accounting:
+### Initial parameters
 
-- `previousCLBalance` and `totalPostCLBalance` include validator and pending-deposit balances;
-- `deposits` is protocol-known ETH moved into the CL;
-- `withdrawalsVaultTransfer` is ETH actually taken from the Withdrawal Vault in this report. It is calculated onchain by the existing rebase limiter and cannot exceed the reported vault balance, which the existing sanity check requires not to exceed the live vault balance.
+For each direction, the checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS`. Decrease limits are per report; increase limits are annualized and prorated by elapsed time.
 
-Using the actual transfer avoids treating the CL-to-vault flow as a loss without storing the previous vault balance. A CL loss covered by real ETH transferred from the vault does not trigger the committee. This is intentional: the check limits the report's impact on stETH accounting, not raw CL performance in isolation.
+| Parameter | Initial value | Effect |
+| --- | ---: | --- |
+| `clRebaseDecreaseSoftBPLimit` | `0 BP` per report | Any CL accounting decrease requires the committee |
+| `clRebaseDecreaseHardBPLimit` | `500 BP` per report | A decrease above 5% always reverts |
+| `annualCLRebaseIncreaseSoftBPLimit` | `1,000 BP` annualized | Accounting Oracle-only range; approximately `2.74 BP` over 24 hours |
+| `annualCLRebaseIncreaseHardBPLimit` | `1,750 BP` annualized | Joint Accounting Oracle and committee range; approximately `4.79 BP` over 24 hours |
 
-`reportReference` is the Accounting Oracle's identifier for the report being processed. In the current implementation it is the reference slot. The pseudocode also uses the report's `withdrawalVaultBalance`:
+**`clRebaseDecreaseSoftBPLimit = 0 BP`.** The Accounting Oracle cannot report a CL accounting loss without the committee. Because EL rewards are excluded, a genuine CL-side loss may require the committee even when the final stETH rebase remains positive. This is deliberately more conservative than the current rolling loss allowance and allows that stateful mechanism to be removed.
 
-```python
-if clRebase >= 0:
-    return
+**`clRebaseDecreaseHardBPLimit = 500 BP`.** The value reuses the former `oneOffCLBalanceDecreaseBPLimit`, which [LIP-23](./lip-23.md) replaced because Accounting Oracle alone could repeat a 5% decrease before governance reacted. Under this proposal every such decrease requires both reporting groups, but repetition remains material: with no offsetting flows, three and seven consecutive decreases at the hard limit would reduce the starting CL accounting balance by approximately 14.3% and 30.2%, respectively. The value is not directly comparable to the production `360 BP` rolling limit and remains provisional pending historical replay and loss-scenario analysis.
 
-negativeCLRebase = -clRebase
-maxDecrease = principalCLBalance * maxCLBalanceDecreaseBP / 10_000
+**`annualCLRebaseIncreaseSoftBPLimit = 1,000 BP`.** The provisional value reuses the production `annualBalanceIncreaseBPLimit` for Accounting Oracle-only reports, preserving approximately the current annualized reward envelope. Its final calibration remains subject to historical replay.
 
-if negativeCLRebase > maxDecrease:
-    revert NegativeCLRebaseAboveCutoff
+**`annualCLRebaseIncreaseHardBPLimit = 1,750 BP`.** The provisional value creates a `750 BP` annualized committee range, approximately `2.05 BP` over 24 hours. It must not be derived by mechanically annualizing the current 7.5 basis-point `maxPositiveTokenRebase`, which is a fixed share-rate budget over CL, vault, and burn inputs rather than a CL accounting integrity limit. The exact value requires historical replay and economic analysis.
 
-if secondOpinionOracle == address(0):
-    revert SecondOpinionOracleNotSet
+### Affected contracts
 
-_askSecondOpinion(reportReference, totalPostCLBalance, withdrawalVaultBalance)
+| Contract | Change |
+| --- | --- |
+| `OracleReportSanityChecker` | Replacement contract with the new CL rebase ranges; removes rolling history, smoothing, and tolerance-based second opinion |
+| `Accounting` | New implementation that settles accepted reports directly and simplifies `CalculatedValues` |
+| `LidoLocator` | New implementation instance with updated immutable wiring to the replacement checker |
+| `SecondOpinionOracle` **(new)** | Stores complete report hashes confirmed by the independent committee |
+
+### OracleReportSanityChecker
+
+**Aggregate range check.** `Accounting` continues to call the checker, but now validates report inputs before simulation:
+
+```text
+Accounting.handleOracleReport(...)
+├── _checkOracleReportData(...)
+│   └── checkAccountingOracleReport(...)
+│       ├── caller, live vault, and Burner checks
+│       └── CL accounting rebase range check
+├── _simulateOracleReport(...)
+└── _checkSimulatedOracleReport(...)
+    └── simulated share-rate and Withdrawal Queue checks
 ```
 
-The cutoff is based on the principal CL balance before the reported loss. It is checked before the external call and cannot be overridden by the committee.
+The body of `_checkAccountingOracleReportCLBalances(...)` is replaced by the stateless classification shown above. `checkAccountingOracleReport(...)` no longer receives the redundant `_withdrawalsVaultTransfer` argument and becomes `view`. Report inputs are checked before direct-settlement simulation; checks that depend on simulated Withdrawal Queue values remain after it.
+
+**Checks retained.** The checker continues to require reported Withdrawal Vault and EL Rewards Vault amounts not to exceed their live balances and reported Burner shares not to exceed live backed requests. The simulated-share-rate check, Withdrawal Queue report validation, exit limits, and extra-data limits are unchanged.
+
+**Per-module invariant.** `checkModuleAndCLBalancesChangeRates(...)` remains a separate deterministic invariant and does not consult the committee. Every report must still satisfy:
+
+```text
+grossPositiveModuleDeltas
+    <= activatedBalance
+     + ordinaryCLRewardsAllowance
+     + consolidationAllowance
+```
+
+The existing balance-consistency, pending-balance, activation, consolidation, and module-baseline checks remain. `ordinaryCLRewardsAllowance` uses the annual positive soft limit, while `consolidationAllowance` continues to use the separate `consolidationEthAmountPerDayLimit`. Committee confirmation cannot override this invariant.
+
+The duplicate aggregate `postCLValidatorsBalance` growth branch inside `_checkModuleValidatorsBalanceIncrease(...)` is removed because aggregate classification now belongs to the CL accounting rebase check. Keeping that branch would reject an increase between the soft and hard limits before the aggregate check could consult the committee.
+
+The global first-report bypass and `isPostMigrationFirstReportDone` state are removed because the replacement checker is activated against the existing Staking Router accounting state rather than during its migration. The existing per-module cold-start behavior is retained: a module whose stored Accounting state has both zero validator balance and zero exited count is excluded from the positive-delta sum. Balance-consistency, pending-balance, and activation checks still apply.
+
+**Removed machinery.** The replacement checker removes:
+
+- the rolling negative-rebase history, window traversal, and baseline migration;
+- inferred Withdrawal Vault withdrawals, including `lastVaultBalanceAfterTransfer` and its cross-report finalization;
+- `PositiveTokenRebaseLimiter`, `smoothenTokenRebase(...)`, and `maxPositiveTokenRebase` management;
+- the global first-report module bootstrap, old separate aggregate growth checks, and tolerance-based second-opinion comparison;
+- superseded rebase limits, roles, setters, getters, and events.
+
+### Accounting
+
+`Accounting._simulateOracleReport()` no longer calls `smoothenTokenRebase(...)`. An accepted report is settled directly:
+
+```diff
+- (
+-     update.withdrawalsVaultTransfer,
+-     update.elRewardsVaultTransfer,
+-     update.sharesToBurnForWithdrawals,
+-     update.totalSharesToBurn
+- ) = _contracts.oracleReportSanityChecker.smoothenTokenRebase(...);
++ update.totalSharesToBurn =
++     _report.sharesRequestedToBurn + update.sharesToFinalizeWQ;
+```
+
+The three smoothing outputs are no longer needed in `CalculatedValues`. Their consumers use the accepted report or the already calculated Withdrawal Queue value directly:
+
+```diff
+- update.withdrawalsVaultTransfer
++ _report.withdrawalVaultBalance
+
+- update.elRewardsVaultTransfer
++ _report.elRewardsVaultBalance
+
+- update.sharesToBurnForWithdrawals
++ update.sharesToFinalizeWQ
+```
+
+The same values are used in post-report accounting, fee calculation, the call to `Lido.collectRewardsAndProcessWithdrawals(...)`, and the unchanged `checkSimulatedShareRate(...)` interface. As a result, `simulateOracleReport(...)` keeps its selector but returns a 12-field `CalculatedValues` tuple instead of 15 fields.
+
+**Live balances may exceed the reported values.** Vault balances and Burner requests can grow between the reference slot and report processing, so the checks use `reported <= live`. Only the values committed by the report are settled; later growth remains for the next report. Vault value and Burner requests deferred by the outgoing smoother become eligible for full settlement under the new rules.
+
+### LidoLocator
+
+LIP-39 requires a new `LidoLocator` implementation because the `oracleReportSanityChecker` address is immutable. The new instance points it to the replacement checker.
 
 ### Second opinion
 
-The provider can be a small contract controlled by the second-opinion committee:
+**Exceptional reports require an independent confirmation.** An aggregate CL accounting rebase inside an exceptional range is accepted only when the second-opinion committee confirms the complete report selected by Accounting Oracle consensus for the same reference slot.
+
+`_startProcessing()` freezes the consensus report before the checker runs. The exceptional path then compares that report with the committee confirmation:
 
 ```solidity
-struct Report {
-    bool exists;
-    uint256 clBalanceGwei;
-    uint256 withdrawalVaultBalanceWei;
-}
+(
+    consensusReportHash,
+    refSlot,
+    ,
+    processingStarted
+) = accountingOracle.getConsensusReport();
 
-address committee;
-mapping(uint256 => Report) reports;
+require(processingStarted);
+require(address(secondOpinionOracle) != address(0));
 
-// Called by the second-opinion committee. Calling it again replaces the attestation.
-function setReport(
-    uint256 reportReference,
-    uint256 clBalanceGwei,
-    uint256 withdrawalVaultBalanceWei
-) external {
-    require(msg.sender == committee);
-    reports[reportReference] = Report(true, clBalanceGwei, withdrawalVaultBalanceWei);
-}
+(exists, committeeReportHash) =
+    secondOpinionOracle.getReportHash(refSlot);
 
-// Called by the Sanity Checker while processing the accounting report.
-function getReport(uint256 reportReference) external view returns (
-    bool success,
-    uint256 clBalanceGwei,
-    uint256 withdrawalVaultBalanceWei
-) {
-    Report memory report = reports[reportReference];
-    return (report.exists, report.clBalanceGwei, report.withdrawalVaultBalanceWei);
-}
+require(exists && committeeReportHash == consensusReportHash);
 ```
 
-The report passes if:
+The consensus hash is `keccak256(abi.encode(data))` and binds the committee to every field covered by Accounting Oracle consensus. Neither the hash nor the reference slot is added to report-processing interfaces, and reports inside the normal range do not access the provider.
 
-- an attestation for `reportReference` is ready;
-- the second-opinion total CL balance is not below the reported value;
-- the difference does not exceed `clBalanceOraclesErrorUpperBPLimit` of the second-opinion value;
-- the reported Withdrawal Vault balance equals the committee value.
+The new `SecondOpinionOracle` stores one replaceable hash per `refSlot`; writing a zero hash clears it. `SUBMIT_REPORT_HASH_ROLE` must be held by the DAO-approved on-chain threshold-controlled committee contract, rather than an individual member or relayer. Committee members must be independent from Accounting Oracle members, independently validate the complete report, and recompute its ABI-encoded hash rather than copy the Accounting Oracle consensus hash.
 
-The committee publishes the exact values it verified, and `clBalanceOraclesErrorUpperBPLimit` is proposed to be set to zero. The reported and committee CL balances must therefore match. A mismatch reverts the report and must be investigated before the incorrect report or attestation is replaced.
+The committee cannot submit an Accounting Oracle report or override a hard limit. Exact-hash confirmation removes field-specific tolerances and binds the committee to the complete report, but makes the exceptional path dependent on committee availability and intentionally drops compatibility with CL-only ZK providers. A future proof system would have to prove the complete Accounting Oracle report hash.
 
-[LIP-23](./lip-23.md#matching) used a one-sided upper margin because a ZK oracle that identifies Lido validators by withdrawal credentials can include validators not deposited by Lido. The comparison remains one-sided: the second-opinion value may be slightly above the reported value, but never below it. A non-zero margin should be enabled only when the active provider's methodology requires it.
+### Interfaces, deprecations, and compatibility
 
-`clBalanceGwei` and `totalPostCLBalance` both mean the total CL balance, including pending deposits.
+| Interface or state | Change |
+| --- | --- |
+| `smoothenTokenRebase(...)` | Removed |
+| `checkAccountingOracleReport(...)` | Removes `_withdrawalsVaultTransfer`; selector changes |
+| `simulateOracleReport(...)` | Keeps its selector; output tuple is reduced from 15 to 12 fields |
+| `ISecondOpinionOracle.getReport(...)` | Replaced by `getReportHash(refSlot)` |
+| `LimitsList` | Keeps the same tuple length and unrelated field positions; four fields receive new names and semantics |
+| Checker report history | Removed and not migrated |
+| SP1-based oracle implementation | Deprecated and not adapted to the new interface |
+| RISC Zero/Boundless integration | Remains paused and is not deployed or migrated |
 
-The Withdrawal Vault value is matched only in the negative CL rebase branch. The exact match prevents the accounting oracle from understating ETH held in the vault, without adding this check to normal reports.
+The four limits are returned by `getOracleReportLimits()` and can be updated through the existing bulk setter, whose `(LimitsList, secondOpinionOracle)` ABI shape is retained. `setCLRebaseDecreaseBPLimits(...)` and `setAnnualCLRebaseIncreaseBPLimits(...)` update each soft-hard pair atomically under separate manager roles and emit pair-specific events. The provider may be changed through `setSecondOpinionOracle(...)` under `SECOND_OPINION_MANAGER_ROLE`.
 
-### Committee and provider
+Four existing `LimitsList` positions receive new names and semantics:
 
-The provider is a small contract controlled by a dedicated committee multisig. The committee can publish or replace an attestation for a `reportReference`.
+- `annualBalanceIncreaseBPLimit` → `annualCLRebaseIncreaseSoftBPLimit`;
+- `maxPositiveTokenRebase` → `annualCLRebaseIncreaseHardBPLimit`;
+- `maxCLBalanceDecreaseBP` → `clRebaseDecreaseSoftBPLimit`;
+- `clBalanceOraclesErrorUpperBPLimit` → `clRebaseDecreaseHardBPLimit`.
 
-The committee cannot submit an accounting report or override the hard cutoff. Its members must be independent from the accounting-oracle members. The DAO approves the multisig address and its initial membership and threshold. The committee's off-chain process must independently derive the total CL balance (not using Accounting Oracle software code) and Withdrawal Vault balance for the report reference. The provider contract only stores the resulting attestation.
+Readers of unrelated fields remain wire-compatible because their positions and types do not change. Consumers of the replaced fields, callers of the full-tuple setter, and decoders of `simulateOracleReport(...)` must update before activation.
 
-The checker retains `setSecondOpinionOracleAndCLBalanceUpperMargin(...)` and `SECOND_OPINION_MANAGER_ROLE`. The provider may also be changed through the existing bulk setter.
-
-### Configurable limits
-
-The proposal keeps the existing limit surface:
-
-- `maxCLBalanceDecreaseBP` in `LimitsList`;
-- `getMaxCLBalanceDecreaseBP()`;
-- `setMaxCLBalanceDecreaseBP(uint256)`;
-- the existing bulk `setOracleReportLimits(...)` setter;
-- `MaxCLBalanceDecreaseBPSet`;
-- `MAX_CL_BALANCE_DECREASE_MANAGER_ROLE`.
-
-The meaning changes from a cumulative 36-day allowance to a per-report hard cutoff. Other limit parameters are unchanged.
-
-The existing `clBalanceOraclesErrorUpperBPLimit`, `CLBalanceOraclesErrorUpperBPLimitSet`, and combined second-opinion setter are retained. The margin is zero for the committee and may be changed together with the provider.
-
-| Parameter                           | Proposed initial value | Meaning                                                                                                        |
-| ----------------------------------- | ---------------------: | -------------------------------------------------------------------------------------------------------------- |
-| `maxCLBalanceDecreaseBP`            |          `500` BP (5%) | Maximum negative CL rebase accepted in one report with committee attestation, relative to principal CL balance |
-| `clBalanceOraclesErrorUpperBPLimit` |                 `0` BP | Maximum amount by which the second-opinion CL balance may exceed the reported value                            |
-
-The initial hard cutoff must be finalized before implementation. A separate numerical research is required but lies outside the current proposal.
-
-An account holding `MAX_CL_BALANCE_DECREASE_MANAGER_ROLE` can change the cutoff through `setMaxCLBalanceDecreaseBP`.
-
-### Retained vault scalar
-
-The negative-rebase check stores no report state. It uses the `withdrawalsVaultTransfer` already calculated for the current report instead of deriving CL withdrawals from two vault snapshots. The 36-day report ledger and `lastReportTimestamp` are removed.
-
-`lastVaultBalanceAfterTransfer` remains and continues to be updated after every successful report because the separate CL balance increase check (`IncorrectTotalCLBalanceIncrease`) uses it to derive CL withdrawals. The new negative-rebase check does not use this scalar.
-
-No initialization function is added. The scalar starts at zero, so the first report may count the outgoing checker's remaining vault baseline as new CL withdrawals. This can cause a false revert in the unchanged CL balance increase check, but cannot make that check more permissive.
-
-### Removal of migration-only state
-
-The current `isPostMigrationFirstReportDone` flag only disables the module balance increase check for the first report after the SRv3 migration. It does not initialize or modify module or Staking Router state. The replacement checker is activated after that migration and its first accounting report have completed, so the flag and its one-report bypass are removed. The module balance increase check runs for every report.
-
-### Upgrade path
-
-1. The DAO approves the committee, its threshold, and the initial cutoff.
-2. The committee multisig, provider, and checker are deployed. Existing limits are copied, `maxCLBalanceDecreaseBP` is set to the approved value, and `clBalanceOraclesErrorUpperBPLimit` is set to zero.
-3. One DAO vote configures the provider and switches `LidoLocator` to the new checker. The provider is set before the checker becomes active.
-4. No negative-rebase ledger state is migrated or initialized. `lastVaultBalanceAfterTransfer` starts from zero as described above.
-
-### Removed code and parameters
-
-The following are removed:
-
-- `ReportData`, `reportData`, `getReportDataCount()`, `lastReportTimestamp`, and `CL_BALANCE_WINDOW`;
-- `_calcWindowDiff`, `_findWindowBaselineIndex`, and `_addReportData`;
-- `migrateBaselineSnapshot()`;
-- `BaselineSnapshotMigrated`, `MigrationAlreadyDone`, and `UnexpectedLidoVersion`;
-- `NegativeCLRebaseAccepted`.
-
-### Backward compatibility
-
-`getOracleReportLimits()` keeps the same tuple shape. `maxCLBalanceDecreaseBP` and `clBalanceOraclesErrorUpperBPLimit` stay in the same positions and types. The accounting daemon does not need to change its report calculation.
-
-The second-opinion ABI is simplified because no provider is currently connected: unused validator-count values are removed, and the parameter is named `reportReference`. No provider migration is needed. The new checker has a new address and ABI.
-
-`reportData` and `getReportDataCount()` are removed from the ABI. The accounting daemon does not use them.
+LIP-39 does not change the `AccountingOracle` report-processing code or `ReportData` schema. The Accounting Oracle consensus version is incremented because direct settlement can change Withdrawal Queue finalization values and therefore the consensus report hash.
 
 ## Security Considerations
 
-The proposal replaces a model of plausible CL losses with two explicit security boundaries:
+**Some token-rate changes remain outside the ranges.** EL rewards and Burner shares are excluded because their reported amounts cannot exceed live on-chain backing. Applying the same hard limit to the final stETH rebase would let permissionless EL Rewards Vault donations block otherwise valid reports. Bad-debt internalization may also reduce the share rate without committee confirmation; its existing VaultHub controls remain unchanged.
 
-- With the initial zero second-opinion margin, a negative CL rebase detected by the accounting-impact check requires an exact committee attestation; the current modeled allowance is removed.
-- The recovery corridor for a genuine loss is increased up to the hard cutoff. During Dual Governance-induced Rage Quit mode, the committee can attest directly without waiting for a DAO proposal.
+**Withdrawal Vault donations can move a report between ranges.** Withdrawal Vault value is included in the checked CL accounting balance, so genuine withdrawals can offset a CL decrease. A stateless checker cannot distinguish forced ETH from a CL withdrawal, making this a liveness risk rather than an unbacked-accounting risk.
 
-The zero threshold applies after adding the ETH actually transferred from the Withdrawal Vault, including balance left there after earlier reports. A compromised accounting oracle can offset a reported CL loss only with ETH that is present in the vault and transferred into protocol accounting. It cannot fabricate that balance beyond the live vault balance. This limited corridor is accepted to keep the check stateless.
+**Removing smoothing increases immediate market exposure.** Exceptional EL rewards and Burner requests are applied in one report. The existing 7.5 BP budget was calibrated to market conditions at the time, and current modeling finds positive gross returns for some sandwich routes below it. The proposal therefore accepts greater sandwich and downstream rate-shock exposure in exchange for removing partial settlement and its cross-report state.
 
-The hard cutoff is per report, not cumulative. If both reporting groups are compromised, they can repeat a within-cutoff loss in later reports. This risk is accepted to avoid restoring stateful loss accounting; separation of the two groups and monitoring are the controls against repetition.
-
-If the DAO later enables a non-zero second-opinion margin for a ZK provider, the accounting oracle can under-report CL balance within that margin even when the provider is honest. This is the price of supporting a withdrawal-credentials-based upper bound. The margin and provider must therefore be changed together, and the hard cutoff remains the outer bound.
-
-The check limits the combined effect of the reported CL balance and the actual Withdrawal Vault transfer, not raw CL performance or the final stETH rebase. EL rewards and other report components are outside this calculation. Reports that the accounting-impact calculation classifies as non-negative remain outside this check.
+**The configured authority renews across reports.** Joint compromise of the Accounting Oracle and committee can repeat committee-confirmed decreases and use positive allowances over successive intervals, so losses can compound until detected. Hard limits bound each report; committee independence, exact-hash confirmation, monitoring, and DAO control reduce the chance or duration of repeated abuse but do not eliminate it.
 
 ## Failure Modes
 
-**Provider missing or committee unavailable.** A genuine negative CL rebase report fails closed and is retried until the frame deadline. If the frame is missed, withdrawals and the rebase are deferred.
+**Committee unavailable or hash mismatch.** An exceptional report is deferred unless the committee publishes the matching hash before the frame deadline. A changed consensus report requires a new confirmation. Missing the frame also defers the rebase, Withdrawal Queue finalization, bunker-mode updates, and other report-dependent actions; after two days, VaultHub force rebalancing and bad-debt operations are also blocked. Changing the provider or a limit requires DAO execution and may be delayed by Dual Governance or Rage Quit. Normal-range reports remain unaffected.
 
-**Loss above the cutoff.** The report reverts even with a correct committee attestation. The DAO must change the cutoff or replace the checker. This may be delayed during Dual Governance Rage Quit.
-
-**Missed reports or non-finality.** The next report covers a longer period and may exceed the configured cutoff even when correct. It then reverts until the DAO raises the cutoff or replaces the checker.
-
-**First report after the checker switch.** Starting `lastVaultBalanceAfterTransfer` from zero makes the unchanged CL balance increase check more conservative. If the outgoing checker left a significant vault baseline, the first report may revert. This must be checked in a fork simulation before activation.
+**Report beyond a hard limit.** The report reverts even if the committee attests to it. For an increase, a later report has a larger annualized allowance because more time has elapsed. For a decrease, the limit remains fixed per report, but later CL rewards or Withdrawal Vault value may reduce the net loss. Otherwise the DAO must change the relevant limit or replace the checker. Dual Governance may delay that action.
 
 ## Links
 
+- [LIP-6: In-protocol coverage application mechanism](./lip-6.md)
+- [LIP-12: On-chain part of the rewards distribution after the Merge](./lip-12.md)
 - [LIP-23: Negative rebase sanity check with second opinion](./lip-23.md)
 - [LIP-35: Staking Router v3](./lip-35.md)
 - [SRv3 sanity-check parameter research](https://hackmd.io/0ePemSJtQA6S5NDK2M3mww)
