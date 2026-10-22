@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-10-12
+updated: 2026-10-22
 ---
 
 ## Simple Summary
@@ -52,7 +52,7 @@ Today, stake redistribution across Node Operators and modules happens mostly thr
 
 ### Overview
 
-The diagram above shows the two paths by which withdrawal requests reach the EIP-7002 system contract. Both converge on the `TriggerableWithdrawalsGateway` (TWG) — the single entry point for every partial (PWR) or full (FWR) withdrawal request — and draw from its shared, balance-based rate limit; a batch that does not fit into the remaining limit reverts as a whole. The TWG forwards each request with the exact EIP-7002 fee to the `WithdrawalVault`, which encodes it and submits it to the EIP-7002 system contract and refunds any unused fee to the caller-specified refund recipient.
+The diagram above shows the two paths by which withdrawal requests reach the EIP-7002 system contract. Both converge on the `TriggerableWithdrawalsGateway` (TWG) — the single entry point for every partial (PWR) or full (FWR) withdrawal request — and each caller (consumer) draws from its own pair of rate limits: a PWR limit in ETH and an FWR limit in validators; a batch that does not fit into the caller's remaining limits reverts as a whole. The TWG forwards each request with the exact EIP-7002 fee to the `WithdrawalVault`, which encodes it and submits it to the EIP-7002 system contract and refunds any unused fee to the caller-specified refund recipient.
 
 With the transition to EIP-7002 usage for stake withdrawals, two mechanisms introduced by the [Triggerable Withdrawals](./lip-30.md) framework become redundant and are removed in this LIP: **exit delay verification with late-exit penalties** and **exit requests hash delivery via EasyTrack**. The Ejector can be used only for VEBO-requested FWRs (see [Deprecating the Ejector](#deprecating-the-ejector)).
 
@@ -63,11 +63,11 @@ With the transition to EIP-7002 usage for stake withdrawals, two mechanisms intr
     - Phase 2 — issue **forced validator exits**;
     - Phase 3 — add **active rebalancing** within CMv2. Phase 3 is optional and can be switched off (leaving only Phases 1–2).
 2. **The off-chain Oracle submits the report to the VEBO contract.** On submission, the VEBO:
-    - checks the report's total requested withdrawal balance in ETH against the sanity checker limit, weighing each PWR at its `amount` and each FWR at a flat 2048 ETH regardless of WC type (`0x01` or `0x02`);
+    - checks the report's total requested withdrawal balance in ETH against the [sanity checker limit](#oraclereportsanitychecker), weighing each PWR at its `amount` and each FWR at the maximum effective balance of its module's WC type (32 ETH for `0x01`, 2048 ETH for `0x02`);
     - retrieves the validators' public keys from the modules via the `StakingRouter` using their key indices and, for every PWR, checks that the target module has `partialWithdrawalsAllowed` set;
     - appends the intents, in report order, to the single FIFO queue in the `TriggerableWithdrawalsBus` contract;
     - emits a `WithdrawalRequested` event per intent.
-3. **Execute queued intents from `TriggerableWithdrawalsBus`.** An executor (the [Triggerable Withdrawals Bus Bot](#triggerable-withdrawals-bus-bot) or any other caller) calls the permissionless `processWithdrawalIntents`, passing the maximum number of intents to process and the required EIP-7002 fee. The queue pops up to that many intents from its head, in order, and hands them with the fee to the TWG, which turns them into actual withdrawal requests. If the batch exceeds the TWG's remaining limit, the whole call reverts and the intents stay at the head of the queue, so the executor must size the batch to fit the remaining limit.
+3. **Execute queued intents from `TriggerableWithdrawalsBus`.** An executor (the [Triggerable Withdrawals Bus Bot](#triggerable-withdrawals-bus-bot) or any other caller) calls the permissionless `processWithdrawalIntents`, passing the exact number of intents to process and the required EIP-7002 fee. The queue pops exactly that many intents from its head (the call reverts if the queue holds fewer), in order, and hands them with the fee to the TWG, which turns them into actual withdrawal requests. If the batch exceeds the remaining PWR or FWR limit of the VEBO consumer on the TWG, the whole call reverts and the intents stay at the head of the queue, so the executor must size the batch to fit both remaining limits.
 
 ### Rationale
 
@@ -102,9 +102,12 @@ The [`SubmitExitRequestHashes` EasyTrack factories](lip-30.md#appendix-b---easy-
 
 With no consumer left, the hash-delivery entry points and the EasyTrack factories built on them can be safely removed.
 
-#### From validator-count limits to balance-based limits
+#### Per-consumer PWR and FWR limits
 
-We are updating the `TriggerableWithdrawalsGateway`. Its rate limiter becomes **balance-based**: it bounds the total ETH requested to be withdrawn per frame. Each PWR is weighed by the stake it withdraws (`amountGwei`); each FWR is weighed at a flat 2048 ETH — the maximum effective balance of a `0x02` validator — so the TWG can weigh a request without knowing the validator's WC type.
+We are updating the `TriggerableWithdrawalsGateway`. Its single global count-based limit is replaced with **per-consumer limits**: every caller — the VEBO path (via the `TriggerableWithdrawalsBus`) and each staking module's `Ejector` (CSM, CSM `0x02`, CMv2) — has its own quota, so one consumer cannot exhaust the budget of another. Each consumer's quota has **two independent parts**:
+
+- **PWR limit, in ETH.** A PWR withdraws exactly `amountGwei`, so the stake it moves is known on-chain and the limit can bound it precisely.
+- **FWR limit, in validators.** The stake an FWR moves is the validator's balance, which the TWG cannot see — it ranges from ~32 ETH (`0x01`) to 2048 ETH (`0x02`). Counting FWRs in validators avoids weighing every FWR at a worst-case 2048 ETH, which would overstate a `0x01` exit ~64× and let a few FWRs drain the budget for PWRs.
 
 ### Off-chain Oracle: ordering and rebalancing logic
 
@@ -134,7 +137,7 @@ A PWR added earlier in **this report** does not block an FWR. If a validator wit
 
 **Exit-eligibility floor for freshly activated validators.** The CL silently drops any EIP-7002 withdrawal request — PWR or FWR — for a validator that has not yet been active for `SHARD_COMMITTEE_PERIOD` (256 epochs, ~27.3 hours) since its `activation_epoch`. The iterator MUST NOT select such a validator for withdrawal in any phase. This affects selection only: a validator still inside its `SHARD_COMMITTEE_PERIOD` window continues to count normally toward all stake and weight accounting.
 
-**Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report limit. All three phases share this limit. Requests are weighed with the **same formula as the on-chain TWG limiter** — `amount` for a PWR, and a flat 2048 ETH for every FWR regardless of WC type; see [rate limiter invariants](#triggerablewithdrawalsgateway-twg).
+**Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report [sanity checker limit](#oraclereportsanitychecker). All three phases share this limit. Requests are weighed with the **same formula as the on-chain sanity check** — `amount` for a PWR, and the maximum effective balance of the module's WC type for an FWR (32 ETH for `0x01`, 2048 ETH for `0x02`).
 
 #### Income prediction
 
@@ -149,7 +152,7 @@ available(T) = elBalance                // EL rewards vault + WithdrawalVault + 
 Phase 1 adds requests until  requested + available(T) ≥ unfinalizedStETH
 ```
 
-`requested` counts each request at the ETH it brings in: `amount` for a PWR, and for an FWR the validator's balance capped at its maximum effective balance. This is intentionally different from the [rate-limit weight](#shared-iterator-mechanics): weighing an FWR at a flat 2048 ETH is conservative for the rate limit, but would overstate incoming ETH here and under-request exits.
+`requested` counts each request at the ETH it brings in: `amount` for a PWR, and the validator's current **balance** for an FWR. If a validator has an FWR — in this report or in flight — its PWRs count **0**: the PWRs and the FWR together cannot bring in more than the validator's balance, and the FWR already counts all of it.
 
 ##### Liquid rewards
 
@@ -168,20 +171,22 @@ liquidRewards(T) = elRate × T
 
 ##### In-flight withdrawals
 
-Withdrawals already requested in earlier reports MUST be counted. They come from three sources:
+Withdrawals already requested in earlier reports MUST be counted. They come from four sources:
 
 - **CL pending partial withdrawals** — Lido entries in `state.pending_partial_withdrawals`. They arrive after their `withdrawable_epoch`.
-- **Unprocessed `TriggerableWithdrawalsBus` intents** — read via `getWithdrawalIntents`. Their exit epoch is projected through the exit churn, as for new requests, starting after the CL's current `earliest_exit_epoch`.
-- **Validators with an exit already initiated on the CL** (`exit_epoch` set). They arrive after their `withdrawable_epoch`.
+- **Unprocessed EIP-7002 requests** — Lido requests (`source_address` is the `WithdrawalVault`) still queued in the EIP-7002 system contract, not yet dequeued to the CL; read from the contract's request queue storage at the report's reference block. The CL dequeues them ahead of the `TriggerableWithdrawalsBus` intents, so their exit epoch is projected through the exit churn first, starting after the CL's current `earliest_exit_epoch`.
+- **Unprocessed `TriggerableWithdrawalsBus` intents** — read via `getWithdrawalIntents`. Their exit epoch is projected through the exit churn, as for new requests, after the unprocessed EIP-7002 requests.
+- **Lido validators with an exit already initiated on the CL** (`exit_epoch` set) — whether by a Lido request or a voluntary exit by the operator; slashed validators are not counted (see rule 2 below). They arrive after their `withdrawable_epoch`.
 
-One validator can appear in more than one source, for example a queued FWR or PWR for a validator that was then slashed or exited voluntarily. `inFlight(T)` is therefore computed **per validator**, counting each validator **once**, by the first rule that matches:
-
+One validator can appear in more than one source, for example a queued FWR or PWR for a validator that was then slashed or exited voluntarily. `inFlight(T)` is therefore computed **per hm,validator**, counting each validator **once**, by the first rule that matches:
+ bn
 1. **Consolidation source** (`source_index` of an entry in `state.pending_consolidations`) — counts **0**. Its balance moves to the target validator, not to the `WithdrawalVault`. This matches the current Oracle, which excludes consolidation sources from withdrawable balance.
-2. **Exit initiated** (`exit_epoch` set) — counts at its **balance**. Its pending partials and queued intents add nothing: after `exit_epoch` is set, the CL ignores new withdrawal requests for the validator and processes its pending partials as 0, so only the full exit delivers ETH.
-3. **Queued FWR** — counts at its **balance** capped at its maximum effective balance. Its queued PWRs add nothing.
-4. **Otherwise** — the sum of its CL pending partials and queued PWRs, capped at `balance − MIN_ACTIVATION_BALANCE`, as the CL applies them one by one against the remaining balance.
+2. **Slashed** — counts **0** and never extends `T`. Its `withdrawable_epoch` is set at least `EPOCHS_PER_SLASHINGS_VECTOR` (8,192 epochs, ~36 days) after slashing, usually far beyond `T`, and its final balance depends on the not-yet-applied correlation penalty. Ignoring it only understates incoming ETH, so the Oracle errs toward requesting slightly more.
+3. **Exit initiated, not slashed** (`exit_epoch` set) — **always** counts, at its **balance**. Its pending partials and queued intents add nothing: after `exit_epoch` is set, the CL ignores new withdrawal requests for the validator and processes its pending partials as 0.
+4. **Queued FWR, no PWR pending on the CL** (FWR in the EIP-7002 system contract or the `TriggerableWithdrawalsBus`, and no entry for the validator in `state.pending_partial_withdrawals`) — counts at its current **balance**. Its queued PWRs count 0, since the FWR already counts the whole balance. A queued FWR for a validator that does have a PWR pending on the CL falls through to rule 5: the CL ignores an FWR while `pending_balance_to_withdraw > 0`, so only the PWRs are certain to deliver ETH.
+5. **Otherwise** — the sum of its PWRs at every stage: pending on the CL (`state.pending_partial_withdrawals`), queued in the EIP-7002 system contract, and queued in the `TriggerableWithdrawalsBus`; capped at `balance − MIN_ACTIVATION_BALANCE`, as the CL applies them one by one against the remaining balance.
 
-A validator contributes only if its withdrawable epoch (actual, or projected for queued intents) is ≤ `T` (see [Prediction horizon](#prediction-horizon)). Every rule picks the lower of the overlapping amounts, so `inFlight(T)` never overstates incoming ETH.
+Validators under rules 3–5 always contribute, and their withdrawable epoch (actual, or projected for queued intents) extends `T` (see [Prediction horizon](#prediction-horizon)). Every rule picks the lower of the overlapping amounts, so `inFlight(T)` never overstates incoming ETH.
 
 In-flight PWRs also reduce the validator's balance for selection: PWR eligibility (balance ≥ 33 ETH) and the PWR amount are evaluated on `balance − in-flight PWRs` of that validator.
 
@@ -195,7 +200,7 @@ arrival = exit_epoch + MIN_VALIDATOR_WITHDRAWABILITY_DELAY
 
 The sweep delay (FWR) and the pending-partials drain delay (PWR) are intentionally ignored. Both only push arrival later, so ignoring them shortens `T` and lowers the predicted rewards. The prediction therefore errs toward requesting slightly more, never less.
 
-The horizon `T` is the latest arrival epoch among the in-flight requests and the requests added to this report so far.
+The horizon `T` is the latest arrival epoch among the in-flight requests and the requests added to this report so far, excluding slashed validators (see [In-flight withdrawals](#in-flight-withdrawals)).
 
 #### Phase 1 — Cover withdrawal-queue demand
 
@@ -262,7 +267,7 @@ firstActivationEpoch = min(validator.activation_epoch)   over the operator's dep
 inGracePeriod        = (refEpoch − firstActivationEpoch) < ACTIVE_REBALANCING_GRACE_PERIOD_EPOCHS
 ```
 
-**Bounds.** The total rebalancing stake added to the report is capped at `ACTIVE_REBALANCING_RATE_LIMIT` and by the remaining shared per-report exit limit. Both limits weigh a PWR at its `amount` and an FWR at a flat 2048 ETH, regardless of WC type. Rebalancing reduces excess stake; it does not guarantee that the withdrawn ETH is redeposited or that it reaches a specific under-target operator. That depends on future withdrawal demand, available buffer ETH, and the normal deposit-allocation rules.
+**Bounds.** The total rebalancing stake added to the report is capped at `ACTIVE_REBALANCING_RATE_LIMIT`, which weighs a PWR at its `amount` and an FWR at the validator's balance capped at its maximum effective balance. Rebalancing requests also count toward the remaining shared [per-report exit limit](#shared-iterator-mechanics). Rebalancing reduces excess stake; it does not guarantee that the withdrawn ETH is redeposited or that it reaches a specific under-target operator. That depends on future withdrawal demand, available buffer ETH, and the normal deposit-allocation rules.
 
 **Ordering.** When it runs, the iterator ranks over-target CMv2 operators by, in order:
 
@@ -325,15 +330,16 @@ interface IValidatorsExitBusOracle {
 It stores the single FIFO queue of withdrawal request intents and exposes the full queue surface:
 
 - **`addWithdrawalIntents`** — role-gated append; the VEBO is the only expected role holder, adding decoded report records to the tail of the queue in report order.
-- **`processWithdrawalIntents`** — the permissionless execution entry point: pops up to `count` intents from the head of the queue and executes them down the TWG → WithdrawalVault → EIP-7002 path, with the caller forwarding the per-request fee and naming a refund recipient for the unused remainder. Returns the number of intents actually processed, which may be less than `count` if the queue holds fewer intents. If the popped intents exceed the TWG's remaining frame budget, the whole call reverts and the queue is left unchanged.
+- **`processWithdrawalIntents`** — the permissionless execution entry point: pops exactly `count` intents from the head of the queue and executes them down the TWG → WithdrawalVault → EIP-7002 path, with the caller forwarding the per-request fee and naming a refund recipient for the unused remainder. If the queue holds fewer than `count` intents, the call reverts. If the popped intents exceed the remaining PWR or FWR limit of the VEBO consumer on the TWG, the whole call reverts and the queue is left unchanged.
 - **`unprocessedIntentsCount` / `getWithdrawalIntents`** — views that let permissionless executors and monitoring tools inspect the queue before processing it; `getWithdrawalIntents` pages through the queued intents in execution order.
 
 ```solidity
 interface ITriggerableWithdrawalsBus {
     /// A single queued withdrawal request intent — not yet an EIP-7002 request.
-    /// amount == 0  -> full withdrawal (FWR) once executed; weighed against the TWG's
-    ///                 extracted-balance rate limit at a flat 2048 ETH.
-    /// amount  > 0  -> partial withdrawal (PWR) once executed; weighed at amount.
+    /// amount == 0  -> full withdrawal (FWR) once executed; counts as one validator
+    ///                 against the TWG's FWR limit.
+    /// amount  > 0  -> partial withdrawal (PWR) once executed; counts at amount
+    ///                 against the TWG's PWR limit.
     struct WithdrawalIntent {
         uint64  amount;         // gwei; 0 = full withdrawal (FWR), > 0 = partial withdrawal (PWR).
         bytes   pubkey;         // validator pubkey
@@ -343,12 +349,12 @@ interface ITriggerableWithdrawalsBus {
     /// FIFO queue. Role-gated; the VEBO is the only expected holder of the role.
     function addWithdrawalIntents(WithdrawalIntent[] calldata intents) external;
 
-    /// Permissionless — pop up to `count` queued intents and execute each as an
+    /// Permissionless — pop exactly `count` queued intents and execute each as an
     /// actual withdrawal request down the EIP-7002 path (TWG -> WithdrawalVault -> predeploy).
     /// Caller forwards the per-request fee; unused fee is refunded to `refundRecipient`.
-    /// Returns the number of intents actually processed: fewer than `count` when the
-    /// queue holds fewer intents. Reverts if the batch exceeds the TWG's remaining frame budget.
-    function processWithdrawalIntents(uint256 count, address refundRecipient) external payable returns (uint256 processedCount);
+    /// Reverts if the queue holds fewer than `count` intents, or if the batch exceeds
+    /// the remaining TWG limits of the VEBO consumer.
+    function processWithdrawalIntents(uint256 count, address refundRecipient) external payable;
 
     /// Number of intents waiting in the FIFO queue.
     function unprocessedIntentsCount() external view returns (uint256);
@@ -374,8 +380,8 @@ interface ITriggerableWithdrawalsGateway {
         bytes   pubkey;         // dynamic type placed last, consistent with the queue's WithdrawalIntent
     }
 
-    /// Processes all `intents` in order; reverts if their total weight exceeds
-    /// the remaining frame budget (no partial processing).
+    /// Processes all `intents` in order; reverts if they exceed the caller's remaining
+    /// PWR limit (sum of PWR amounts) or FWR limit (number of FWRs) (no partial processing).
     /// Forwards each intent to the WithdrawalVault with the exact EIP-7002 fee and
     /// refunds any unused fee to `refundRecipient`.
     function triggerWithdrawals(
@@ -385,49 +391,74 @@ interface ITriggerableWithdrawalsGateway {
 }
 ```
 
-All callers go through this single entry point and draw from the **same** extracted-balance rate limit.
+All callers go through this single entry point, and each draws from **its own** PWR and FWR limits (see the rate limiter below).
 
 As part of this, it **drops `_notifyStakingModules`**: the current TWG calls back into staking modules whenever it triggers an exit, via the Staking Router's `onValidatorExitTriggered`, which in turn calls the module's `onValidatorExitTriggered`. This callback existed to support late-exit-penalty accounting, which is removed in this release. Exits triggered through the TWG no longer notify staking modules, so any module-side logic hanging off that notification stops firing.
 
-**Rate limiter.** The limiter is **balance-based** — it caps the total extracted balance per frame. The current count-based limit (`maxExitRequestsLimit`, `exitsPerFrame`, `frameDurationInSec`, measured in validator exits) is replaced with the same restoring-quota mechanics denominated in ETH (gwei). The setter and getter are replaced:
+**Rate limiter.** The single global count-based limit (`maxExitRequestsLimit`, `exitsPerFrame`, `frameDurationInSec`, measured in validator exits) is replaced with **per-consumer limits**. A consumer is the immediate caller of `triggerWithdrawals` (`msg.sender`): the `TriggerableWithdrawalsBus` for the VEBO path, and the `Ejector` of each staking module. Every consumer has two independent quotas with the same restoring-quota mechanics as today ([LIP-30, Appendix A](lip-30.md#appendix-a--limit-implementation)):
+
+- **PWR limit** — denominated in ETH (gwei). Each PWR consumes its `amountGwei`.
+- **FWR limit** — denominated in validators. Each FWR consumes one unit, whatever the validator's balance or WC type.
+
+The setter and getter are replaced:
 
 ```solidity
 interface ITriggerableWithdrawalsGateway {
+    struct LimitConfig {
+        uint256 maxLimit;            // maximum quota that can be accumulated
+        uint256 limitPerFrame;       // quota restored per frame
+        uint256 frameDurationInSec;  // frame duration, in seconds
+    }
+
+    struct LimitInfo {
+        uint256 maxLimit;
+        uint256 limitPerFrame;
+        uint256 frameDurationInSec;
+        uint256 prevLimit;
+        uint256 currentLimit;        // remaining quota; 0 if the limit is not set
+    }
+
     /// Gated by TW_EXIT_LIMIT_MANAGER_ROLE.
-    /// @param maxWithdrawalLimitGwei Maximum quota, in gwei, that can be accumulated.
-    /// @param withdrawalLimitPerFrameGwei Quota, in gwei, restored per frame.
-    /// @param frameDurationInSec Frame duration, in seconds, after which `withdrawalLimitPerFrameGwei` is restored.
-    function setWithdrawalLimit(
-        uint256 maxWithdrawalLimitGwei,
-        uint256 withdrawalLimitPerFrameGwei,
-        uint256 frameDurationInSec
+    /// @param consumer Caller address the limits apply to.
+    /// @param pwrLimit PWR quota, in gwei.
+    /// @param fwrLimit FWR quota, in validators.
+    function setConsumerLimits(
+        address consumer,
+        LimitConfig calldata pwrLimit,
+        LimitConfig calldata fwrLimit
     ) external;
 
-    function getWithdrawalLimitFullInfo() external view returns (
-        uint256 maxWithdrawalLimitGwei,
-        uint256 withdrawalLimitPerFrameGwei,
-        uint256 frameDurationInSec,
-        uint256 prevWithdrawalLimitGwei,
-        uint256 currentWithdrawalLimitGwei   // remaining budget; type(uint256).max if the limit is not set
+    function getConsumerLimitsFullInfo(address consumer) external view returns (
+        LimitInfo memory pwrLimit,   // gwei
+        LimitInfo memory fwrLimit    // validators
     );
 }
 ```
 
-`setExitRequestLimit` and `getExitRequestLimitFullInfo` are removed. The values stored in the count-based limit cannot be reinterpreted, so the upgrade MUST call `setWithdrawalLimit` with ETH-denominated values. The new values are the current count-based limits ([LIP-30](lip-30.md#triggerablewithdrawalsgatewaysol)) multiplied by 32 ETH, keeping the same throughput for `0x01`-sized withdrawals:
+`setExitRequestLimit` and `getExitRequestLimitFullInfo` are removed. The values stored in the global limit cannot be reinterpreted, so the upgrade MUST call `setConsumerLimits` for every consumer listed in [Initial limits](#initial-limits).
 
-| Parameter                     | Current (count) | New (ETH)            |
-|-------------------------------|-----------------|----------------------|
-| `maxWithdrawalLimitGwei`      | 11,200 exits    | 358,400 ETH          |
-| `withdrawalLimitPerFrameGwei` | 1 exit          | 32 ETH               |
-| `frameDurationInSec`          | 48 s            | 48 s (unchanged)     |
+Four rules apply:
 
-With these values the max-limit floor (≥ 2048 ETH) holds. Because every FWR weighs a flat 2048 ETH, a fully drained quota restores one FWR's worth of budget every 64 frames (~51 minutes).
+1. **Separate quotas.** A call consumes the sum of its PWR `amount`s from the caller's PWR quota and the number of its FWRs from the caller's FWR quota. Consumers never share quota.
+2. **Unset means zero.** A consumer without configured limits has zero quota, so any non-empty call from it reverts. A zero PWR limit disables PWRs for that consumer.
+3. **Max limit floors.** For every consumer that has a non-zero limit, the PWR `maxLimit` MUST be ≥ 2048 ETH and the FWR `maxLimit` MUST be ≥ 1 validator, so a single request of either type always fits once the quota has fully restored, and the FIFO can never jam permanently on its head intent.
+4. **Revert on exhaustion.** If a batch exceeds either remaining quota of the caller, the TWG reverts the whole transaction; there is no partial processing. Callers must size their batches to fit both remaining quotas.
 
-Three rules apply:
+##### Initial limits
 
-1. **One weight formula.** A PWR consumes `amountGwei` of the quota. An FWR consumes a flat 2048 ETH — the maximum effective balance of a `0x02` validator — for every validator, whether `0x01` or `0x02`.
-2. **Max limit floor.** `maxWithdrawalLimitGwei` MUST be ≥ 2048 ETH, so the head-of-queue request — whatever its weight — can always fit once the quota has fully restored, and the FIFO can never jam permanently on a single max-weight FWR.
-3. **Revert on exhaustion.** If a batch's total weight exceeds `currentWithdrawalLimitGwei`, the TWG reverts the whole transaction; there is no partial processing. Callers must size their batches to fit the remaining budget.
+The upgrade sets the following limits.
+
+- **VEBO.** The limits are sized against the [per-report sanity limit](#oraclereportsanitychecker) of 19,200 ETH. The PWR `maxLimit` equals the most one report can carry: 19,200 ETH for a report made entirely of PWRs. The FWR `maxLimit` is 500 validators — the maximum number of validators a single VEBO report can carry, capped by the `OracleDaemonConfig` setting. A report made entirely of FWRs therefore always fits. The restore rates (32 ETH per 48 s and 5 validators per 288 s) restore 19,200 ETH and 500 validators — one full report of either kind — every 8 hours, the VEBO report period (75 epochs).
+- **Modules.** Modules trigger **FWRs only**: their `Ejector` paths (`voluntaryEject` and strikes-based ejection) are full-exit only, and PWRs for module validators go through the VEBO. Their PWR limit is therefore **0**, so the TWG rejects any PWR from a module path. FWR limits are lower for `0x02` modules, whose validators can hold up to 2048 ETH each.
+
+| Consumer (`msg.sender`)            | WC type | PWR `maxLimit`          | PWR restore   | FWR `maxLimit`   | FWR restore         |
+|------------------------------------|---------|-------------------------|---------------|------------------|---------------------|
+| VEBO (`TriggerableWithdrawalsBus`) | mixed   | 19,200 ETH              | 32 ETH / 48 s | 500 validators   | 5 validators / 288 s |
+| CSM (`Ejector`)                    | `0x01`  | 0 (PWRs disabled)       | —             | 500 validators   | 1 validator / 192 s |
+| CSM `0x02` (`Ejector`)             | `0x02`  | 0 (PWRs disabled)       | —             | 150 validators   | 1 validator / 384 s |
+| CMv2 (`Ejector`)                   | `0x02`  | 0 (PWRs disabled)       | —             | 150 validators   | 1 validator / 384 s |
+
+All non-zero limits satisfy the max limit floors. Any later change to a consumer's limits, including enabling PWRs for a module, requires a DAO vote.
 
 #### StakingRouter
 
@@ -511,7 +542,7 @@ A new EasyTrack factory is **added**: it lets the CM Committee ([CMC](lip-33.md#
 
 It is proposed to develop a new off-chain bot that monitors the `TriggerableWithdrawalsBus` and processes withdrawal intents as soon as they appear in the queue:
 
-- **Rate-limit aware.** Before each call, the bot reads the remaining TWG budget (`currentWithdrawalLimitGwei` from `getWithdrawalLimitFullInfo`) and sets `count` so that the total weight of the batch fits into it (see the [rate limiter rules](#triggerablewithdrawalsgateway-twg)).
+- **Rate-limit aware.** Before each call, the bot reads the VEBO consumer's remaining TWG limits (`getConsumerLimitsFullInfo` for the `TriggerableWithdrawalsBus` address) and sets `count` so that both the sum of the batch's PWR amounts and the number of its FWRs fit into them (see the [rate limiter rules](#triggerablewithdrawalsgateway-twg)).
 - **Fee-capped.** The bot processes intents only while the EIP-7002 request fee is below the maximum fee set in its config. During a fee spike it pauses and resumes once the fee drops, so short-term spikes delay execution instead of increasing its cost.
 
 The bot is a convenience, not a trust assumption: `processWithdrawalIntents` stays permissionless, so anyone can process the queue at the current fee while the bot is paused or offline.
@@ -521,7 +552,7 @@ The bot is a convenience, not a trust assumption: `processWithdrawalIntents` sta
 - **Interference / DDoS by public callers.** The single FIFO queue keeps request order fixed by the Oracle report and avoids the FWR-replay attack surface.
 - **PWR/FWR concurrency for one validator.** The CL rejects an FWR while the validator has an unprocessed PWR. The FWR fee is lost and the request must be sent again. **The VEBO MUST NOT issue an FWR for a validator that has an in-flight PWR** — in the `TriggerableWithdrawalsBus` queue, in the EIP-7002 system contract queue, or in the CL `pending_partial_withdrawals` (see [No FWR over an unprocessed PWR](#shared-iterator-mechanics)). It may use an FWR only after the PWR has cleared all of them. A PWR from the same report is instead replaced by the FWR. The VEBO MUST never select a validator that already has an in-flight FWR.
 - **PWRs to non-PWR modules.** A PWR for a CSM `0x02` validator cannot be dismissed once queued, and its effect on CSM stake and bond accounting would be hard to unwind. The VEBO therefore enforces `partialWithdrawalsAllowed` on-chain instead of relying on the off-chain Oracle.
-- **Balance-based TWG limit.** Changing the TWG rate limiter to bound extracted balance (instead of request count) caps how much stake can leave per frame, so a stream of large partial withdrawals cannot exceed the intended ETH-denominated limit. Note this makes FWRs the expensive request against the limit: every FWR consumes a flat 2048 ETH of the frame budget regardless of the validator's actual balance, so a burst of FWRs can exhaust the TWG limit far faster than PWRs. For a `0x01` validator this overstates the withdrawn stake roughly 64×, which the configured limit has to account for. The max-limit floor (`maxWithdrawalLimitGwei` ≥ 2048 ETH) guarantees the queue always advances in the worst case: an FWR at the head fits once the quota has restored to 2048 ETH.
+- **Per-consumer TWG limits.** Each consumer has its own quota, so a compromised or malfunctioning module `Ejector` can exhaust only its own limits and cannot block VEBO-path withdrawals or another module's ejections. The PWR limit, in ETH, caps how much stake partial withdrawals can move per frame. The FWR limit is counted in validators, so the stake it bounds depends on the consumer's WC type: up to ~32 ETH per FWR for `0x01` validators and up to 2048 ETH per FWR for `0x02` validators. The limits for `0x02` consumers are set lower in validator terms to account for this (see [Initial limits](#initial-limits)). Module consumers get a zero PWR limit, so the TWG itself rejects PWRs from module paths. The max-limit floors guarantee the VEBO queue always advances: the head intent fits once the corresponding quota has fully restored.
 - **EIP-7002 fee risk.** Modeling of normal usage shows that high fees are unlikely at realistic batch sizes. Short-term spikes are absorbed by the Triggerable Withdrawals Bus Bot's maximum-fee threshold. See [EIP-7002 Partial Withdrawal Economics](https://hackmd.io/G82dyK7lQZWmO9vYNJ7fjA?view#EIP-7002-Fee-Dynamics).
 - **Migration safety.** The explicit `ACTIVE_REBALANCING_ENABLED` switch ensures active rebalancing cannot interfere with migration sequencing.
 - **Grace period.** Excluding new operators from the rebalancing calculation entirely (no contribution to `moduleStake`/`moduleTotalWeight`, not ranked, not targeted) prevents them from inducing immediate rebalancing pressure right after onboarding. Residual risk: a drained operator can re-register under a fresh identity and re-receive stake through normal deposit allocation while immune to rebalancing for the grace window; this is bounded by CMv2 bond requirements and `ACTIVE_REBALANCING_RATE_LIMIT`.
@@ -530,7 +561,7 @@ The bot is a convenience, not a trust assumption: `processWithdrawalIntents` sta
 
 - **Short EIP-7002 fee spike** — the Triggerable Withdrawals Bus Bot pauses while the fee is above its configured maximum and resumes once it drops; queued intents wait, delaying WQ fulfillment. Anyone can still process the queue at the current fee.
 - **Sustained EIP-7002 fee spike** — the Triggerable Withdrawals Bus Bot stays paused and queued intents wait for the duration of the spike, delaying WQ fulfillment. Mitigation: monitor execution-layer withdrawal-request fees and, if the delay becomes unacceptable, process the queue at the current fee (the call is permissionless) or raise the bot's maximum fee.
-- **TWG limit exhausted** — `processWithdrawalIntents` and module-triggered withdrawals revert until the frame budget restores; queued intents stay at the head of the queue. VEBO-path and module-path requests share the budget, so a burst on one path can temporarily block the other.
+- **TWG limit exhausted** — calls from the consumer whose PWR or FWR limit is exhausted revert until that quota restores. For the VEBO path, `processWithdrawalIntents` reverts and queued intents stay at the head of the queue; because the queue is FIFO, an exhausted FWR limit also holds back PWRs queued behind the head FWR (and vice versa). Other consumers are unaffected, since every consumer has its own limits.
 - **No-op requests** (a validator is already exiting, slashed, or is otherwise unaffected) — there is **no dismissal mechanism**. Every queued request MUST still be executed before the FIFO can advance, even when the CL will not apply it.
 
 ## Copyright
