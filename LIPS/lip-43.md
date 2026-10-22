@@ -24,9 +24,12 @@ For the off-chain components of the [Accounting](https://docs.lido.fi/guides/ora
 - Moves the per-report limit on validator exit requests (lowered from 600 to 500 after gas limit issues) from a hard-coded oracle constant to the `OracleDaemonConfig` contract;
 - Updates Beacon API handling and oracle consensus versions.
 
-On-chain changes comprise only changes to `Verifier` contracts and contract components, namely:
+On-chain changes include updates to `Verifier` contracts and related components:
+
 - Verifiers now use hard-coded generalized indices (GIndices), with item paths derived at runtime.
 - Proof methods for the events that should be proven against the exact beacon block now use `block_roots` from the corresponding beacon state to reach required block roots.
+
+The Curated Module changes to add a flag to disable top-up allocation for individual operators.
 
 Also, several protocol parameters used in sanity checks are updated to conform with EIP-8061, and the oracle consensus versions are bumped in the same on-chain vote.
 
@@ -336,6 +339,29 @@ EIP-8061 changes the **network exit churn** and the **consolidation churn**; ent
 | `maxBalanceExitRequestedPerReportInEth` | 19,200  | **11,520**             | See rationale above                                                           |
 | `consolidationEthAmountPerDayLimit`     | 93,375  | **205,875 ETH/day**    | The network consolidation churn, with headroom up to 60M                      |
 | `appearedEthAmountPerDayLimit`          | 57,600  | **57,600** (no change) | Activation churn is capped (256), entry does not speed up                     |
+
+## 7. Curated Module top-up allocation control
+
+The Curated Module calculates top-up capacity from deposited keys and tracked balances, but does not track each
+validator's current status on the consensus layer. Validators waiting for activation or withdrawal reporting still count
+toward capacity. An operator's allocation can therefore exceed what its validators can accept, leaving ETH in the buffer
+while other operators have room for top-ups.
+
+This change adds a flag that lets an operator's owner disable its top-up allocation. The allocator then excludes that
+operator's weight and stake, including external stake, and recalculates shares for the remaining eligible operators.
+Initial deposits remain available while top-ups are disabled.
+
+- Only the operator's owner can disable allocation: the manager when `extendedManagerPermissions` is enabled, and the
+  reward address otherwise.
+- The Curated Module Committee (CMC) can enable allocation through `ENABLE_TOP_UP_ALLOCATION_ROLE` once the operator has
+  enough usable capacity.
+- New operators start with top-up allocation disabled.
+- During the upgrade, `finalizeUpgradeV2()` enables existing operators with deposited keys not yet reported withdrawn.
+  It must run in the same transaction as the proxy upgrade.
+
+This manual control is a temporary measure until validator status reporting is introduced. See [Top-up Allocation
+Control in the Curated Module](https://hackmd.io/@lido/top-up-allocation-control-cmv2) for details and examples of when
+to use it.
 
 ## Links
 
