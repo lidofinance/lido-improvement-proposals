@@ -121,7 +121,7 @@ All three phases reuse the same machinery. It is driven by one governance-tunabl
 
 **Iteration granularity.** The iterator processes exit demand in fixed `EXIT_ITERATION_CHUNK` (32 ETH) steps. Each step gives one chunk of demand to the highest-ranked operator and one of its validators, then ranks again. This keeps the order balanced across operators. A chunk becomes a PWR of up to `EXIT_ITERATION_CHUNK` from a `0x02` validator, or an FWR.
 
-**PWR vs. FWR selection.** The Oracle always prefers a PWR. A validator is **PWR-eligible** when its module has `partialWithdrawalsAllowed` set in the `StakingRouter` (CMv2) and its balance is **at least 33 ETH**, i.e. at least 1 ETH above `MIN_ACTIVATION_BALANCE` (32 ETH). If the highest-ranked Node Operator has a PWR-eligible validator, the step takes a partial withdrawal of `min(EXIT_ITERATION_CHUNK, balance − MIN_ACTIVATION_BALANCE)` from it, leaving the validator active. Only if the operator has **no** PWR-eligible validator does the Oracle issue an **FWR** for its oldest validator — the one with the lowest validator index. This is the last ranking predicate in every phase. More than one step can select the same validator in one report. These allocations are combined into one PWR intent, so the final PWR can be larger than `EXIT_ITERATION_CHUNK`.
+**PWR vs. FWR selection.** The Oracle always prefers a PWR. A validator is **PWR-eligible** when its module has `partialWithdrawalsAllowed` set in the `StakingRouter` (CMv2) and its balance is **at least 33 ETH**, i.e. at least 1 ETH above `MIN_ACTIVATION_BALANCE` (32 ETH). If the highest-ranked Node Operator has a PWR-eligible validator, the step takes a partial withdrawal of `min(EXIT_ITERATION_CHUNK, balance − MIN_ACTIVATION_BALANCE)` from it, leaving the validator active. Only if the operator has **no** PWR-eligible validator does the Oracle issue an **FWR** for its oldest validator — the one with the lowest validator index. This is the last ranking predicate in every phase. More than one step can select the same validator in one report. These allocations are combined into one PWR intent, so the final PWR can be larger than `EXIT_ITERATION_CHUNK`, but never larger than `MAX_PWR_AMOUNT` (2016 ETH, see [ValidatorsExitBusOracle](#validatorsexitbusoracle)). Each VEBO report MUST contain at most one PWR intent per validator, and its amount MUST NOT exceed `MAX_PWR_AMOUNT`.
 
 **Forced exits are FWR-only.** Force-exit limits are counted in validators (`currentValidators − targetValidators`). Every request the iterator issues for an operator over its force-exit limit — in Phase 1 or Phase 2 — MUST therefore be an FWR, and the PWR preference above does not apply to it.
 
@@ -169,6 +169,8 @@ liquidRewards(T) = elRate × T
                  + Σ_skimmed clRatePerEB × effective_balance × T
 ```
 
+This extrapolation of historical reward rates and effective balances at `refSlot` over the full horizon `T` is an accepted approximation. It does not model the timing of individual validator exits or changes in earning stake and liquid-reward eligibility, including after PWRs. It may therefore overestimate liquid rewards if stake exits before the end of `T`.
+
 ##### In-flight withdrawals
 
 Withdrawals already requested in earlier reports MUST be counted. They come from four sources:
@@ -178,15 +180,15 @@ Withdrawals already requested in earlier reports MUST be counted. They come from
 - **Unprocessed `TriggerableWithdrawalsBus` intents** — read via `getWithdrawalIntents`. Their exit epoch is projected through the exit churn, as for new requests, after the unprocessed EIP-7002 requests.
 - **Lido validators with an exit already initiated on the CL** (`exit_epoch` set) — whether by a Lido request or a voluntary exit by the operator; slashed validators are not counted (see rule 2 below). They arrive after their `withdrawable_epoch`.
 
-One validator can appear in more than one source, for example a queued FWR or PWR for a validator that was then slashed or exited voluntarily. `inFlight(T)` is therefore computed **per hm,validator**, counting each validator **once**, by the first rule that matches:
- bn
+One validator can appear in more than one source, for example a queued FWR or PWR for a validator that was then slashed or exited voluntarily. `inFlight(T)` is therefore computed **per validator**, counting each validator **once**, by the first rule that matches:
+
 1. **Consolidation source** (`source_index` of an entry in `state.pending_consolidations`) — counts **0**. Its balance moves to the target validator, not to the `WithdrawalVault`. This matches the current Oracle, which excludes consolidation sources from withdrawable balance.
 2. **Slashed** — counts **0** and never extends `T`. Its `withdrawable_epoch` is set at least `EPOCHS_PER_SLASHINGS_VECTOR` (8,192 epochs, ~36 days) after slashing, usually far beyond `T`, and its final balance depends on the not-yet-applied correlation penalty. Ignoring it only understates incoming ETH, so the Oracle errs toward requesting slightly more.
 3. **Exit initiated, not slashed** (`exit_epoch` set) — **always** counts, at its **balance**. Its pending partials and queued intents add nothing: after `exit_epoch` is set, the CL ignores new withdrawal requests for the validator and processes its pending partials as 0.
-4. **Queued FWR, no PWR pending on the CL** (FWR in the EIP-7002 system contract or the `TriggerableWithdrawalsBus`, and no entry for the validator in `state.pending_partial_withdrawals`) — counts at its current **balance**. Its queued PWRs count 0, since the FWR already counts the whole balance. A queued FWR for a validator that does have a PWR pending on the CL falls through to rule 5: the CL ignores an FWR while `pending_balance_to_withdraw > 0`, so only the PWRs are certain to deliver ETH.
+4. **Queued FWR** (in the EIP-7002 system contract or the `TriggerableWithdrawalsBus`) with no entry in `state.pending_partial_withdrawals` — counts at its **balance**, and its queued PWRs count 0.
 5. **Otherwise** — the sum of its PWRs at every stage: pending on the CL (`state.pending_partial_withdrawals`), queued in the EIP-7002 system contract, and queued in the `TriggerableWithdrawalsBus`; capped at `balance − MIN_ACTIVATION_BALANCE`, as the CL applies them one by one against the remaining balance.
 
-Validators under rules 3–5 always contribute, and their withdrawable epoch (actual, or projected for queued intents) extends `T` (see [Prediction horizon](#prediction-horizon)). Every rule picks the lower of the overlapping amounts, so `inFlight(T)` never overstates incoming ETH.
+Validators under rules 3–5 always contribute, and their withdrawable epoch (actual, or projected for queued intents) extends `T` (see [Prediction horizon](#prediction-horizon)). These rules prevent double counting of overlapping requests and estimate `inFlight(T)` using validator balances at `refSlot`.
 
 In-flight PWRs also reduce the validator's balance for selection: PWR eligibility (balance ≥ 33 ETH) and the PWR amount are evaluated on `balance − in-flight PWRs` of that validator.
 
@@ -198,7 +200,7 @@ Each request is assigned an expected arrival epoch on the EL. PWRs and FWRs cons
 arrival = exit_epoch + MIN_VALIDATOR_WITHDRAWABILITY_DELAY
 ```
 
-The sweep delay (FWR) and the pending-partials drain delay (PWR) are intentionally ignored. Both only push arrival later, so ignoring them shortens `T` and lowers the predicted rewards. The prediction therefore errs toward requesting slightly more, never less.
+The sweep delay (FWR) and the pending-partials drain delay (PWR) are intentionally ignored. Both only push arrival later, so ignoring them shortens `T` and, by itself, lowers the predicted rewards. The overall prediction remains an approximation and does not guarantee that the requested withdrawals will fully cover demand.
 
 The horizon `T` is the latest arrival epoch among the in-flight requests and the requests added to this report so far, excluding slashed validators (see [In-flight withdrawals](#in-flight-withdrawals)).
 
@@ -209,7 +211,7 @@ Phase 1 covers the current **withdrawal-queue (WQ) demand**, preferring PWRs ove
 1. **Forced-exit deviation** — operators over a force-exit limit first, by how far `currentValidators − targetValidators` exceeds the threshold. While an operator is over its force-exit limit, its selected validators are always exited with an **FWR**, skipping predicates 5–6 (see [Forced exits are FWR-only](#shared-iterator-mechanics)).
 2. **Soft-exit deviation** — same idea for soft-exit limits, after forced exits.
 3. **Module share-rate deviation** — modules above their `priority_exit_share_threshold` (relative to total protocol balance) get elevated priority.
-4. **Target-stake deviation** — operators furthest **above** their target stake exit first, where `targetStake = moduleStake × operatorWeight / moduleTotalWeight`. Operator weights come from [LIP-35](lip-35.md): read on-chain via `getOperatorWeights` for CMv2, aggregated via the Meta Registry for CMv1, and a uniform baseline weight elsewhere.
+4. **Target-stake deviation** — operators furthest **above** their target stake exit first, where `targetStake = moduleStake × operatorWeight / moduleTotalWeight`. Operator weights come from [LIP-35](lip-35.md): read on-chain via `getOperatorWeights` for CMv2, aggregated via the Meta Registry for CMv1, and a uniform baseline weight elsewhere. For non-CMv2 modules, this criterion uses the module's and operator's own stake, with `externalStake = 0`.
 5. **Already-requested validators** — validators that already have PWR demand allocated to them **within this report** rank first, but only while their remaining balance stays PWR-eligible (at least 33 ETH). This concentrates exited balance into as few validators as possible, taking more balance from one validator before moving to the next.
 6. **Smallest PWR-eligible validator** — among the operator's PWR-eligible validators, prefer the one with the **smallest balance that is greater than or equal to 33 ETH** and take a PWR from it. This leaves the validator active.
 7. **Oldest validator (FWR)** — only if the operator has no PWR-eligible validator: the validator with the lowest validator index, exited with an FWR.
@@ -225,14 +227,16 @@ After WQ demand is covered, the iterator satisfies any not-yet-fulfilled **force
 
 This phase applies **only to the CMv2 staking module** and adds exit demand against operators drifting above their target stake, pushing the module back toward its target distribution.
 
-**Data model.** Phase 3 (and Phase 1 criterion 4) uses the following definitions:
+**Data model.** Phase 3 and Phase 1 criterion 4 for CMv2 use the following definitions:
 
 Rebalancing works **per CMv2 node operator id**, but measures stake and weight the same way the CMv2 deposit allocator does ([LIP-33 Meta Registry](lip-33.md#meta-operators-registry)), including each operator's share of its `OperatorGroup`'s external (CMv1) stake.
 
 - **`operatorWeight`** — the operator's **effective** weight `ew_i = w_i × share_i / 10,000`, as returned by `getOperatorWeights` ([LIP-35](lip-35.md)).
 - **`moduleTotalWeight`** — the sum of `operatorWeight` over operators participating in the calculation, **excluding** operators inside the grace period (see the grace period below).
 - **`externalStake`** — the operator's share of its group's external stake, `es_i = totalExternalStake × ew_i / Σ ew_group`. `0` for an operator whose group has no external operators.
-- **`currentStake`** — the operator's active CMv2 validator balance, after reserving all in-flight withdrawals, **plus** its `externalStake`. For a PWR, reserve its requested amount. For an FWR, reserve the validator's balance at `refSlot`. In-flight requests include FIFO queue entries and requests pending on the CL (`pending_partial_withdrawals` for PWRs).
+- **`currentStake`** = active CMv2 balance − in-flight withdrawals + incoming deposits + `externalStake`, where:
+  - **in-flight withdrawals** are counted per validator by the [In-flight withdrawals](#in-flight-withdrawals) rules, including requests added earlier in this report, and only for validators included in the active balance;
+  - **incoming deposits** are the operator's deposits and top-ups in CL `pending_deposits` at `refSlot`.
 - **`moduleStake`** — the sum of `currentStake` over participating operators, **excluding** operators inside the grace period.
 - **`targetStake`** = `moduleStake × operatorWeight / moduleTotalWeight`.
 - **Exit source.** External stake counts toward `currentStake`, but rebalancing exits only the operator's **CMv2** validators. If an operator's excess over `targetStake` is larger than its CMv2 stake, rebalancing can exit at most its CMv2 stake, and the rest of the excess stays.
@@ -257,14 +261,23 @@ All five keys are editable by the CM Committee ([CMC](lip-33.md#cmc)) via EasyTr
 
 While neither condition holds, Phase 3 stays dormant, so small temporary differences do not create exit churn.
 
-A **new-operator grace period** applies: an operator whose first validator was activated less than `ACTIVE_REBALANCING_GRACE_PERIOD_EPOCHS` ago is **excluded from the rebalancing calculation entirely** — its balance does not count toward `moduleStake`, its weight does not count toward `moduleTotalWeight`, and it is neither ranked nor targeted by rebalancing exits. Grace-period operators remain eligible to receive deposits via the normal deposit allocation.
+**Stopping condition.** Before each rebalancing allocation, the iterator MUST re-evaluate both trigger conditions, accounting for withdrawals already allocated in the current report in `currentStake` and recomputing `moduleStake` and `targetStake` using the definitions above. It MUST stop adding rebalancing requests as soon as **neither condition holds**. The `ACTIVE_REBALANCING_RATE_LIMIT` and the shared per-report exit limit remain independent bounds and may stop the phase before both trigger conditions become false.
+
+A **new-operator grace period** applies: an operator is **excluded from the rebalancing calculation entirely** before its first validator activation and while fewer than `ACTIVE_REBALANCING_GRACE_PERIOD_EPOCHS` epochs have elapsed since that activation — its balance does not count toward `moduleStake`, its weight does not count toward `moduleTotalWeight`, and it is neither ranked nor targeted by rebalancing exits.
 
 **Activation epoch.** Every Oracle MUST derive the grace period from the same source, or reports diverge and no quorum forms. It is taken from the CL state at the report's `refSlot`:
 
-```
-firstActivationEpoch = min(validator.activation_epoch)   over the operator's deposited keys in state.validators
-                                                          with activation_epoch ≤ refEpoch
-inGracePeriod        = (refEpoch − firstActivationEpoch) < ACTIVE_REBALANCING_GRACE_PERIOD_EPOCHS
+```python
+def in_grace_period(operator_keys, state, ref_epoch):
+    activation_epochs = [
+        v.activation_epoch
+        for v in state.validators
+        if v.pubkey in operator_keys and v.activation_epoch <= ref_epoch
+    ]
+    if not activation_epochs:
+        return True
+    first_activation_epoch = min(activation_epochs)
+    return ref_epoch - first_activation_epoch < ACTIVE_REBALANCING_GRACE_PERIOD_EPOCHS
 ```
 
 **Bounds.** The total rebalancing stake added to the report is capped at `ACTIVE_REBALANCING_RATE_LIMIT`, which weighs a PWR at its `amount` and an FWR at the validator's balance capped at its maximum effective balance. Rebalancing requests also count toward the remaining shared [per-report exit limit](#shared-iterator-mechanics). Rebalancing reduces excess stake; it does not guarantee that the withdrawn ETH is redeposited or that it reaches a specific under-target operator. That depends on future withdrawal demand, available buffer ETH, and the normal deposit-allocation rules.
@@ -303,7 +316,12 @@ Each record carries the withdrawal **amount**:
 
 On submission the VEBO decodes each record into a `WithdrawalIntent` struct — a withdrawal request intent, not yet a real withdrawal request on the CL — and appends it to the `TriggerableWithdrawalsBus` via the role-gated `addWithdrawalIntents` call.
 
-On `submitReportData`, the VEBO **MUST validate that every record with `amount > 0` (a PWR) targets a module with `partialWithdrawalsAllowed` set** in the `StakingRouter` (see [StakingRouter](#stakingrouter)); otherwise, the whole call reverts.
+On `submitReportData`, the VEBO **MUST validate that every record with `amount > 0` (a PWR)**:
+
+- targets a module with `partialWithdrawalsAllowed` set in the `StakingRouter` (see [StakingRouter](#stakingrouter));
+- has `amount ≤ MAX_PWR_AMOUNT`, a constant equal to `MAX_EFFECTIVE_BALANCE − MIN_ACTIVATION_BALANCE` = 2048 − 32 = **2016 ETH**. No PWR needs more: the CL never takes a validator below `MIN_ACTIVATION_BALANCE`, and balance above `MAX_EFFECTIVE_BALANCE` is swept automatically. Together with the TWG's PWR [max limit floor](#triggerablewithdrawalsgateway-twg), this cap guarantees that every queued PWR fits into a fully restored PWR quota while PWRs are enabled for the consumer.
+
+Otherwise, the whole call reverts.
 
 ```solidity
 interface IValidatorsExitBusOracle {
@@ -325,6 +343,8 @@ interface IValidatorsExitBusOracle {
 
 - **`submitExitRequestsHash` / `submitExitRequestsData`** — the hash-delivery path (see [Rationale](#removing-exit-requests-hash-delivery-via-easytrack)).
 - **`triggerExits`** — it sends delivered exit requests to the TWG via `triggerFullWithdrawals`, which this release removes (see [TWG](#triggerablewithdrawalsgateway-twg)). Queued intents are executed through `processWithdrawalIntents` instead.
+
+**Legacy request tracking.** The VEBO no longer uses legacy request-status or delivery tracking. `getDeliveryTimestamp` is removed, and the legacy interface for reading historical request statuses is not retained.
 
 **VEBO limits.** The VEBO has two limits of its own today. Both are enforced only by `submitExitRequestsData`, so both are **removed** together with the hash-delivery path:
 
@@ -480,7 +500,7 @@ Four rules apply:
 
 1. **Separate quotas.** A call consumes the sum of its PWR `amount`s from the caller's PWR quota and the number of its FWRs from the caller's FWR quota. Consumers never share quota.
 2. **Unset means zero.** A consumer without configured limits has zero quota, so any non-empty call from it reverts. A zero PWR limit disables PWRs for that consumer.
-3. **Max limit floors.** For every consumer that has a non-zero limit, the PWR `maxLimit` MUST be ≥ 2048 ETH and the FWR `maxLimit` MUST be ≥ 1 validator, so a single request of either type always fits once the quota has fully restored, and the FIFO can never jam permanently on its head intent.
+3. **Max limit floors.** For each consumer, a non-zero PWR `maxLimit` MUST be ≥ `MAX_PWR_AMOUNT` (2016 ETH). The VEBO caps every PWR at `MAX_PWR_AMOUNT`, so a single request of either enabled type always fits once its quota has fully restored. These floors prevent the FIFO head from being permanently blocked by insufficient maximum quota capacity.
 4. **Revert on exhaustion.** If a batch exceeds either remaining quota of the caller, the TWG reverts the whole transaction; there is no partial processing. Callers must size their batches to fit both remaining quotas.
 
 ##### Initial limits
@@ -490,12 +510,12 @@ The upgrade sets the following limits.
 - **VEBO.** The limits are sized against the [per-report sanity limit](#oraclereportsanitychecker) of 19,200 ETH. The PWR `maxLimit` equals the most one report can carry: 19,200 ETH for a report made entirely of PWRs. The FWR `maxLimit` is 500 validators — the maximum number of validators a single VEBO report can carry, capped by the `OracleDaemonConfig` setting. A report made entirely of FWRs therefore always fits. The restore rates (32 ETH per 48 s and 5 validators per 288 s) restore 19,200 ETH and 500 validators — one full report of either kind — every 8 hours, the VEBO report period (75 epochs).
 - **Modules.** Modules trigger **FWRs only**: their `Ejector` paths (`voluntaryEject` and strikes-based ejection) are full-exit only, and PWRs for module validators go through the VEBO. Their PWR limit is therefore **0**, so the TWG rejects any PWR from a module path. FWR limits are lower for `0x02` modules, whose validators can hold up to 2048 ETH each.
 
-| Consumer (`msg.sender`)            | WC type | PWR `maxLimit`          | PWR restore   | FWR `maxLimit`   | FWR restore         |
-|------------------------------------|---------|-------------------------|---------------|------------------|---------------------|
-| VEBO (`TriggerableWithdrawalsBus`) | mixed   | 19,200 ETH              | 32 ETH / 48 s | 500 validators   | 5 validators / 288 s |
-| CSM (`Ejector`)                    | `0x01`  | 0 (PWRs disabled)       | —             | 500 validators   | 1 validator / 192 s |
-| CSM `0x02` (`Ejector`)             | `0x02`  | 0 (PWRs disabled)       | —             | 150 validators   | 1 validator / 384 s |
-| CMv2 (`Ejector`)                   | `0x02`  | 0 (PWRs disabled)       | —             | 150 validators   | 1 validator / 384 s |
+| Consumer (`msg.sender`)            | WC type | PWR `maxLimit`    | PWR restore   | FWR `maxLimit` | FWR restore          |
+|------------------------------------|---------|-------------------|---------------|----------------|----------------------|
+| VEBO (`TriggerableWithdrawalsBus`) | mixed   | 19,200 ETH        | 32 ETH / 48 s | 500 validators | 5 validators / 288 s |
+| CSM (`Ejector`)                    | `0x01`  | 0 (PWRs disabled) | —             | 500 validators | 1 validator / 192 s  |
+| CSM `0x02` (`Ejector`)             | `0x02`  | 0 (PWRs disabled) | —             | 150 validators | 1 validator / 384 s  |
+| CMv2 (`Ejector`)                   | `0x02`  | 0 (PWRs disabled) | —             | 150 validators | 1 validator / 384 s  |
 
 All non-zero limits satisfy the max limit floors. Any later change to a consumer's limits, including enabling PWRs for a module, requires a DAO vote.
 
@@ -590,8 +610,9 @@ The bot is a convenience, not a trust assumption: `processWithdrawalIntents` sta
 
 - **Interference / DDoS by public callers.** The single FIFO queue keeps request order fixed by the Oracle report and avoids the FWR-replay attack surface.
 - **PWR/FWR concurrency for one validator.** The CL rejects an FWR while the validator has an unprocessed PWR. The FWR fee is lost and the request must be sent again. **The VEBO MUST NOT issue an FWR for a validator that has an in-flight PWR** — in the `TriggerableWithdrawalsBus` queue, in the EIP-7002 system contract queue, or in the CL `pending_partial_withdrawals` (see [No FWR over an unprocessed PWR](#shared-iterator-mechanics)). It may use an FWR only after the PWR has cleared all of them. A PWR from the same report is instead replaced by the FWR. The VEBO MUST never select a validator that already has an in-flight FWR.
+- **Module FWR / Oracle PWR race.** A Node Operator may independently request an FWR through the CMv2 module's `Ejector`, racing an Oracle PWR for the same validator. The outcome depends on which request the CL processes first: if the FWR is processed first, the validator's exit is initiated and the CL ignores the later PWR; if the PWR is already pending, the CL ignores the FWR. Either way, the ignored request still consumes its fee and quota. The initiating operator is responsible for this race and any wasted fee or quota. This limited interference and operational risk is accepted; no additional safeguards are required.
 - **PWRs to non-PWR modules.** A PWR for a CSM `0x02` validator cannot be dismissed once queued without a DAO vote clearing the whole queue (see [Clearing the queue](#clearing-the-queue)), and its effect on CSM stake and bond accounting would be hard to unwind. The VEBO therefore enforces `partialWithdrawalsAllowed` on-chain instead of relying on the off-chain Oracle.
-- **Per-consumer TWG limits.** Each consumer has its own quota, so a compromised or malfunctioning module `Ejector` can exhaust only its own limits and cannot block VEBO-path withdrawals or another module's ejections. The PWR limit, in ETH, caps how much stake partial withdrawals can move per frame. The FWR limit is counted in validators, so the stake it bounds depends on the consumer's WC type: up to ~32 ETH per FWR for `0x01` validators and up to 2048 ETH per FWR for `0x02` validators. The limits for `0x02` consumers are set lower in validator terms to account for this (see [Initial limits](#initial-limits)). Module consumers get a zero PWR limit, so the TWG itself rejects PWRs from module paths. The max-limit floors guarantee the VEBO queue always advances: the head intent fits once the corresponding quota has fully restored.
+- **Per-consumer TWG limits.** Each consumer has its own quota, so a compromised or malfunctioning module `Ejector` can exhaust only its own limits and cannot block VEBO-path withdrawals or another module's ejections. The PWR limit, in ETH, caps how much stake partial withdrawals can move per frame. The FWR limit is counted in validators, so the stake it bounds depends on the consumer's WC type: up to ~32 ETH per FWR for `0x01` validators and up to 2048 ETH per FWR for `0x02` validators. The limits for `0x02` consumers are set lower in validator terms to account for this (see [Initial limits](#initial-limits)). Module consumers get a zero PWR limit, so the TWG itself rejects PWRs from module paths. For enabled withdrawal types, the max-limit floors prevent the VEBO queue head from being permanently blocked by insufficient maximum quota capacity: the head intent fits once the corresponding quota has fully restored.
 - **EIP-7002 fee risk.** Modeling of normal usage shows that high fees are unlikely at realistic batch sizes. Short-term spikes are absorbed by the Triggerable Withdrawals Bus Bot's maximum-fee threshold. See [EIP-7002 Partial Withdrawal Economics](https://hackmd.io/G82dyK7lQZWmO9vYNJ7fjA?view#EIP-7002-Fee-Dynamics).
 - **Migration safety.** The explicit `ACTIVE_REBALANCING_ENABLED` switch ensures active rebalancing cannot interfere with migration sequencing.
 - **Grace period.** Excluding new operators from the rebalancing calculation entirely (no contribution to `moduleStake`/`moduleTotalWeight`, not ranked, not targeted) prevents them from inducing immediate rebalancing pressure right after onboarding. Residual risk: a drained operator can re-register under a fresh identity and re-receive stake through normal deposit allocation while immune to rebalancing for the grace window; this is bounded by CMv2 bond requirements and `ACTIVE_REBALANCING_RATE_LIMIT`.
