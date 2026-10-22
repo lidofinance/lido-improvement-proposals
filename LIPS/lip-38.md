@@ -63,7 +63,7 @@ With the transition to EIP-7002 usage for stake withdrawals, two mechanisms intr
     - Phase 2 — issue **forced validator exits**;
     - Phase 3 — add **active rebalancing** within CMv2. Phase 3 is optional and can be switched off (leaving only Phases 1–2).
 2. **The off-chain Oracle submits the report to the VEBO contract.** On submission, the VEBO:
-    - checks the report's total requested withdrawal balance in ETH against the [sanity checker limit](#oraclereportsanitychecker), weighing each PWR at its `amount` and each FWR at the maximum effective balance of its module's WC type (32 ETH for `0x01`, 2048 ETH for `0x02`);
+    - checks the report's total requested withdrawal balance in ETH against the [sanity checker limit](#oraclereportsanitychecker), weighing each PWR at its `amount` and each FWR at the max-EB weight for its module's WC type (see [OracleReportSanityChecker](#oraclereportsanitychecker));
     - retrieves the validators' public keys from the modules via the `StakingRouter` using their key indices and, for every PWR, checks that the target module has `partialWithdrawalsAllowed` set;
     - appends the intents, in report order, to the single FIFO queue in the `TriggerableWithdrawalsBus` contract;
     - emits a `WithdrawalRequested` event per intent.
@@ -82,7 +82,7 @@ Withdrawal request intents (both PWRs and FWRs) are stored in a single FIFO queu
 
 The trade-offs are:
 
-- **No skipping.** Requests must run in order. A request that is no longer valid must still run before the queue can move forward. We do not add a skip function because it would add on-chain complexity. This assumption holds only while EIP-7002 fees are low.
+- **No skipping.** Requests must run in order. A request that is no longer valid must still run before the queue can move forward. We do not add a skip function because it would add on-chain complexity. This assumption holds only while EIP-7002 fees are low. As an emergency measure, the DAO can drop the whole queue by vote (see [Clearing the queue](#clearing-the-queue)).
 - **No choice at execution time.** Because the order is fixed, the executor cannot optimize it later, for example to reduce FWR sweep delay. This is acceptable because CMv2 should mostly use PWRs. CSM instances (`0x01` and `0x02`) do not support PWRs because of their FIFO stake-distribution mechanism and the need for a key to remain fully bonded.
 - **PWR/FWR concurrency.** PWRs and FWRs share the same EIP-7002 throughput. The VEBO manages this through ordering and batching. They can also conflict for one validator: a pending PWR blocks a later FWR, and the later request is rejected by the CL and must be sent again (see [Shared iterator mechanics](#shared-iterator-mechanics) and [Security Considerations](#security-considerations)).
 
@@ -137,7 +137,7 @@ A PWR added earlier in **this report** does not block an FWR. If a validator wit
 
 **Exit-eligibility floor for freshly activated validators.** The CL silently drops any EIP-7002 withdrawal request — PWR or FWR — for a validator that has not yet been active for `SHARD_COMMITTEE_PERIOD` (256 epochs, ~27.3 hours) since its `activation_epoch`. The iterator MUST NOT select such a validator for withdrawal in any phase. This affects selection only: a validator still inside its `SHARD_COMMITTEE_PERIOD` window continues to count normally toward all stake and weight accounting.
 
-**Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report [sanity checker limit](#oraclereportsanitychecker). All three phases share this limit. Requests are weighed with the **same formula as the on-chain sanity check** — `amount` for a PWR, and the maximum effective balance of the module's WC type for an FWR (32 ETH for `0x01`, 2048 ETH for `0x02`).
+**Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report [sanity checker limit](#oraclereportsanitychecker). All three phases share this limit. Requests are weighed with the **same formula as the on-chain sanity check** — `amount` for a PWR, and max-EB weight for the module's WC type for an FWR.
 
 #### Income prediction
 
@@ -321,7 +321,30 @@ interface IValidatorsExitBusOracle {
 }
 ```
 
-**Cutover.** The hash-delivery entry points `submitExitRequestsHash` and `submitExitRequestsData` are removed, and the `SUBMIT_REPORT_HASH_ROLE` held by EasyTrack is revoked. Legacy report hashes with exit data not yet delivered at the moment of the upgrade are **abandoned** — the new format cannot deliver them, and no legacy delivery path is retained. The underlying exit demand re-emerges organically from validator balances and is re-covered by subsequent VEBO reports.
+**Removed entry points.** The VEBO no longer triggers withdrawals itself; every request goes through the `TriggerableWithdrawalsBus`. The following are removed:
+
+- **`submitExitRequestsHash` / `submitExitRequestsData`** — the hash-delivery path (see [Rationale](#removing-exit-requests-hash-delivery-via-easytrack)).
+- **`triggerExits`** — it sends delivered exit requests to the TWG via `triggerFullWithdrawals`, which this release removes (see [TWG](#triggerablewithdrawalsgateway-twg)). Queued intents are executed through `processWithdrawalIntents` instead.
+
+**VEBO limits.** The VEBO has two limits of its own today. Both are enforced only by `submitExitRequestsData`, so both are **removed** together with the hash-delivery path:
+
+- **Exit-balance rate limit** (`setExitRequestLimit` / `getExitRequestLimitFullInfo`, [LIP-35](lip-35.md#exit-rate-limit)). The rate of VEBO-path withdrawals is bounded by the Bus's consumer limits on the [TWG](#triggerablewithdrawalsgateway-twg) instead.
+- **`maxValidatorsPerReport`** (`setMaxValidatorsPerReport` / `getMaxValidatorsPerReport`).
+
+`EXIT_REQUEST_LIMIT_MANAGER_ROLE`, which manages both, is removed as well, and the upgrade revokes it from its holders.
+
+The per-report balance check against the `OracleReportSanityChecker` is unchanged (see [OracleReportSanityChecker](#oraclereportsanitychecker)).
+
+**Cutover.** The `SUBMIT_REPORT_HASH_ROLE` held by EasyTrack is revoked. Legacy report hashes with exit data not yet delivered at the moment of the upgrade are **abandoned** — the new format cannot deliver them, and no legacy delivery path is retained. The underlying exit demand re-emerges organically from validator balances and is re-covered by subsequent VEBO reports.
+
+#### OracleReportSanityChecker
+
+The per-report check is kept as introduced in [LIP-35](lip-35.md#sanity-checker): on `submitReportData`, the VEBO computes the report's total exit balance and calls `checkExitBusOracleReport(totalExitBalanceEth)`, which reverts if it exceeds `maxBalanceExitRequestedPerReportInEth` (19,200 ETH). The limit and its setter are unchanged. Only the weighing in the VEBO changes, because a report can now carry PWRs:
+
+- **PWR** — weighed at its `amount`. The PWR amounts of the report are summed in gwei and rounded up to whole ETH, since the limit is in ETH.
+- **FWR** — weighed at the max-EB weight of its module's WC type: `getMaxEffectiveBalanceWeightWCType01()` for `0x01` modules and `getMaxEffectiveBalanceWeightWCType02()` for `0x02` modules. These weights are configurable on-chain via `MAX_EFFECTIVE_BALANCE_WEIGHTS_MANAGER_ROLE` and are currently 32 ETH and 2048 ETH. The VEBO reads them at submission; it does not hard-code them.
+
+The off-chain Oracle MUST read the same weights from the `OracleReportSanityChecker` at `refSlot` to apply the [per-report exit limit](#shared-iterator-mechanics), or its reports can revert on-chain.
 
 #### TriggerableWithdrawalsBus
 
@@ -332,6 +355,7 @@ It stores the single FIFO queue of withdrawal request intents and exposes the fu
 - **`addWithdrawalIntents`** — role-gated append; the VEBO is the only expected role holder, adding decoded report records to the tail of the queue in report order.
 - **`processWithdrawalIntents`** — the permissionless execution entry point: pops exactly `count` intents from the head of the queue and executes them down the TWG → WithdrawalVault → EIP-7002 path, with the caller forwarding the per-request fee and naming a refund recipient for the unused remainder. If the queue holds fewer than `count` intents, the call reverts. If the popped intents exceed the remaining PWR or FWR limit of the VEBO consumer on the TWG, the whole call reverts and the queue is left unchanged.
 - **`unprocessedIntentsCount` / `getWithdrawalIntents`** — views that let permissionless executors and monitoring tools inspect the queue before processing it; `getWithdrawalIntents` pages through the queued intents in execution order.
+- **`clearWithdrawalIntents`** — an emergency handle that drops every unprocessed intent at once, gated by `CLEAR_WITHDRAWAL_INTENTS_ROLE` (see [Clearing the queue](#clearing-the-queue)).
 
 ```solidity
 interface ITriggerableWithdrawalsBus {
@@ -362,10 +386,25 @@ interface ITriggerableWithdrawalsBus {
     /// Returns up to `limit` queued intents starting from position `offset` in execution order.
     /// `offset == 0` is the next intent `processWithdrawalIntents` will execute.
     function getWithdrawalIntents(uint256 offset, uint256 limit) external view returns (WithdrawalIntent[] memory);
+
+    /// Gated by CLEAR_WITHDRAWAL_INTENTS_ROLE — drop all unprocessed intents
+    /// (head := tail). Nothing is sent to the TWG.
+    function clearWithdrawalIntents() external;
+
+    /// Emitted by clearWithdrawalIntents.
+    event WithdrawalIntentsCleared(uint256 clearedCount);
 }
 ```
 
-The queue offers no dismissal or reordering surface — requests execute strictly in submission order (see [Single FIFO queue](#single-fifo-queue)).
+The queue offers no reordering or per-intent dismissal surface — requests execute strictly in submission order (see [Single FIFO queue](#single-fifo-queue)). The only exception is clearing the whole queue.
+
+##### Clearing the queue
+
+`clearWithdrawalIntents` drops every unprocessed intent in one call. No intent is sent to the TWG, and no TWG limit is consumed.
+
+- **Role.** `CLEAR_WITHDRAWAL_INTENTS_ROLE` is **not granted to any actor** at deployment and MUST NOT be held permanently by any EOA, multisig, committee or bot. Only the DAO uses it: a DAO vote grants the role to the Aragon Agent, calls `clearWithdrawalIntents`, and revokes the role in the same vote.
+- **When to use it.** Queued intents can no longer be dismissed one by one, so this is the only way to stop requests that should not execute.
+- **After clearing.** The cleared demand is not lost. The Oracle no longer counts the cleared intents in `inFlight(T)`, so the next VEBO report re-covers whatever withdrawal-queue and forced-exit demand is still open.
 
 **Cost model.** The `processWithdrawalIntents` caller pays EIP-7002 fees for all VEBO-path requests. The forced-exit fee refund mechanism is removed.
 
@@ -551,7 +590,7 @@ The bot is a convenience, not a trust assumption: `processWithdrawalIntents` sta
 
 - **Interference / DDoS by public callers.** The single FIFO queue keeps request order fixed by the Oracle report and avoids the FWR-replay attack surface.
 - **PWR/FWR concurrency for one validator.** The CL rejects an FWR while the validator has an unprocessed PWR. The FWR fee is lost and the request must be sent again. **The VEBO MUST NOT issue an FWR for a validator that has an in-flight PWR** — in the `TriggerableWithdrawalsBus` queue, in the EIP-7002 system contract queue, or in the CL `pending_partial_withdrawals` (see [No FWR over an unprocessed PWR](#shared-iterator-mechanics)). It may use an FWR only after the PWR has cleared all of them. A PWR from the same report is instead replaced by the FWR. The VEBO MUST never select a validator that already has an in-flight FWR.
-- **PWRs to non-PWR modules.** A PWR for a CSM `0x02` validator cannot be dismissed once queued, and its effect on CSM stake and bond accounting would be hard to unwind. The VEBO therefore enforces `partialWithdrawalsAllowed` on-chain instead of relying on the off-chain Oracle.
+- **PWRs to non-PWR modules.** A PWR for a CSM `0x02` validator cannot be dismissed once queued without a DAO vote clearing the whole queue (see [Clearing the queue](#clearing-the-queue)), and its effect on CSM stake and bond accounting would be hard to unwind. The VEBO therefore enforces `partialWithdrawalsAllowed` on-chain instead of relying on the off-chain Oracle.
 - **Per-consumer TWG limits.** Each consumer has its own quota, so a compromised or malfunctioning module `Ejector` can exhaust only its own limits and cannot block VEBO-path withdrawals or another module's ejections. The PWR limit, in ETH, caps how much stake partial withdrawals can move per frame. The FWR limit is counted in validators, so the stake it bounds depends on the consumer's WC type: up to ~32 ETH per FWR for `0x01` validators and up to 2048 ETH per FWR for `0x02` validators. The limits for `0x02` consumers are set lower in validator terms to account for this (see [Initial limits](#initial-limits)). Module consumers get a zero PWR limit, so the TWG itself rejects PWRs from module paths. The max-limit floors guarantee the VEBO queue always advances: the head intent fits once the corresponding quota has fully restored.
 - **EIP-7002 fee risk.** Modeling of normal usage shows that high fees are unlikely at realistic batch sizes. Short-term spikes are absorbed by the Triggerable Withdrawals Bus Bot's maximum-fee threshold. See [EIP-7002 Partial Withdrawal Economics](https://hackmd.io/G82dyK7lQZWmO9vYNJ7fjA?view#EIP-7002-Fee-Dynamics).
 - **Migration safety.** The explicit `ACTIVE_REBALANCING_ENABLED` switch ensures active rebalancing cannot interfere with migration sequencing.
@@ -562,7 +601,7 @@ The bot is a convenience, not a trust assumption: `processWithdrawalIntents` sta
 - **Short EIP-7002 fee spike** — the Triggerable Withdrawals Bus Bot pauses while the fee is above its configured maximum and resumes once it drops; queued intents wait, delaying WQ fulfillment. Anyone can still process the queue at the current fee.
 - **Sustained EIP-7002 fee spike** — the Triggerable Withdrawals Bus Bot stays paused and queued intents wait for the duration of the spike, delaying WQ fulfillment. Mitigation: monitor execution-layer withdrawal-request fees and, if the delay becomes unacceptable, process the queue at the current fee (the call is permissionless) or raise the bot's maximum fee.
 - **TWG limit exhausted** — calls from the consumer whose PWR or FWR limit is exhausted revert until that quota restores. For the VEBO path, `processWithdrawalIntents` reverts and queued intents stay at the head of the queue; because the queue is FIFO, an exhausted FWR limit also holds back PWRs queued behind the head FWR (and vice versa). Other consumers are unaffected, since every consumer has its own limits.
-- **No-op requests** (a validator is already exiting, slashed, or is otherwise unaffected) — there is **no dismissal mechanism**. Every queued request MUST still be executed before the FIFO can advance, even when the CL will not apply it.
+- **No-op requests** (a validator is already exiting, slashed, or is otherwise unaffected) — there is **no per-intent dismissal mechanism**. Every queued request MUST still be executed before the FIFO can advance, even when the CL will not apply it. Only a DAO vote can drop queued intents, and only by clearing the whole queue (see [Clearing the queue](#clearing-the-queue)).
 
 ## Copyright
 
