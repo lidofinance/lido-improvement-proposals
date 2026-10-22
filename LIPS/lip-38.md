@@ -123,7 +123,7 @@ All three phases reuse the same machinery. It is driven by one governance-tunabl
 
 **PWR vs. FWR selection.** The Oracle always prefers a PWR. A validator is **PWR-eligible** when its module has `partialWithdrawalsAllowed` set in the `StakingRouter` (CMv2) and its balance is **at least 33 ETH**, i.e. at least 1 ETH above `MIN_ACTIVATION_BALANCE` (32 ETH). If the highest-ranked Node Operator has a PWR-eligible validator, the step takes a partial withdrawal of `min(EXIT_ITERATION_CHUNK, balance − MIN_ACTIVATION_BALANCE)` from it, leaving the validator active. Only if the operator has **no** PWR-eligible validator does the Oracle issue an **FWR** for its oldest validator — the one with the lowest validator index. This is the last ranking predicate in every phase. More than one step can select the same validator in one report. These allocations are combined into one PWR intent, so the final PWR can be larger than `EXIT_ITERATION_CHUNK`, but never larger than `MAX_PWR_AMOUNT` (2016 ETH, see [ValidatorsExitBusOracle](#validatorsexitbusoracle)). Each VEBO report MUST contain at most one PWR intent per validator, and its amount MUST NOT exceed `MAX_PWR_AMOUNT`.
 
-**Forced exits are FWR-only.** Force-exit limits are counted in validators (`currentValidators − targetValidators`). Every request the iterator issues for an operator over its force-exit limit — in Phase 1 or Phase 2 — MUST therefore be an FWR, and the PWR preference above does not apply to it.
+**Forced exits are FWR-only.** Force-exit limits are counted in validators (`currentValidators − targetValidators`). Every request the iterator issues for an operator over its force-exit limit — MUST therefore be an FWR, and the PWR preference above does not apply to it. The iterator walks the operator's validators in ascending validator index and takes the first one with no in-flight PWR (see [No FWR over an unprocessed PWR](#shared-iterator-mechanics)); validators with an in-flight PWR are skipped. If every candidate has an in-flight PWR, the operator's forced exit waits for a later report.
 
 **No FWR over an unprocessed PWR.** The Oracle MUST NOT issue an FWR for a validator that has an in-flight PWR at any of these stages:
 
@@ -221,7 +221,7 @@ Phase 1 covers the current **withdrawal-queue (WQ) demand**, preferring PWRs ove
 After WQ demand is covered, the iterator satisfies any not-yet-fulfilled **forced-exit obligations**. Every Phase 2 request is an **FWR** (see [Forced exits are FWR-only](#shared-iterator-mechanics)).
 
 1. **Forced-exit deviation** — operators over a force-exit limit first, by how far `currentValidators − targetValidators` exceeds the threshold.
-2. **Lowest validator index** — within an operator, ascending validator index.
+2. **Lowest validator index** — within an operator, ascending validator index, skipping validators with an in-flight PWR.
 
 #### Phase 3 — Active rebalancing
 
