@@ -161,7 +161,7 @@ This proposal switches the oracles to the v2 proposer-duties endpoint and suppor
 #### Technical Specification
 
 - For all duties, use `GET /eth/v2/validator/duties/proposer/{epoch}`, starting with the oracle release that enables the new consensus version. Its `dependent_root` is `get_block_root_at_slot(state, compute_start_slot_at_epoch(epoch - 1) - 1)` (or the genesis block root on underflow). A `dependent_root` mismatch is fatal. There is no fallback to v1, so the oracle requires consensus nodes that support v2 from the moment the release is deployed.
-- Accept either `SLOT_DURATION_MS` or `SECONDS_PER_SLOT`. Raise an error when the two are inconsistent or when the duration is not a whole number of seconds.
+- Accept either `SLOT_DURATION_MS` or `SECONDS_PER_SLOT`. Raise an error when the two are missing or inconsistent or when the duration is not a whole number of seconds.
 - Read the churn parameters for §3 from the same node config.
 
 ### 5. On-chain Verifiers changes
@@ -200,9 +200,9 @@ code changes.
 
 #### Fields and item paths
 
-ePBS removes `latest_execution_payload_header`, which previously contained the withdrawals root. The modules verifier
-now proves withdrawals using `BeaconState.payload_expected_withdrawals`, the list of withdrawals that the execution
-payload must honor.
+ePBS removes `latest_execution_payload_header`, which previously contained the withdrawals root. The modules verifier now proves withdrawals using `BeaconState.payload_expected_withdrawals`, the list of withdrawals that the execution payload must honor.
+
+If a payload is withheld, the next block keeps the same `payload_expected_withdrawals`, so the same withdrawal can be proven against more than one block. A second proof of the same withdrawal has no effect because the module records each validator as withdrawn only once.
 
 To find an item, both core and modules verifiers join the path to its list with the path to the item within that list:
 
@@ -322,7 +322,9 @@ Despite the low probability of such an attack occurring, it is proposed to limit
 
 ### Proposed limit values
 
-The values for items 1 and 2 are sized for **staking growth up to 60M ETH of active balance**: at that balance they match the network churn allowed by EIP-8061, so the limits do not have to be revisited as the network grows.
+The values for items 1 and 2 are sized for **staking growth up to 60M ETH of active balance**: at that balance they match the network churn allowed by EIP-8061, so the limits do not have to be revisited until the network reaches it.
+
+The 60M figure balances two risks. A limit below the network churn can reject legitimate reports during a mass exit, while a limit far above it weakens the sanity check against incorrect reports. 60M ETH gives about 37% headroom over the current ~43.75M ETH of active balance and is roughly half of the total ETH supply, a level not expected to be reached soon. If the active balance approaches 60M ETH, the limits should be revisited.
 
 1. **`exitedEthAmountPerDayLimit` = 411,975 ETH/day** — the network exit churn at
    a 60M active balance. 
