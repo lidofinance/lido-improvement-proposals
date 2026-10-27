@@ -77,7 +77,7 @@ In the child state, validator balances already have the expected withdrawals ded
 - The oracle waits for the read slot to be finalized before building a report.
 - All CL data is read from the read slot's state. All EL data is read at the block referenced by that state's `latest_block_hash`.
 - `ref_slot` stays in the report and remains the basis for all timestamps. The event lookback cutoff is computed from `ref_slot` and the genesis time instead of the anchor block timestamp.
-- The `payload_expected_withdrawals` amounts of Lido validators, summed per validator index, are added back to the CL balances read from the read slot's state. This step is required for all oracles.
+- The `payload_expected_withdrawals` amounts of Lido validators are added back to the CL balances read from the read slot's state. A validator may have several entries, and all of them are added to its balance. This step is required for all oracles.
 - Because the report algorithm changes, the consensus version is bumped as part of the on-chain vote in `AccountingOracle`, `ValidatorsExitBusOracle`, and the `CSFeeOracle` contracts of CSM, CSM `0x02`, and CM v2.
 
 ### 2. Accounting Oracle
@@ -88,7 +88,9 @@ It is proposed to:
 
 #### Rationale
 
-The in-flight withdrawal add-back from [§1](#in-flight-withdrawal-add-back) is applied everywhere Lido CL balances are summed: total CL balance, the per-module breakdown, bunker-mode rebase (both samples), and staking vault Total Value. Without per-index summing, a vault's Total Value, Merkle leaf, and fee come out too low while global totals still look correct.
+The in-flight withdrawal add-back from [§1](#in-flight-withdrawal-add-back) is applied everywhere Lido CL balances are summed: total CL balance, the per-module breakdown, bunker-mode rebase (both samples), and staking vault Total Value.
+
+One validator can have more than one entry in `payload_expected_withdrawals`, for example a pending partial withdrawal and a sweep withdrawal in the same payload. So the add-back must add all entries of a validator to its balance.
 
 ##### Bunker Mode Sample Identity
 
