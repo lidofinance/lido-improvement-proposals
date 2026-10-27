@@ -32,13 +32,20 @@ Also, several protocol parameters used in sanity checks are updated to conform w
 
 ## Motivation
 
-[EIP-7732 (ePBS)](https://eips.ethereum.org/EIPS/eip-7732) separates the execution payload from the beacon block: a slot's payload may be revealed late or withheld. The oracles currently assume the reference slot's own EL block is always available. After the hardfork <TBD>. Verifier contracts use `block_roots` from the corresponding beacon state to reach required block roots for the proofs requiring the exact beacon block.
+Glamsterdam changes the beacon state layout, payload delivery, churn rules, and Beacon APIs that Lido oracles and verifier contracts depend on. Each change below is followed by its impact on the current, unmodified Lido components from the Gloas activation slot:
 
-[EIP-8061](https://eips.ethereum.org/EIPS/eip-8061) removes the cap on the exit churn limit. Keeping the old formula overestimates the exit queue wait about five times and makes the Validator Exit Bus Oracle request fewer exits than needed.
+- **[EIP-7732 (ePBS)](https://eips.ethereum.org/EIPS/eip-7732)** separates the execution payload from the beacon block, so a slot's payload may be revealed late or withheld.
+  - *Impact:* current oracles may read an EL block that does not match the CL state and under-report CL balances by withdrawals deducted on CL but not yet credited to the Withdrawal Vault, producing incorrect rebases, vault values, and fees. Bunker mode may miss a negative rebase while payloads are withheld. Verifier proofs for beacon blocks whose roots are absent from EIP-4788 become impossible, and withdrawal proofs fail because `latest_execution_payload_header` is removed from the state.
+- **[EIP-7688](https://eips.ethereum.org/EIPS/eip-7688)** turns `BeaconState` and key lists into progressive SSZ structures, moving existing field paths once at Gloas.
+  - *Impact:* every generalized index configured in the current verifiers becomes invalid, and all proofs against post-Gloas states revert: validator top-ups, consolidations, predeposit guarantees, exit-delay reports, and CSM/CM withdrawal, slashing, and balance proofs.
+- **[EIP-8061](https://eips.ethereum.org/EIPS/eip-8061)** removes the cap on the exit churn limit and raises the consolidation churn.
+  - *Impact:* the current Validator Exit Bus Oracle drains new exits at the old 256 ETH/epoch rate instead of the actual one (about 1,335 ETH/epoch at 43.75M ETH active), so it overestimates withdrawal epochs and requests fewer exits than needed, delaying withdrawal finalization. Sanity-checker limits tuned for the old churn reject reports with legitimate exit volumes the network now allows.
+- **[EIP-7917](https://eips.ethereum.org/EIPS/eip-7917)** changes the `dependent_root` semantics of proposer duties.
+  - *Impact:* the current performance collector treats the mismatch as fatal, halting the CSM, CSM `0x02`, and CM v2 performance oracles.
+- **[consensus-specs#4926](https://github.com/ethereum/consensus-specs/pull/4926)** renames `SECONDS_PER_SLOT` to `SLOT_DURATION_MS` in the node config.
+  - *Impact:* current oracles fail to parse the config of any node that drops the old field, stopping all oracle reports. This can happen before Gloas activation, as soon as clients ship the rename.
 
-[EIP-7688](https://eips.ethereum.org/EIPS/eip-7688) stabilizes field and item paths across compatible future extensions, allowing verifiers to use hard-coded generalized indices (GIndices) with item paths derived at runtime.
-
-Two Beacon API changes also affect the oracles: the proposer-duties `dependent_root` semantics introduced by [EIP-7917](https://eips.ethereum.org/EIPS/eip-7917), and the rename of `SECONDS_PER_SLOT` to `SLOT_DURATION_MS` in the node config.
+**These changes must be live before the Gloas activation slot.** The oracle release must be deployed, and the on-chain vote (verifier redeployments, consensus version bumps, and sanity-checker parameters) must be enacted, ahead of activation. Both can be deployed in advance: oracles keep the legacy path for pre-Gloas `ref_slot`s, and verifiers switch paths at the configured `GLOAS_SLOT`. Missing this deadline would halt or corrupt oracle reports and block every proof-based flow from the first post-Gloas slot.
 
 ## Specification
 
