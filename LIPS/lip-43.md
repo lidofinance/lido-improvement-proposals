@@ -40,10 +40,12 @@ Glamsterdam changes the beacon state layout, payload delivery, churn rules, and 
   - *Impact:* every generalized index configured in the current verifiers becomes invalid, and all proofs against post-Gloas states revert: validator top-ups, consolidations, predeposit guarantees, exit-delay reports, and CSM/CM withdrawal, slashing, and balance proofs.
 - **[EIP-8061](https://eips.ethereum.org/EIPS/eip-8061)** removes the cap on the exit churn limit and raises the consolidation churn.
   - *Impact:* the current Validator Exit Bus Oracle drains new exits at the old 256 ETH/epoch rate instead of the actual one (about 1,335 ETH/epoch at 43.75M ETH active), so it overestimates withdrawal epochs and requests fewer exits than needed, delaying withdrawal finalization. Sanity-checker limits tuned for the old churn reject reports with legitimate exit volumes the network now allows.
-- **[EIP-7917](https://eips.ethereum.org/EIPS/eip-7917)** changes the `dependent_root` semantics of proposer duties.
-  - *Impact:* the current performance collector treats the mismatch as fatal, halting the CSM, CSM `0x02`, and CM v2 performance oracles.
+Two Beacon API changes are not tied to the Gloas activation slot:
+
+- **[EIP-7917](https://eips.ethereum.org/EIPS/eip-7917)**, active since Fulu, changes the `dependent_root` semantics of proposer duties. The v2 proposer-duties endpoint returns the new value, while the deprecated v1 endpoint is not consistent across clients.
+  - *Impact:* the current performance collector reads v1 and treats a `dependent_root` mismatch as fatal, so a client that changes or drops v1 halts the CSM, CSM `0x02`, and CM v2 performance oracles.
 - **[consensus-specs#4926](https://github.com/ethereum/consensus-specs/pull/4926)** renames `SECONDS_PER_SLOT` to `SLOT_DURATION_MS` in the node config.
-  - *Impact:* current oracles fail to parse the config of any node that drops the old field, stopping all oracle reports. This can happen before Gloas activation, as soon as clients ship the rename.
+  - *Impact:* current oracles fail to parse the config of any node that drops the old field, stopping all oracle reports.
 
 **These changes must be live before the Gloas activation slot.** The oracle release must be deployed, and the on-chain vote (verifier redeployments, consensus version bumps, and sanity-checker parameters) must be enacted, ahead of activation. Both can be deployed in advance: oracles keep the legacy path for pre-Gloas `ref_slot`s, and verifiers switch paths at the configured `GLOAS_SLOT`. Missing this deadline would halt or corrupt oracle reports and block every proof-based flow from the first post-Gloas slot.
 
@@ -75,7 +77,6 @@ In the child state, validator balances already have the expected withdrawals ded
   - A report with a pre-Gloas `ref_slot` uses the legacy path even when it is built or submitted after activation.
   - For a report with a post-Gloas `ref_slot`, the read slot is the first non-missed slot after `ref_slot`.
 - The oracle waits for the read slot to be finalized before building a report.
-- All CL data is read from the read slot's state. All EL data is read at the block referenced by that state's `latest_block_hash`.
 - `ref_slot` stays in the report and remains the basis for all timestamps. The event lookback cutoff is computed from `ref_slot` and the genesis time instead of the anchor block timestamp.
 - The `payload_expected_withdrawals` amounts of Lido validators are added back to the CL balances read from the read slot's state. A validator may have several entries, and all of them are added to its balance. This step is required for all oracles.
 - Because the report algorithm changes, the consensus version is bumped as part of the on-chain vote in `AccountingOracle`, `ValidatorsExitBusOracle`, and the `CSFeeOracle` contracts of CSM, CSM `0x02`, and CM v2.
@@ -113,7 +114,7 @@ It is proposed to:
 
 ##### Exit Churn Limit
 
-EIP-8061 replaces the capped exit churn limit (256 ETH/epoch) with an uncapped one, which gives about 1311 ETH/epoch at ~43M ETH staked. With the old formula, the oracle overestimates withdrawal epochs and predicted liquidity, so it requests fewer exits than needed. `CHURN_LIMIT_QUOTIENT_GLOAS` and `MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA` differ across networks, so they are read from the node config instead of being hard-coded. If a parameter is missing after the hardfork, the oracle fails loudly instead of using a default.
+EIP-8061 replaces the capped exit churn limit (256 ETH/epoch) with an uncapped one, which gives about 1311 ETH/epoch at ~43M ETH staked. With the old formula, the oracle overestimates withdrawal epochs and predicted liquidity, so it requests fewer exits than needed.
 
 ##### Sweep Cycle Prediction
 
@@ -121,7 +122,7 @@ The validator sweep is not the only consumer of the per-payload withdrawal capac
 
 Of these consumers, only the validator sweep is predictable: it walks the validator set in a fixed order at a known rate. The others are periodical. Their load depends on external actors and comes in bursts, so a snapshot of the current queues does not predict a future load.
 
-The Validator Exit Bus Oracle does not try to emulate the consensus layer; it only needs a reasonable estimate of when Lido validators will be swept. Therefore, after the hardfork, the sweep cycle prediction counts only validator withdrawals and ignores all other consumers. As a result, VEBO will request to exit slightly more validators in some rare cases.
+The Validator Exit Bus Oracle does not try to emulate the consensus layer; it only needs a reasonable estimate of when Lido validators will be swept. Therefore, after the hardfork, the sweep cycle prediction counts only validator withdrawals and ignores all other consumers. As a result, the predicted sweep delay can be short and VEBO may request more few exits.
 
 ##### Max Exit Requests per Report
 
@@ -129,11 +130,10 @@ This proposal also closes technical debt from a hotfix. Gas limit issues were fo
 
 #### Technical Specification
 
-- For exits processed under Gloas, the per-epoch exit churn is `max(MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA, total_active_balance // CHURN_LIMIT_QUOTIENT_GLOAS)`, rounded down to `EFFECTIVE_BALANCE_INCREMENT`, with no upper cap. For pre-Gloas processing, the current formula is used.
-- Both parameters are read from the node config. If either is missing when the Gloas rule applies, the Validator Exit Bus Oracle stops instead of using a default.
-- At the fork boundary, the selected churn rule must match the consensus rules when the voluntary-exit message is first processed. The report's `ref_slot` alone must not select the rule for an exit that may be processed after activation. The rollout must either prevent such a pre-fork request from being first processed after activation, or model it with the Gloas rule.
+- If the beacon state read for the report (see [§1](#1-report-read-slot-in-oracles)) is at or after Gloas activation, the per-epoch exit churn is `max(MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA, total_active_balance // CHURN_LIMIT_QUOTIENT_GLOAS)`, rounded down to `EFFECTIVE_BALANCE_INCREMENT`, with no upper cap. Otherwise, the Electra formula is used.
+- At the fork boundary, exits requested by the last pre-Gloas report may be first processed after activation, under the Gloas rule. For that report, the oracle overestimates the exit queue wait and may request fewer exits than needed. This is accepted to keep the implementation simple: the rule is selected only from the state the report reads, without predicting when each exit will be processed.
 - After the hardfork, the sweep cycle prediction counts only validator withdrawals. Pending partial withdrawals, builder pending withdrawals, the builder sweep, and empty parent payloads are not modeled.
-- Predicted EL liquidity includes in-flight withdrawals of Lido validators once as a pending EL inflow. The corresponding CL validator balances are not restored.
+- In-flight withdrawals are counted once, through the CL balances restored by the add-back from [§1](#in-flight-withdrawal-add-back). Predicted EL liquidity does not add them again as a separate EL inflow.
 - A new `MAX_VALIDATOR_EXIT_REQUESTS_PER_REPORT` key is added to the `OracleDaemonConfig` contract with a value of `500`.
 - The Validator Exit Bus Oracle reads this value from `OracleDaemonConfig` and uses it as the maximum number of validators requested for exit in a single report. The hard-coded hotfix constant is removed. If the key is missing, the oracle stops instead of using a default.
 
@@ -151,16 +151,16 @@ else:
 
 ### 4. Beacon API Compatibility in Oracles
 
-This proposal supports the v2 proposer-duties endpoint at Gloas and the `SLOT_DURATION_MS` config field. The config-field change is independent of the Gloas activation date.
+This proposal switches the oracles to the v2 proposer-duties endpoint and supports the `SLOT_DURATION_MS` config field. Both changes take effect with the oracle release and the new consensus version, independent of the Gloas activation date.
 
 #### Rationale
 
-- **Proposer duties.** EIP-7917 introduced deterministic proposer lookahead. The Beacon API v2 proposer-duties endpoint defines the `dependent_root` needed for Gloas; the v1 endpoint is deprecated and implementations do not uniformly provide the required semantics. The oracle treats a `dependent_root` mismatch as fatal, so this affects the performance collector shared by the CSM, CSM `0x02`, and CM v2 oracles. Some clients may not support v2 when the release is deployed.
+- **Proposer duties.** EIP-7917 introduced deterministic proposer lookahead. The Beacon API v2 proposer-duties endpoint defines the `dependent_root` that matches this lookahead; the v1 endpoint is deprecated and implementations do not uniformly provide the required semantics. EIP-7917 is already active since Fulu, so the v2 semantics also apply to pre-Gloas epochs. The oracle treats a `dependent_root` mismatch as fatal, so this affects the performance collector shared by the CSM, CSM `0x02`, and CM v2 oracles.
 - **Slot duration.** [consensus-specs#4926](https://github.com/ethereum/consensus-specs/pull/4926) renames `SECONDS_PER_SLOT` to `SLOT_DURATION_MS`. The oracle will fail to parse the config of any node that drops the old field.
 
 #### Technical Specification
 
-- For post-Gloas duties, use `GET /eth/v2/validator/duties/proposer/{epoch}`. Its `dependent_root` is `get_block_root_at_slot(state, compute_start_slot_at_epoch(epoch - 1) - 1)` (or the genesis block root on underflow). If a node does not support v2, fall back to v1 and treat a `dependent_root` mismatch as non-fatal. Do not require v2 before Gloas activation.
+- For all duties, use `GET /eth/v2/validator/duties/proposer/{epoch}`, starting with the oracle release that enables the new consensus version. Its `dependent_root` is `get_block_root_at_slot(state, compute_start_slot_at_epoch(epoch - 1) - 1)` (or the genesis block root on underflow). A `dependent_root` mismatch is fatal. There is no fallback to v1, so the oracle requires consensus nodes that support v2 from the moment the release is deployed.
 - Accept either `SLOT_DURATION_MS` or `SECONDS_PER_SLOT`. Raise an error when the two are inconsistent or when the duration is not a whole number of seconds.
 - Read the churn parameters for §3 from the same node config.
 
