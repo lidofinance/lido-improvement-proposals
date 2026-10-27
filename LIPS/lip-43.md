@@ -57,9 +57,11 @@ For a report with a post-Gloas `ref_slot`, all three oracle families build their
 
 Under Gloas, the latest confirmed EL block and the deposits from a slot's payload appear in beacon state only when a child block is processed. Reading the first non-missed child gives a consistent snapshot of balances, pending deposits, and the matching EL block from one state.
 
-This change has three consequences:
+The state at `ref_slot` itself is not used because it would miss deposits from the `ref_slot` payload. The `Lido` contract assigns a deposit to a report by the frame current at deposit time, and the next frame starts at `ref_slot + 1`. A deposit in the `ref_slot` payload is therefore expected in the current report, but its deposit request reaches the beacon state only in the child. Without it, the report would show a negative rebase equal to the deposit amount and fail the sanity checks. The child state matches this boundary: it includes the `ref_slot` payload, but not the child's own payload, which belongs to the next report.
 
-- **Finality wait.** The oracle must wait for the child state to finalize, which usually takes about one epoch (~6.4 minutes) longer than waiting for `ref_slot` to get finalized.
+This change has four consequences:
+
+- **Finality wait.** The child is finalized together with `ref_slot` when the first slot of the next epoch has a block. If that slot is missed, the oracle waits one more epoch (~6.4 minutes).
 - **One-time rebase shift.** The first report after the switch covers one additional epoch. For a daily report, its rebase is therefore about `1/225 ≈ 0.44%` higher. This positive rebase is within the sanity-checker limits; later reports return to their normal span.
 - **Time reference.** All derived timestamps (event lookback windows and staking vault report metadata) must stay tied to `ref_slot`. If they used the read slot instead, the lookback window would widen by at least one slot and skewing reward-rate averages.
 
