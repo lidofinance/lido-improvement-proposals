@@ -106,9 +106,9 @@ EIP-8061 replaces the capped exit churn limit (256 ETH/epoch) with an uncapped o
 
 ##### Sweep Cycle Prediction
 
-The validator sweep is no the only consumer of the per-payload withdrawal capacity. Builder pending withdrawals, the builder sweep, and pending partial withdrawals are processed before it.
+The validator sweep is not the only consumer of the per-payload withdrawal capacity. Builder pending withdrawals, pending partial withdrawals and the builder sweep are processed before it.
 
-Of these consumers, only the validator sweep is predictable: it walks the validator set in a fixed order at a known rate. The others are periodical. Their load depends on external actors and comes in bursts, so a snapshot of the current queues does not predict future load, and there is no protocol-level upper bound to model them against.
+Of these consumers, only the validator sweep is predictable: it walks the validator set in a fixed order at a known rate. The others are periodical. Their load depends on external actors and comes in bursts, so a snapshot of the current queues does not predict a future load.
 
 The Validator Exit Bus Oracle does not try to emulate the consensus layer; it only needs a reasonable estimate of when Lido validators will be swept. Therefore, after the hardfork, the sweep cycle prediction counts only validator withdrawals and ignores all other consumers. As a result, VEBO will request to exit slightly more validators in some rare cases.
 
