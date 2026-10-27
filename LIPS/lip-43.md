@@ -193,7 +193,7 @@ ePBS removes `latest_execution_payload_header`, which previously contained the w
 now proves withdrawals using `BeaconState.payload_expected_withdrawals`, the list of withdrawals that the execution
 payload must honor.
 
-To find an item, the modules verifier joins the path to its list with the path to the item within that list:
+To find an item, both core and modules verifiers join the path to its list with the path to the item within that list:
 
 ```solidity
 // Validator i before Gloas
@@ -203,9 +203,8 @@ GI_VALIDATORS_PRE_GLOAS.concat(staticListNodeGIndex(i, 40));
 GI_VALIDATORS.concat(progressiveListNodeGIndex(i));
 ```
 
-Core finds validators the same way after Gloas. Before Gloas, it starts at validator zero and moves to validator `i`
-with `GI_FIRST_VALIDATOR_PRE_GLOAS.shr(i)`. Both approaches locate the same validator; they just calculate the path
-differently.
+Core's `ValidatorExitDelayVerifier` locates historical summaries the same way, with
+`staticListNodeGIndex(summaryIndex, 24)` under the pre-Gloas or Gloas `historical_summaries` path.
 
 `progressiveListNodeGIndex(i)` locates an item in chunks of size `1, 4, 16, 64, ...`. Chunk `k = floor(log4(3*i + 1))`
 starts at index `(4**k - 1) / 3`; the helper combines the path to that chunk with the item's offset. There is no single
@@ -267,14 +266,15 @@ checks the `parent(slot, proposerIndex)` node and anchors through EIP-4788; `CLP
 - Remove deployment-supplied GI parameters; constants live in core's `CLGIndices` and modules' `GIndices` libraries.
 - Replace `PIVOT_SLOT` / `pivotSlot` with `GLOAS_SLOT` / `gloasSlot` and generic `*_PREV` / `*_CURR` GI getters with
   explicit pre-Gloas/Gloas getters. Deployment remains responsible for choosing the correct network fork slot.
-- Proof generators must derive progressive-list paths instead of shifting a first-leaf GI by the item index.
+- Proof generators must derive item paths from the list root GI (`staticListNodeGIndex` before Gloas,
+  `progressiveListNodeGIndex` from Gloas onward) instead of shifting a first-leaf GI by the item index.
 
 ##### Core
 
 - `CLValidatorVerifier` and `CLProofVerifier` constructors take only `gloasSlot` instead of two GIs and a pivot slot.
   The verifier-related constructor inputs of their consumers and `ValidatorExitDelayVerifier` are reduced accordingly.
-- All three verifiers expose `GI_FIRST_VALIDATOR_PRE_GLOAS` and `GI_VALIDATORS`. The exit-delay verifier also exposes
-  `GI_FIRST_HISTORICAL_SUMMARY_PRE_GLOAS` and `GI_FIRST_HISTORICAL_SUMMARY`.
+- All three verifiers expose `GI_VALIDATORS_PRE_GLOAS` and `GI_VALIDATORS`. The exit-delay verifier also exposes
+  `GI_HISTORICAL_SUMMARIES_PRE_GLOAS`, `GI_HISTORICAL_SUMMARIES` and `GI_BLOCK_ROOT_IN_SUMMARY`.
 - Public write-method signatures of `TopUpGateway`, `ConsolidationGateway`, `PredepositGuarantee` and
   `ValidatorExitDelayVerifier` remain unchanged.
 
