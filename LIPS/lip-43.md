@@ -63,7 +63,7 @@ This change has four consequences:
 
 - **Finality wait.** The child is finalized together with `ref_slot` when the first slot of the next epoch has a block. If that slot is missed, the oracle waits one more epoch (~6.4 minutes).
 - **One-time rebase shift.** The first report after the switch covers one additional epoch. For a daily report, its rebase is therefore about `1/225 ≈ 0.44%` higher. This positive rebase is within the sanity-checker limits; later reports return to their normal span.
-- **Time reference.** All derived timestamps (event lookback windows and staking vault report metadata) must stay tied to `ref_slot`. If they used the read slot instead, the lookback window would widen by at least one slot and skewing reward-rate averages.
+- **Time reference.** All derived timestamps (event lookback windows and staking vault report metadata) must stay tied to `ref_slot`. If they used the read slot instead, the lookback window would widen by at least one slot and skew reward-rate averages.
 
 ##### In-Flight Withdrawal Add-Back
 
@@ -73,7 +73,7 @@ In the child state, validator balances already have the expected withdrawals ded
 
 - The algorithm is selected from the fork version of `ref_slot`. 
   - A report with a pre-Gloas `ref_slot` uses the legacy path even when it is built or submitted after activation.
-  - For a report with a post-Gloas `ref_slot`, the read slot is the first non-missed child of `ref_slot`.
+  - For a report with a post-Gloas `ref_slot`, the read slot is the first non-missed slot after `ref_slot`.
 - The oracle waits for the read slot to be finalized before building a report.
 - All CL data is read from the read slot's state. All EL data is read at the block referenced by that state's `latest_block_hash`.
 - `ref_slot` stays in the report and remains the basis for all timestamps. The event lookback cutoff is computed from `ref_slot` and the genesis time instead of the anchor block timestamp.
