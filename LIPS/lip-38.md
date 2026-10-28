@@ -5,7 +5,7 @@ status: WIP
 author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-10-22
+updated: 2026-10-28
 ---
 
 ## Simple Summary
@@ -137,7 +137,7 @@ A PWR added earlier in **this report** does not block an FWR. If a validator wit
 
 **Exit-eligibility floor for freshly activated validators.** The CL silently drops any EIP-7002 withdrawal request — PWR or FWR — for a validator that has not yet been active for `SHARD_COMMITTEE_PERIOD` (256 epochs, ~27.3 hours) since its `activation_epoch`. The iterator MUST NOT select such a validator for withdrawal in any phase. This affects selection only: a validator still inside its `SHARD_COMMITTEE_PERIOD` window continues to count normally toward all stake and weight accounting.
 
-**Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report [sanity checker limit](#oraclereportsanitychecker). All three phases share this limit. Requests are weighed with the **same formula as the on-chain sanity check** — `amount` for a PWR, and max-EB weight for the module's WC type for an FWR.
+**Per-report exit limit.** The iterator stops adding requests when the report's total exit balance (`max_current_exit_balance`) reaches the per-report [sanity checker limit](#oraclereportsanitychecker). All three phases share this limit. Requests are weighed with the **same formula as the on-chain sanity check** — `amount` for a PWR, and max-EB weight for the module's WC type for an FWR. Independently, the iterator stops once the report holds 400 records (see [ValidatorsExitBusOracle](#validatorsexitbusoracle)).
 
 #### Income prediction
 
@@ -323,6 +323,8 @@ On `submitReportData`, the VEBO **MUST validate that every record with `amount >
 
 Otherwise, the whole call reverts.
 
+**Records per report.** A report MUST contain at most **400** records (`requestsCount ≤ 400`); otherwise `submitReportData` reverts. This is lower than the previous cap of 500 because of gas limits: every record is now written to storage in the `TriggerableWithdrawalsBus` queue instead of only being emitted as an event, and a 500-record report would not fit safely into a block. To reduce that cost, the Bus reuses storage slots of already processed intents (see [TriggerableWithdrawalsBus](#triggerablewithdrawalsbus)).
+
 ```solidity
 interface IValidatorsExitBusOracle {
     /// Off-chain oracle daemon submits the ordered, packed report; each record is decoded into a
@@ -408,7 +410,7 @@ interface ITriggerableWithdrawalsBus {
     function getWithdrawalIntents(uint256 offset, uint256 limit) external view returns (WithdrawalIntent[] memory);
 
     /// Gated by CLEAR_WITHDRAWAL_INTENTS_ROLE — drop all unprocessed intents
-    /// (head := tail). Nothing is sent to the TWG.
+    /// (head := tail := 0). Nothing is sent to the TWG.
     function clearWithdrawalIntents() external;
 
     /// Emitted by clearWithdrawalIntents.
@@ -417,6 +419,8 @@ interface ITriggerableWithdrawalsBus {
 ```
 
 The queue offers no reordering or per-intent dismissal surface — requests execute strictly in submission order (see [Single FIFO queue](#single-fifo-queue)). The only exception is clearing the whole queue.
+
+**Storage slot reuse.** Writing intents to storage dominates the gas cost of `submitReportData`. To save gas, the Bus reuses storage slots: processed intents are not zeroed, and once the queue is fully drained (`head == tail`), both pointers are reset to `0`, so the next report writes into slots that already hold non-zero values. Overwriting a non-zero slot is much cheaper than writing a fresh one (`SSTORE` from zero). `clearWithdrawalIntents` resets the pointers the same way.
 
 ##### Clearing the queue
 
@@ -507,7 +511,7 @@ Four rules apply:
 
 The upgrade sets the following limits.
 
-- **VEBO.** The limits are sized against the [per-report sanity limit](#oraclereportsanitychecker) of 19,200 ETH. The PWR `maxLimit` equals the most one report can carry: 19,200 ETH for a report made entirely of PWRs. The FWR `maxLimit` is 500 validators — the maximum number of validators a single VEBO report can carry, capped by the `OracleDaemonConfig` setting. A report made entirely of FWRs therefore always fits. The restore rates (32 ETH per 48 s and 5 validators per 288 s) restore 19,200 ETH and 500 validators — one full report of either kind — every 8 hours, the VEBO report period (75 epochs).
+- **VEBO.** The limits are sized against the [per-report sanity limit](#oraclereportsanitychecker) of 19,200 ETH. The PWR `maxLimit` equals the most one report can carry: 19,200 ETH for a report made entirely of PWRs. The FWR `maxLimit` is 500 validators — the maximum number of validators a single VEBO report can carry. A report made entirely of FWRs therefore always fits. The restore rates (32 ETH per 48 s and 5 validators per 288 s) restore 19,200 ETH and 500 validators — one full report of either kind — every 8 hours, the VEBO report period (75 epochs).
 - **Modules.** Modules trigger **FWRs only**: their `Ejector` paths (`voluntaryEject` and strikes-based ejection) are full-exit only, and PWRs for module validators go through the VEBO. Their PWR limit is therefore **0**, so the TWG rejects any PWR from a module path. FWR limits are lower for `0x02` modules, whose validators can hold up to 2048 ETH each.
 
 | Consumer (`msg.sender`)            | WC type | PWR `maxLimit`    | PWR restore   | FWR `maxLimit` | FWR restore          |
