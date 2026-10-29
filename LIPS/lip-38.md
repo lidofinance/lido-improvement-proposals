@@ -361,7 +361,7 @@ The per-report balance check against the `OracleReportSanityChecker` is unchange
 
 #### OracleReportSanityChecker
 
-The per-report check is kept as introduced in [LIP-35](lip-35.md#sanity-checker): on `submitReportData`, the VEBO computes the report's total exit balance and calls `checkExitBusOracleReport(totalExitBalanceEth)`, which reverts if it exceeds `maxBalanceExitRequestedPerReportInEth` (19,200 ETH). The limit and its setter are unchanged. Only the weighing in the VEBO changes, because a report can now carry PWRs:
+The per-report check is kept as introduced in [LIP-35](lip-35.md#sanity-checker): on `submitReportData`, the VEBO computes the report's total exit balance and calls `checkExitBusOracleReport(totalExitBalanceEth)`, which reverts if it exceeds `maxBalanceExitRequestedPerReportInEth`. The limit and its setter are unchanged. Only the weighing in the VEBO changes, because a report can now carry PWRs:
 
 - **PWR** — weighed at its `amount`. The PWR amounts of the report are summed in gwei and rounded up to whole ETH, since the limit is in ETH.
 - **FWR** — weighed at the max-EB weight of its module's WC type: `getMaxEffectiveBalanceWeightWCType01()` for `0x01` modules and `getMaxEffectiveBalanceWeightWCType02()` for `0x02` modules. These weights are configurable on-chain via `MAX_EFFECTIVE_BALANCE_WEIGHTS_MANAGER_ROLE` and are currently 32 ETH and 2048 ETH. The VEBO reads them at submission; it does not hard-code them.
@@ -370,7 +370,7 @@ The off-chain Oracle MUST read the same weights from the `OracleReportSanityChec
 
 #### TriggerableWithdrawalsBus
 
-**New upgradable contract** deployed behind an [`OssifiableProxy`](https://github.com/lidofinance/core/blob/master/contracts/0.8.9/proxy/OssifiableProxy.sol), with the proxy admin set to the Aragon Agent. The queue holds state that must survive changes to the contract logic: intents queued but not yet processed, and the queue head and tail pointers.
+**New upgradable contract** deployed behind an [`OssifiableProxy`](https://github.com/lidofinance/core/blob/master/contracts/0.8.9/proxy/OssifiableProxy.sol), with the proxy admin set to the Aragon Agent. The queue holds state that must survive changes to the contract logic: intents queued but not yet processed, and the queue head and tail pointers. Its queue storage slots are already non-zero after use, so keeping the same storage avoids paying again for creating fresh slots (see [Storage slot reuse](#triggerablewithdrawalsbus)).
 
 It stores the single FIFO queue of withdrawal request intents and exposes the full queue surface:
 
@@ -511,13 +511,13 @@ Four rules apply:
 
 The upgrade sets the following limits.
 
-- **VEBO.** The limits are sized against the [per-report sanity limit](#oraclereportsanitychecker) of 19,200 ETH. The PWR `maxLimit` equals the most one report can carry: 19,200 ETH for a report made entirely of PWRs. The FWR `maxLimit` is 500 validators — the maximum number of validators a single VEBO report can carry. A report made entirely of FWRs therefore always fits. The restore rates (32 ETH per 48 s and 5 validators per 288 s) restore 19,200 ETH and 500 validators — one full report of either kind — every 8 hours, the VEBO report period (75 epochs).
+- **VEBO.** The limits are sized against the [per-report sanity limit](#oraclereportsanitychecker). The PWR `maxLimit` equals the most one report can carry: the full sanity limit for a report made entirely of PWRs.
 - **Modules.** Modules trigger **FWRs only**: their `Ejector` paths (`voluntaryEject` and strikes-based ejection) are full-exit only, and PWRs for module validators go through the VEBO. Their PWR limit is therefore **0**, so the TWG rejects any PWR from a module path. FWR limits are lower for `0x02` modules, whose validators can hold up to 2048 ETH each.
 
 | Consumer (`msg.sender`)            | WC type | PWR `maxLimit`    | PWR restore   | FWR `maxLimit` | FWR restore          |
 |------------------------------------|---------|-------------------|---------------|----------------|----------------------|
-| VEBO (`TriggerableWithdrawalsBus`) | mixed   | 19,200 ETH        | 32 ETH / 48 s | 500 validators | 5 validators / 288 s |
-| CSM (`Ejector`)                    | `0x01`  | 0 (PWRs disabled) | —             | 500 validators | 1 validator / 192 s  |
+| VEBO (`TriggerableWithdrawalsBus`) | mixed   | 11,520 ETH        | 32 ETH / 48 s | 400 validators | 5 validators / 288 s |
+| CSM (`Ejector`)                    | `0x01`  | 0 (PWRs disabled) | —             | 400 validators | 1 validator / 192 s  |
 | CSM `0x02` (`Ejector`)             | `0x02`  | 0 (PWRs disabled) | —             | 150 validators | 1 validator / 384 s  |
 | CMv2 (`Ejector`)                   | `0x02`  | 0 (PWRs disabled) | —             | 150 validators | 1 validator / 384 s  |
 
