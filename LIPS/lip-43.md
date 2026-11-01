@@ -21,14 +21,14 @@ For the off-chain components of the [Accounting](https://docs.lido.fi/guides/ora
 - Identifies bunker-mode balance samples by CL state root instead of EL block number;
 - Switches the Validator Exit Bus Oracle to the uncapped exit churn limit, with parameters read from the network config;
 - Limits the sweep-cycle prediction to validator withdrawals;
-- Moves the per-report limit on validator exit requests (lowered from 600 to 500 after gas limit issues) from a hard-coded oracle constant to the `OracleDaemonConfig` contract;
+- Moves the per-report limit on validator exit requests from a hard-coded oracle constant to the `ValidatorsExitBusOracle` contract;
 - Updates Beacon API handling and oracle consensus versions.
 
 On-chain changes comprise only changes to `Verifier` contracts and contract components, namely:
 - Verifiers now use hard-coded generalized indices (GIndices), with item paths derived at runtime.
 - Proof methods for the events that should be proven against the exact beacon block now use `block_roots` from the corresponding beacon state to reach required block roots.
 
-Also, several protocol parameters used in sanity checks are updated to conform with EIP-8061, and the oracle consensus versions are bumped in the same on-chain vote.
+Also, several protocol parameters used in sanity checks are updated to conform with EIP-8061, the maximum number of validators per exit report is set to `500` in `ValidatorsExitBusOracle` via `setMaxValidatorsPerReport`, and the oracle consensus versions are bumped in the same on-chain vote.
 
 ## Motivation
 
@@ -53,7 +53,7 @@ Two Beacon API changes are not tied to the Gloas activation slot:
 
 ### 1. Report Read Slot in Oracles
 
-For a report with a post-Gloas `ref_slot`, all three oracle families build their reports from one beacon state: the first non-missed child of `ref_slot`. The EL block for the report is the `state.latest_block_hash` of that same state. As a required step of this read, every oracle adds in-flight withdrawals of Lido validators back to their CL balances.
+For a report with a post-Gloas `ref_slot`, the Accounting and Validator Exit Bus oracles build their reports from the first non-missed child of `ref_slot`. The EL block for the report is the `state.latest_block_hash` of that state, and all three oracle families read EL data at this block. Staking module oracles read their validators from the last non-missed block at or before `ref_slot` instead. As a required step of this read, every oracle adds in-flight withdrawals of Lido validators back to their CL balances.
 
 #### Rationale
 
@@ -61,7 +61,7 @@ Under Gloas, the latest confirmed EL block and the deposits from a slot's payloa
 
 The state at `ref_slot` itself is not used because it would miss deposits from the `ref_slot` payload. The `Lido` contract assigns a deposit to a report by the frame current at deposit time, and the next frame starts at `ref_slot + 1`. A deposit in the `ref_slot` payload is therefore expected in the current report, but its deposit request reaches the beacon state only in the child. Without it, the report would show a negative rebase equal to the deposit amount and fail the sanity checks. The child state matches this boundary: it includes the `ref_slot` payload, but not the child's own payload, which belongs to the next report.
 
-This change has four consequences:
+This change has three consequences:
 
 - **Finality wait.** The child is finalized together with `ref_slot` when the first slot of the next epoch has a block. If that slot is missed, the oracle waits one more epoch (~6.4 minutes).
 - **One-time rebase shift.** The first report after the switch covers one additional epoch. For a daily report, its rebase is therefore about `1/225 ≈ 0.44%` higher. This positive rebase is within the sanity-checker limits; later reports return to their normal span.
@@ -78,7 +78,7 @@ In the child state, validator balances already have the expected withdrawals ded
   - For a report with a post-Gloas `ref_slot`, the read slot is the first non-missed slot after `ref_slot`.
 - The oracle waits for the read slot to be finalized before building a report.
 - `ref_slot` stays in the report and remains the basis for all timestamps. The event lookback cutoff is computed from `ref_slot` and the genesis time instead of the anchor block timestamp.
-- The `payload_expected_withdrawals` amounts of Lido validators are added back to the CL balances read from the read slot's state. A validator may have several entries, and all of them are added to its balance. This step is required for all oracles.
+- The `payload_expected_withdrawals` amounts of Lido validators are added back to the CL balances read from each beacon state used for the report. A validator may have several entries, and all of them are added to its balance. This step is required for all oracles.
 - Because the report algorithm changes, the consensus version is bumped as part of the on-chain vote in `AccountingOracle`, `ValidatorsExitBusOracle`, and the `CSFeeOracle` contracts of CSM, CSM `0x02`, and CM v2.
 
 ### 2. Accounting Oracle
@@ -108,7 +108,7 @@ It is proposed to:
 
 - Switch to the uncapped exit churn limit after the hardfork;
 - Count only validator withdrawals in the sweep cycle prediction;
-- Read the maximum number of validator exit requests per report from the `OracleDaemonConfig` contract instead of a hard-coded constant.
+- Read the maximum number of validator exit requests per report from the `ValidatorsExitBusOracle` contract instead of a hard-coded constant.
 
 #### Rationale
 
@@ -126,7 +126,7 @@ The Validator Exit Bus Oracle does not try to emulate the consensus layer; it on
 
 ##### Max Exit Requests per Report
 
-This proposal also closes technical debt from a hotfix. Gas limit issues were found when a report requests the maximum of 600 validator exits, so the limit was lowered to 500 by a constant hard-coded in the oracle. The limit is moved to the `OracleDaemonConfig` contract as `MAX_VALIDATOR_EXIT_REQUESTS_PER_REPORT` with a value of `500`, so it can be adjusted by the DAO without an oracle release.
+This proposal also closes technical debt from a hotfix. Gas limit issues were found when a report requests the maximum of 600 validator exits, so the limit was lowered to 500 by a constant hard-coded in the oracle. The limit is moved on-chain: it is set to `500` in the `ValidatorsExitBusOracle` contract itself by calling `setMaxValidatorsPerReport`, so it can be adjusted by the DAO without an oracle release.
 
 #### Technical Specification
 
@@ -134,8 +134,8 @@ This proposal also closes technical debt from a hotfix. Gas limit issues were fo
 - At the fork boundary, exits requested by the last pre-Gloas report may be first processed after activation, under the Gloas rule. For that report, the oracle overestimates the exit queue wait and may request fewer exits than needed. This is accepted to keep the implementation simple: the rule is selected only from the state the report reads, without predicting when each exit will be processed.
 - After the hardfork, the sweep cycle prediction counts only validator withdrawals. Pending partial withdrawals, builder pending withdrawals, the builder sweep, and empty parent payloads are not modeled.
 - In-flight withdrawals are counted once, through the CL balances restored by the add-back from [§1](#in-flight-withdrawal-add-back). Predicted EL liquidity does not add them again as a separate EL inflow.
-- A new `MAX_VALIDATOR_EXIT_REQUESTS_PER_REPORT` key is added to the `OracleDaemonConfig` contract with a value of `500`.
-- The Validator Exit Bus Oracle reads this value from `OracleDaemonConfig` and uses it as the maximum number of validators requested for exit in a single report. The hard-coded hotfix constant is removed. If the key is missing, the oracle stops instead of using a default.
+- The maximum number of validators per report is set to `500` in the `ValidatorsExitBusOracle` contract by calling `setMaxValidatorsPerReport(500)` as part of the on-chain vote.
+- The Validator Exit Bus Oracle reads this value from the `ValidatorsExitBusOracle` contract (`getMaxValidatorsPerReport()`) and uses it as the maximum number of validators requested for exit in a single report. The hard-coded hotfix constant is removed.
 
 ```python
 def get_exit_churn_limit(total_active_balance, min_per_epoch_churn_limit, churn_limit_quotient) -> Gwei:
