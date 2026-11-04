@@ -333,10 +333,10 @@ interface IValidatorsExitBusOracle {
 
     /// Emitted for every queued intent.
     event WithdrawalRequested(
-        uint32  indexed moduleId,
-        uint64  indexed nodeOperatorId,
+        uint256 indexed moduleId,
+        uint256 indexed nodeOperatorId,
         bytes   pubkey,
-        uint64  amountGwei
+        uint256 amountGwei
     );
 }
 ```
