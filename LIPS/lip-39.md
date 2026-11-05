@@ -2,7 +2,7 @@
 lip: 39
 title: Lean Oracle Rebase Sanity Check
 status: WIP
-author: George Avsetsin, Dmitry Gusakov, Eugene Mamin
+author: George Avsetsin, Dmitry Gusakov, Eugene Mamin, Raman Siamionau, Alexandr Kolesnikov
 discussions-to: <research.lido.fi thread to be created>
 created: 2026-07-14
 updated: 2026-11-03
