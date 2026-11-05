@@ -84,7 +84,7 @@ hardDecreaseBP = min(
 
 Elapsed time counts as at least one day, so a report after a frame shorter than one day still gets the full daily rate. Increase limits are annualized percentages of `preCLBalance` and are prorated by `timeElapsed`; the existing one-hour fallback is retained when the elapsed time is zero. After a missed report, the next report is measured from the last processed state, so loss and recovery are netted while both the hard decrease limit and the positive allowance grow over the elapsed interval.
 
-The figure shows the limits against elapsed time, drawn with the values from [Initial parameters](#initial-parameters). Increase limits have no ceiling. A vertical cut at any elapsed time gives the five intervals of the figure above.
+The figure shows the limits against elapsed time, drawn with the values from [Initial parameters](#initial-parameters). A vertical cut at any elapsed time gives the five intervals of the figure above.
 
 <img src="./assets/lip-39/cl-rebase-limits-over-time.svg" alt="CL accounting rebase limits against elapsed time" width="700" height="480" style="max-width: 100%; height: auto;">
 
@@ -92,7 +92,7 @@ The reported Withdrawal Vault balance is included so that ETH moved from CL to t
 
 ### Initial parameters
 
-The checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS` for increases and `0 <= soft <= dailyHard <= hard <= MAX_BASIS_POINTS` for decreases. The values of `dailyCLRebaseDecreaseHardBPLimit`, `clRebaseDecreaseHardBPLimit`, and `annualCLRebaseIncreaseHardBPLimit` are placeholders; analysts will provide the final values.
+The checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS` for increases and `0 <= soft <= dailyHard <= hard <= MAX_BASIS_POINTS` for decreases. The values of `dailyCLRebaseDecreaseHardBPLimit` and `clRebaseDecreaseHardBPLimit` are placeholders; analysts will provide the final values.
 
 | Parameter | Initial value | Effect |
 | --- | ---: | --- |
@@ -110,7 +110,7 @@ The checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS` for increases and `
 
 **`annualCLRebaseIncreaseSoftBPLimit = 1,000 BP`.** The value reuses the production `annualBalanceIncreaseBPLimit` for Accounting Oracle-only reports, preserving approximately the current annualized reward envelope.
 
-**`annualCLRebaseIncreaseHardBPLimit = 1,750 BP`.** The placeholder value creates a `750 BP` annualized committee range, approximately `2.05 BP` over 24 hours. It must not be derived by mechanically annualizing the current 7.5 basis-point `maxPositiveTokenRebase`, which is a fixed share-rate budget over CL, vault, and burn inputs rather than a CL accounting integrity limit. The exact value requires historical replay and economic analysis.
+**`annualCLRebaseIncreaseHardBPLimit = 1,750 BP`.** The value creates a `750 BP` annualized committee range, approximately `2.05 BP` over 24 hours. It must not be derived by mechanically annualizing the current 7.5 basis-point `maxPositiveTokenRebase`, which is a fixed share-rate budget over CL, vault, and burn inputs rather than a CL accounting integrity limit.
 
 ### Affected contracts
 
