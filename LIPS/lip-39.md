@@ -84,7 +84,7 @@ hardDecreaseBP = min(
 
 Elapsed time counts as at least one day, so a discrete loss inside one frame can use the full daily rate. Increase limits are annualized percentages of `preCLBalance`, prorated by `timeElapsed` without a ceiling; the existing one-hour fallback is retained when the elapsed time is zero. After a missed report, the next report is measured from the last processed state, so loss and recovery are netted while both the hard decrease limit and the positive allowance grow over the elapsed interval.
 
-The figure shows the hard decrease limit against elapsed time, drawn with the provisional values from [Initial parameters](#initial-parameters).
+The figure shows the hard decrease limit against elapsed time, drawn with the values from [Initial parameters](#initial-parameters).
 
 <img src="./assets/lip-39/cl-rebase-decrease-over-time.svg" alt="Hard CL accounting rebase decrease limit against elapsed time" width="700" height="200" style="max-width: 100%; height: auto;">
 
@@ -92,7 +92,7 @@ The reported Withdrawal Vault balance is included so that ETH moved from CL to t
 
 ### Initial parameters
 
-The checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS` for increases and `0 <= soft <= dailyHard <= hard <= MAX_BASIS_POINTS` for decreases. The values of `dailyCLRebaseDecreaseHardBPLimit` and `clRebaseDecreaseHardBPLimit` are provisional and still under discussion.
+The checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS` for increases and `0 <= soft <= dailyHard <= hard <= MAX_BASIS_POINTS` for decreases. The initial values follow the [Sanity Check Lean v1](https://hackmd.io/@lido/rJuP3Is6fe) parameter research.
 
 | Parameter | Initial value | Effect |
 | --- | ---: | --- |
@@ -279,6 +279,7 @@ LIP-39 does not change the `AccountingOracle` report-processing code or `ReportD
 - [LIP-23: Negative rebase sanity check with second opinion](./lip-23.md)
 - [LIP-35: Staking Router v3](./lip-35.md)
 - [SRv3 sanity-check parameter research](https://hackmd.io/0ePemSJtQA6S5NDK2M3mww)
+- [Sanity Check Lean v1 parameter research](https://hackmd.io/@lido/rJuP3Is6fe)
 - [ZK Lido Oracle powered by Succinct](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747)
 - [RISC Zero/Boundless second-opinion update](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/8)
 - [Accounting Oracle second-opinion pause](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/9)
