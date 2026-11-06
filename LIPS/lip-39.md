@@ -84,8 +84,6 @@ hardDecreaseBP = min(
 
 Elapsed time counts as at least one day, so a discrete loss inside one frame can use the full daily rate. Increase limits are annualized percentages of `preCLBalance`, prorated by `timeElapsed`; the existing one-hour fallback is retained when the elapsed time is zero. After a missed report, the next report is measured from the last processed state, so loss and recovery are netted. The hard decrease limit grows with elapsed time up to its ceiling. The annualized increase limits apply over the full elapsed interval.
 
-<img src="./assets/lip-39/cl-rebase-decrease-over-time.svg" alt="Hard CL accounting rebase decrease limit against elapsed time" width="700" height="200" style="max-width: 100%; height: auto;">
-
 The reported Withdrawal Vault balance is included so that ETH moved from CL to the vault is not treated as a loss. EL rewards and share burns remain outside the checked value because they are independently bounded by live on-chain state.
 
 ### Initial parameters
@@ -105,6 +103,8 @@ The checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS` for increases and `
 **`dailyCLRebaseDecreaseHardBPLimit = 20 BP`.** Even a joint compromise of the Accounting Oracle and the committee can reduce the reported CL accounting balance by at most this rate per day of elapsed time, and skipping reports does not raise it.
 
 **`clRebaseDecreaseHardBPLimit = 200 BP`.** The ceiling bounds any single report, including one after a long gap, and is reached after 10 days of elapsed time at the daily rate. The value is set by the DAO reaction time. It is not directly comparable to the production `360 BP` rolling limit.
+
+<img src="./assets/lip-39/cl-rebase-decrease-over-time.svg" alt="Hard CL accounting rebase decrease limit against elapsed time" width="700" height="144" style="max-width: 100%; height: auto;">
 
 **`annualCLRebaseIncreaseSoftBPLimit = 700 BP`.** The value covers a CL APR of about 7% when Lido receives an unusually large share of sync-committee and proposal duties; with all duties performed, the current CL APR is about 3.86%. It is lower than the production `annualBalanceIncreaseBPLimit` of `1,000 BP`.
 
