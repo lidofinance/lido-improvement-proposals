@@ -293,7 +293,7 @@ def in_grace_period(operator_keys, state, ref_epoch):
 
 #### WithdrawalsOracle
 
-The `ValidatorsExitBusOracle` (VEBO) contract is renamed to `WithdrawalsOracle` (WO).
+The `ValidatorsExitBusOracle` (VEBO) contract is renamed to `WithdrawalsOracle` (WO). The upgrade reuses the existing VEBO proxy, so the WO keeps the VEBO address. Storage slots keyed by the old contract name are renamed, and the finalize step of the upgrade migrates their data to the new slots.
 
 The off-chain oracle daemon calls `submitReportData` with a `ReportData` structure whose `data` is a blob of fixed-width records packed together. The WO supports a **single report format**, so the `dataFormat` selector is removed from `ReportData` along with the format constants:
 
@@ -343,6 +343,8 @@ interface IWithdrawalsOracle {
 }
 ```
 
+`WithdrawalRequested` replaces the `ValidatorExitRequest` event.
+
 **Removed entry points.** The WO no longer triggers withdrawals itself; every request goes through the `TriggerableWithdrawalsBus`. The following are removed:
 
 - **`submitExitRequestsHash` / `submitExitRequestsData`** — the hash-delivery path (see [Rationale](#removing-exit-requests-hash-delivery-via-easytrack)).
@@ -357,13 +359,17 @@ interface IWithdrawalsOracle {
 
 `EXIT_REQUEST_LIMIT_MANAGER_ROLE`, which manages both, is removed as well, and the upgrade revokes it from its holders.
 
-The per-report balance check against the `OracleReportSanityChecker` is unchanged (see [OracleReportSanityChecker](#oraclereportsanitychecker)).
+The per-report balance check against the `OracleReportSanityChecker` is kept under new names (see [OracleReportSanityChecker](#oraclereportsanitychecker)).
 
 **Cutover.** The `SUBMIT_REPORT_HASH_ROLE` held by EasyTrack is revoked. Legacy report hashes with exit data not yet delivered at the moment of the upgrade are **abandoned** — the new format cannot deliver them, and no legacy delivery path is retained. The underlying exit demand re-emerges organically from validator balances and is re-covered by subsequent WO reports.
 
 #### OracleReportSanityChecker
 
-The per-report check is kept as introduced in [LIP-35](lip-35.md#sanity-checker): on `submitReportData`, the WO computes the report's total exit balance and calls `checkExitBusOracleReport(totalExitBalanceEth)`, which reverts if it exceeds `maxBalanceExitRequestedPerReportInEth`. The limit and its setter are unchanged. Only the weighing in the WO changes, because a report can now carry PWRs:
+The per-report check from [LIP-35](lip-35.md#sanity-checker) is kept: on `submitReportData`, the WO computes the report's total exit balance and calls `checkWithdrawalsOracleReport(totalExitBalanceEth)`, which reverts if it exceeds `maxBalanceWithdrawalRequestedPerReportInEth`.
+
+The check and its limit are renamed to match the WO, with logic and limit value unchanged: `checkExitBusOracleReport` → `checkWithdrawalsOracleReport`, and `ExitRequested` → `WithdrawalRequested` in the limit's `LimitsList` field, setter, role (`EXIT_REQUESTED` → `WITHDRAWAL_REQUESTED`) and event.
+
+What changes is how the WO weighs a report, because it can now carry PWRs:
 
 - **PWR** — weighed at its `amount`. The PWR amounts of the report are summed in gwei and rounded up to whole ETH, since the limit is in ETH.
 - **FWR** — weighed at the max-EB weight of its module's WC type: `getMaxEffectiveBalanceWeightWCType01()` for `0x01` modules and `getMaxEffectiveBalanceWeightWCType02()` for `0x02` modules. These weights are configurable on-chain via `MAX_EFFECTIVE_BALANCE_WEIGHTS_MANAGER_ROLE` and are currently 32 ETH and 2048 ETH. The WO reads them at submission; it does not hard-code them.
@@ -569,6 +575,8 @@ The WithdrawalVault already supports EIP-7002 partial withdrawals (variable `amo
 #### LidoLocator
 
 Register the new TWG address and the `TriggerableWithdrawalsBus` proxy address so the rest of the protocol resolves them after the upgrade, and **remove the `ValidatorExitDelayVerifier` entry**.
+
+Add a `withdrawalsOracle()` getter for the WO. Keep the `validatorsExitBusOracle()` getter for backward compatibility and mark it **deprecated**. Both getters return the WO address.
 
 #### OracleDaemonConfig
 
