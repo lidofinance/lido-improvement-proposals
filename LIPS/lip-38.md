@@ -421,6 +421,12 @@ interface ITriggerableWithdrawalsBus {
     /// (head := tail := 0). Nothing is sent to the TWG.
     function clearWithdrawalIntents() external;
 
+    /// Emitted by addWithdrawalIntents.
+    event WithdrawalIntentsAdded(uint256 firstIndex, uint256 count);
+
+    /// Emitted by processWithdrawalIntents.
+    event WithdrawalIntentsProcessed(uint256 firstIndex, uint256 count);
+
     /// Emitted by clearWithdrawalIntents.
     event WithdrawalIntentsCleared(uint256 clearedCount);
 }
