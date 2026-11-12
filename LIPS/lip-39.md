@@ -2,10 +2,10 @@
 lip: 39
 title: Lean Oracle Rebase Sanity Check
 status: WIP
-author: George Avsetsin, Dmitry Gusakov, Eugene Mamin
+author: George Avsetsin, Dmitry Gusakov, Eugene Mamin, Raman Siamionau, Alexandr Kolesnikov
 discussions-to: <research.lido.fi thread to be created>
 created: 2026-07-14
-updated: 2026-08-12
+updated: 2026-11-03
 ---
 
 # Lean Oracle Rebase Sanity Check
@@ -38,7 +38,7 @@ The limits apply to the CL part of the report, including ETH withdrawn from CL i
 
 ### Rebase processing model
 
-Four configurable limits divide the CL accounting rebase into five intervals and three outcomes. A value at or inside the corresponding soft limit is processed on Accounting Oracle consensus. A value beyond a soft limit but at or inside the hard limit additionally requires the second-opinion committee. A value beyond a hard limit reverts. Hard limits are evaluated before consulting the second-opinion provider and cannot be overridden by it.
+Four configurable boundaries divide the CL accounting rebase into five intervals and three outcomes. A value at or inside the corresponding soft limit is processed on Accounting Oracle consensus. A value beyond a soft limit but at or inside the hard limit additionally requires the second-opinion committee. A value beyond a hard limit reverts. Hard limits are evaluated before consulting the second-opinion provider and cannot be overridden by it.
 
 <img src="./assets/lip-39/cl-rebase-ranges.svg" alt="CL accounting rebase authority ranges" width="700" height="140" style="max-width: 100%; height: auto;">
 
@@ -58,8 +58,9 @@ postCLAccountingBalance =
     withdrawalVaultBalance;
 
 if (postCLAccountingBalance < preCLBalance) {
-    outcome = classifyPerReportDecrease(
-        preCLBalance - postCLAccountingBalance
+    outcome = classifyTimeBoundedDecrease(
+        preCLBalance - postCLAccountingBalance,
+        timeElapsed
     );
 } else {
     outcome = classifyAnnualizedIncrease(
@@ -72,28 +73,42 @@ if (outcome == SECOND_OPINION) requireMatchingReportHash();
 if (outcome == REVERT) revert;
 ```
 
-Decrease limits are fixed percentages of `preCLBalance` per report. Increase limits are annualized percentages of `preCLBalance` and are prorated by `timeElapsed`; the existing one-hour fallback is retained when the elapsed time is zero. The asymmetry is intentional: CL rewards accrue continuously, while losses may occur as discrete events. After a missed report, the next report is measured from the last processed state, so loss and recovery are netted while the positive allowance spans the full elapsed interval.
+The soft decrease limit is a fixed percentage of `preCLBalance` per report. The hard decrease limit grows with `timeElapsed` at a daily rate and is capped by a per-report ceiling:
+
+```solidity
+hardDecreaseBP = min(
+    dailyCLRebaseDecreaseHardBPLimit * max(timeElapsed, 1 days) / 1 days,
+    clRebaseDecreaseHardBPLimit
+);
+```
+
+Elapsed time counts as at least one day, so a discrete loss inside one frame can use the full daily rate. Increase limits are annualized percentages of `preCLBalance`, prorated by `timeElapsed`; the existing one-hour fallback is retained when the elapsed time is zero. After a missed report, the next report is measured from the last processed state, so loss and recovery are netted. The hard decrease limit grows with elapsed time up to its ceiling. The annualized increase limits apply over the full elapsed interval.
 
 The reported Withdrawal Vault balance is included so that ETH moved from CL to the vault is not treated as a loss. EL rewards and share burns remain outside the checked value because they are independently bounded by live on-chain state.
 
 ### Initial parameters
 
-For each direction, the checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS`. Decrease limits are per report; increase limits are annualized and prorated by elapsed time.
+The checker enforces `0 <= soft <= hard <= MAX_BASIS_POINTS` for increases and `0 <= soft <= dailyHard <= hard <= MAX_BASIS_POINTS` for decreases. The initial values follow the [Sanity Check Lean v1](https://hackmd.io/@lido/rJuP3Is6fe) parameter research.
 
 | Parameter | Initial value | Effect |
 | --- | ---: | --- |
 | `clRebaseDecreaseSoftBPLimit` | `0 BP` per report | Any CL accounting decrease requires the committee |
-| `clRebaseDecreaseHardBPLimit` | `500 BP` per report | A decrease above 5% always reverts |
-| `annualCLRebaseIncreaseSoftBPLimit` | `1,000 BP` annualized | Accounting Oracle-only range; approximately `2.74 BP` over 24 hours |
-| `annualCLRebaseIncreaseHardBPLimit` | `1,750 BP` annualized | Joint Accounting Oracle and committee range; approximately `4.79 BP` over 24 hours |
+| `dailyCLRebaseDecreaseHardBPLimit` | `20 BP` per day of elapsed time | Hard decrease limit grows at this rate up to the ceiling |
+| `clRebaseDecreaseHardBPLimit` | `200 BP` per report | Ceiling of the hard decrease limit; a larger decrease always reverts, whatever the elapsed time |
+| `annualCLRebaseIncreaseSoftBPLimit` | `700 BP` annualized | Accounting Oracle-only range; approximately `1.92 BP` over 24 hours |
+| `annualCLRebaseIncreaseHardBPLimit` | `1,700 BP` annualized | Joint Accounting Oracle and committee range; approximately `4.66 BP` over 24 hours |
 
 **`clRebaseDecreaseSoftBPLimit = 0 BP`.** The Accounting Oracle cannot report a CL accounting loss without the committee. Because EL rewards are excluded, a genuine CL-side loss may require the committee even when the final stETH rebase remains positive. This is deliberately more conservative than the current rolling loss allowance and allows that stateful mechanism to be removed.
 
-**`clRebaseDecreaseHardBPLimit = 500 BP`.** The value reuses the former `oneOffCLBalanceDecreaseBPLimit`, which [LIP-23](./lip-23.md) replaced because Accounting Oracle alone could repeat a 5% decrease before governance reacted. Under this proposal every such decrease requires both reporting groups, but repetition remains material: with no offsetting flows, three and seven consecutive decreases at the hard limit would reduce the starting CL accounting balance by approximately 14.3% and 30.2%, respectively. The value is not directly comparable to the production `360 BP` rolling limit and remains provisional pending historical replay and loss-scenario analysis.
+**`dailyCLRebaseDecreaseHardBPLimit = 20 BP`.** Even a joint compromise of the Accounting Oracle and the committee can reduce the reported CL accounting balance by at most this rate per day of elapsed time, and skipping reports does not raise it.
 
-**`annualCLRebaseIncreaseSoftBPLimit = 1,000 BP`.** The provisional value reuses the production `annualBalanceIncreaseBPLimit` for Accounting Oracle-only reports, preserving approximately the current annualized reward envelope. Its final calibration remains subject to historical replay.
+**`clRebaseDecreaseHardBPLimit = 200 BP`.** The ceiling bounds any single report, including one after a long gap, and is reached after 10 days of elapsed time at the daily rate. The value is set by the DAO reaction time. It is not directly comparable to the production `360 BP` rolling limit.
 
-**`annualCLRebaseIncreaseHardBPLimit = 1,750 BP`.** The provisional value creates a `750 BP` annualized committee range, approximately `2.05 BP` over 24 hours. It must not be derived by mechanically annualizing the current 7.5 basis-point `maxPositiveTokenRebase`, which is a fixed share-rate budget over CL, vault, and burn inputs rather than a CL accounting integrity limit. The exact value requires historical replay and economic analysis.
+<img src="./assets/lip-39/cl-rebase-decrease-over-time.svg" alt="Hard CL accounting rebase decrease limit against elapsed time" width="700" height="144" style="max-width: 100%; height: auto;">
+
+**`annualCLRebaseIncreaseSoftBPLimit = 700 BP`.** The value covers a CL APR of about 7% when Lido receives an unusually large share of sync-committee and proposal duties; with all duties performed, the current CL APR is about 3.86%. It is lower than the production `annualBalanceIncreaseBPLimit` of `1,000 BP`.
+
+**`annualCLRebaseIncreaseHardBPLimit = 1,700 BP`.** The value follows an extreme scenario with a CL APR of about 17.9%: Lido holds 0.5M of 5M staked ETH and fills every sync-committee and proposal duty. It must not be derived by mechanically annualizing the current 7.5 basis-point `maxPositiveTokenRebase`, which is a fixed share-rate budget over CL, vault, and burn inputs rather than a CL accounting integrity limit.
 
 ### Affected contracts
 
@@ -219,12 +234,14 @@ The committee cannot submit an Accounting Oracle report or override a hard limit
 | `checkAccountingOracleReport(...)` | Removes `_withdrawalsVaultTransfer`; selector changes |
 | `simulateOracleReport(...)` | Keeps its selector; output tuple is reduced from 15 to 12 fields |
 | `ISecondOpinionOracle.getReport(...)` | Replaced by `getReportHash(refSlot)` |
-| `LimitsList` | Keeps the same tuple length and unrelated field positions; four fields receive new names and semantics |
+| `LimitsList` | Keeps unrelated field positions; four fields receive new names and semantics; `dailyCLRebaseDecreaseHardBPLimit` is appended after `externalPendingBalanceCapEth` |
+| `setOracleReportLimits(...)` | Selector changes because `LimitsList` gains a field |
+| `setCLRebaseDecreaseBPLimits(...)` | New; sets the soft, daily hard, and hard decrease limits; replaces `setMaxCLBalanceDecreaseBP(...)` |
 | Checker report history | Removed and not migrated |
 | SP1-based oracle implementation | Deprecated and not adapted to the new interface |
 | RISC Zero/Boundless integration | Remains paused and is not deployed or migrated |
 
-The four limits are returned by `getOracleReportLimits()` and can be updated through the existing bulk setter, whose `(LimitsList, secondOpinionOracle)` ABI shape is retained. `setCLRebaseDecreaseBPLimits(...)` and `setAnnualCLRebaseIncreaseBPLimits(...)` update each soft-hard pair atomically under separate manager roles and emit pair-specific events. The provider may be changed through `setSecondOpinionOracle(...)` under `SECOND_OPINION_MANAGER_ROLE`.
+The five limits are returned by `getOracleReportLimits()` and can be updated through the existing bulk setter, which keeps its `(LimitsList, secondOpinionOracle)` arguments. `setCLRebaseDecreaseBPLimits(...)` updates the three decrease limits atomically and `setAnnualCLRebaseIncreaseBPLimits(...)` updates the increase pair atomically, under separate manager roles and with their own events. The provider may be changed through `setSecondOpinionOracle(...)` under `SECOND_OPINION_MANAGER_ROLE`.
 
 Four existing `LimitsList` positions receive new names and semantics:
 
@@ -233,7 +250,7 @@ Four existing `LimitsList` positions receive new names and semantics:
 - `maxCLBalanceDecreaseBP` → `clRebaseDecreaseSoftBPLimit`;
 - `clBalanceOraclesErrorUpperBPLimit` → `clRebaseDecreaseHardBPLimit`.
 
-Readers of unrelated fields remain wire-compatible because their positions and types do not change. Consumers of the replaced fields, callers of the full-tuple setter, and decoders of `simulateOracleReport(...)` must update before activation.
+Readers of unrelated fields remain wire-compatible because their positions and types do not change. Consumers of the replaced fields, readers that decode the full `LimitsList` tuple, callers of the full-tuple setter, and decoders of `simulateOracleReport(...)` must update before activation.
 
 LIP-39 does not change the `AccountingOracle` report-processing code or `ReportData` schema. The Accounting Oracle consensus version is incremented because direct settlement can change Withdrawal Queue finalization values and therefore the consensus report hash.
 
@@ -245,13 +262,13 @@ LIP-39 does not change the `AccountingOracle` report-processing code or `ReportD
 
 **Removing smoothing increases immediate market exposure.** Exceptional EL rewards and Burner requests are applied in one report. The existing 7.5 BP budget was calibrated to market conditions at the time, and current modeling finds positive gross returns for some sandwich routes below it. The proposal therefore accepts greater sandwich and downstream rate-shock exposure in exchange for removing partial settlement and its cross-report state.
 
-**The configured authority renews across reports.** Joint compromise of the Accounting Oracle and committee can repeat committee-confirmed decreases and use positive allowances over successive intervals, so losses can compound until detected. Hard limits bound each report; committee independence, exact-hash confirmation, monitoring, and DAO control reduce the chance or duration of repeated abuse but do not eliminate it.
+**The configured authority renews across reports.** Joint compromise of the Accounting Oracle and committee can repeat committee-confirmed decreases and use positive allowances over successive intervals, so losses can compound until detected. The hard decrease limit bounds such losses to `dailyCLRebaseDecreaseHardBPLimit` per day of elapsed time and to `clRebaseDecreaseHardBPLimit` per report. Committee independence, exact-hash confirmation, monitoring, and DAO control reduce the chance or duration of repeated abuse but do not eliminate it.
 
 ## Failure Modes
 
 **Committee unavailable or hash mismatch.** An exceptional report is deferred unless the committee publishes the matching hash before the frame deadline. A changed consensus report requires a new confirmation. Missing the frame also defers the rebase, Withdrawal Queue finalization, bunker-mode updates, and other report-dependent actions; after two days, VaultHub force rebalancing and bad-debt operations are also blocked. Changing the provider or a limit requires DAO execution and may be delayed by Dual Governance or Rage Quit. Normal-range reports remain unaffected.
 
-**Report beyond a hard limit.** The report reverts even if the committee attests to it. For an increase, a later report has a larger annualized allowance because more time has elapsed. For a decrease, the limit remains fixed per report, but later CL rewards or Withdrawal Vault value may reduce the net loss. Otherwise the DAO must change the relevant limit or replace the checker. Dual Governance may delay that action.
+**Report beyond a hard limit.** The report reverts even if the committee attests to it. A later report has larger limits because more time has elapsed; the hard decrease limit stops at its ceiling. Later CL rewards or Withdrawal Vault value may also reduce the net loss. Otherwise the DAO must change the relevant limit or replace the checker. Dual Governance may delay that action.
 
 ## Links
 
@@ -260,6 +277,7 @@ LIP-39 does not change the `AccountingOracle` report-processing code or `ReportD
 - [LIP-23: Negative rebase sanity check with second opinion](./lip-23.md)
 - [LIP-35: Staking Router v3](./lip-35.md)
 - [SRv3 sanity-check parameter research](https://hackmd.io/0ePemSJtQA6S5NDK2M3mww)
+- [Sanity Check Lean v1 parameter research](https://hackmd.io/@lido/rJuP3Is6fe)
 - [ZK Lido Oracle powered by Succinct](https://research.lido.fi/t/zk-lido-oracle-powered-by-succinct/5747)
 - [RISC Zero/Boundless second-opinion update](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/8)
 - [Accounting Oracle second-opinion pause](https://research.lido.fi/t/proposal-for-a-lido-accounting-oracle-second-opinion/9534/9)
