@@ -78,7 +78,7 @@ With the transition to EIP-7002 usage for stake withdrawals, two mechanisms intr
 Withdrawal request intents (both PWRs and FWRs) are stored in a single FIFO queue and processed in submission order, each becoming an actual EIP-7002 withdrawal request only once executed. We chose this model because:
 
 - **Simplicity.** One queue is simple to process on-chain and does not need separate concurrency controls.
-- **Safety with public execution.** The strict execution order of withdrawal intents within the queue limits interference by public callers and removes the possibility of [FWR-replay DDoS](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-30.md#61-attack-vector-vulnerability-from-uncontrolled-creation-of-twrs).
+- **Safety with public execution.** The strict execution order of withdrawal intents within the queue limits interference by public callers and removes the possibility of [FWR-replay DDoS](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-30.md#62-spam-attack-on-tw-limits-trying-to-censorship-usefull-twr).
 
 The trade-offs are:
 
@@ -185,8 +185,8 @@ One validator can appear in more than one source, for example a queued FWR or PW
 1. **Consolidation source** (`source_index` of an entry in `state.pending_consolidations`) — counts **0**. Its balance moves to the target validator, not to the `WithdrawalVault`. This matches the current Oracle, which excludes consolidation sources from withdrawable balance.
 2. **Slashed** — counts **0** and never extends `T`. Its `withdrawable_epoch` is set at least `EPOCHS_PER_SLASHINGS_VECTOR` (8,192 epochs, ~36 days) after slashing, usually far beyond `T`, and its final balance depends on the not-yet-applied correlation penalty. Ignoring it only understates incoming ETH, so the Oracle errs toward requesting slightly more.
 3. **Exit initiated, not slashed** (`exit_epoch` set) — **always** counts, at its **balance**. Its pending partials and queued intents add nothing: after `exit_epoch` is set, the CL ignores new withdrawal requests for the validator and processes its pending partials as 0.
-4. **Queued FWR** (in the EIP-7002 system contract or the `TriggerableWithdrawalsBus`) with no entry in `state.pending_partial_withdrawals` — counts at its **balance**, and its queued PWRs count 0.
-5. **Otherwise** — the sum of its PWRs at every stage: pending on the CL (`state.pending_partial_withdrawals`), queued in the EIP-7002 system contract, and queued in the `TriggerableWithdrawalsBus`; capped at `balance − MIN_ACTIVATION_BALANCE`, as the CL applies them one by one against the remaining balance.
+4. **Queued FWR** (in the EIP-7002 system contract or the `TriggerableWithdrawalsBus`) with no entry in `state.pending_partial_withdrawals` — counts at its **balance**.
+5. **Otherwise** — the sum of its PWRs at every stage: pending on the CL (`state.pending_partial_withdrawals`), queued in the EIP-7002 system contract, and queued in the `TriggerableWithdrawalsBus`; capped at `balance − MIN_ACTIVATION_BALANCE`, as the CL applies them one by one against the remaining balance. A queued FWR for such a validator adds nothing.
 
 Validators under rules 3–5 always contribute, and their withdrawable epoch (actual, or projected for queued intents) extends `T` (see [Prediction horizon](#prediction-horizon)). These rules prevent double counting of overlapping requests and estimate `inFlight(T)` using validator balances at `refSlot`.
 
@@ -337,6 +337,7 @@ interface IWithdrawalsOracle {
     event WithdrawalRequested(
         uint256 indexed moduleId,
         uint256 indexed nodeOperatorId,
+        uint256 indexed keyIndex,
         bytes   pubkey,
         uint256 amountGwei
     );
