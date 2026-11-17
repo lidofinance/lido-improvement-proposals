@@ -1,7 +1,7 @@
 ---
 lip: 38
 title: "Withdrawals Oracle and Active Rebalancing"
-status: WIP
+status: Proposed
 author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26

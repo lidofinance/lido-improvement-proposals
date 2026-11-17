@@ -1,7 +1,7 @@
 ---
 lip: 35
 title: Staking Router v3
-status: Approved
+status: Implemented
 author: Maksim Kuraian (@mkurayan) , KRogLA (@KRogLA), Alexander Kolesnikov (@eddort), Anna Mukharram (@Amuhar)
 discussions-to: https://research.lido.fi/t/staking-router-v3-design-implementation-proposal-lip-35/11621
 created: 2026-05-22
