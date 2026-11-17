@@ -271,6 +271,34 @@ The only historical method is `processHistoricalPartialWithdrawalProof`. Other m
 - `processValidatorWithdrawnProof` - once `withdrawable_epoch` is set for the given validator, we can be sure that the validator will eventually be withdrawn, and any future state of this validator can be used.
 - `processBalanceProof` - due to the fact that `CuratedModule` accepts balance reports with the increased balance for the slots newer than `lastAccountingProofSlot`, and features no high-water mark mechanism, historical versions are unnecessary.
 
+#### Proof-based exit accounting
+
+> This feature applies to both CMv2 and CSM (0x01 and 0x02).
+
+The exited validator counters stored in the modules (`totalExitedKeys` and `totalExitedValidators`) are currently delivered by the Accounting Oracle via `updateExitedValidatorsCount` and are not used in the modules' internal accounting. The modules recognize that a validator has left the active set only upon the withdrawal report, although the exit is observable on CL long before the withdrawal is swept.
+
+It is proposed to replace the Oracle-delivered exited counters with proof-based exit accounting. Once an exit is initiated for the validator on CL (`exit_epoch != FAR_FUTURE_EPOCH`), a permissionless proof can be delivered to the staking module via the `Verifier` contracts (a new method is added to both `CuratedVerifier` for CMv2 and `Verifier` for CSM) calling a new `reportValidatorExited` method on the module. Upon delivery, the following changes are applied:
+
+- The key is marked as exited. The per-key `isValidatorWithdrawn` flag is replaced by a storage-compatible `keyStatus` field (`NONE`, `WITHDRAWN`, `EXITED`) to support this. A withdrawal report still counts the exit if no exit proof was delivered before it.
+- `totalExitedKeys` and `totalExitedValidators` counters are increased. `updateExitedValidatorsCount` called by `StakingRouter` becomes a no-op to ensure the Oracle can not overwrite the proof-based values. During the upgrade, the counters are seeded from the withdrawn ones for all module instances (including the legacy 0x01 CSM). Exit proofs are expected to be delivered for all these instances. For the legacy CSM, the proof delay is negligible since 0x01 validators are swept shortly after the exit.
+- The stake and the extra balance of the key are subtracted from the operator's and module's balances upon the exit report instead of the withdrawal one.
+
+Keys marked as exited can not receive new top-ups: the per-key top-up limits are zeroed for the keys with `keyStatus != NONE`, hence, a key delivered by `StakingRouter` after its exit was proven receives no allocation. In CSM, the zeroed limit also allows removing the exited key's item from the top-up queue on the next depositor pass. Until then, the item occupies a queue slot and can temporarily throttle initial deposits.
+
+Similar to other proofs of the irreversible validator states, no historical version of the new method is needed: once `exit_epoch` is set for the given validator, it can not be unset, and any future state of this validator can be used.
+
+In case of a missing or delayed exit proof, the module falls back to the current behavior (the key is accounted as active until the withdrawal report). Hence, the change can not make the accounting worse than it is today.
+
+#### Exit-aware top-up allocation for CMv2
+
+> This feature applies to CMv2 only. 0x02 CSM distributes top-ups strictly following its top-up queue, but exposes the same `getTopUpCapacity` view to `StakingRouter`.
+
+Top-up capacity of CMv2 and its Node Operators is currently calculated as `totalDepositedKeys - totalWithdrawnKeys`. A validator that has initiated an exit shouldn't receive top-ups, yet it is removed from the capacity only once the withdrawal proof is delivered.
+
+It is proposed to calculate the top-up capacity as `totalDepositedKeys - totalExitedKeys` using the proof-based exit accounting described above, both on the module level and for each Node Operator in the allocation algorithm. The operator-level top-up shares are tightened as well: the stake of an exited key is subtracted from the operator's balance upon the exit report, hence, Node Operators with exiting validators stop attracting top-up ETH they can not place. A new `getTopUpCapacity` view is introduced to expose the module capacity to `StakingRouter` for top-up allocation in place of the current `activeCount`-based estimation.
+
+In case of a missing or delayed exit proof, the module falls back to the current behavior (capacity is freed upon the withdrawal report). Hence, the change can not make the allocation worse than it is today.
+
 #### Intra-module consolidations for CMv2
 
 > This feature applies to CMv2 only. CSM does not support validator consolidations.
