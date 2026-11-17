@@ -5,7 +5,7 @@ status: WIP
 author: Lidos Community
 discussions-to: https://research.lido.fi/t/lido-improvement-proposal-process/16
 created: 2020-07-22
-updated: 2020-09-03
+updated: 2026-11-17
 ---
 
 ## What is an LIP?
@@ -52,11 +52,15 @@ Each LIP should have the following parts:
 
 - Preamble - RFC 822 style headers containing metadata about the LIP, including the LIP number, a short descriptive title (limited to a maximum of 44 characters), and the author details.
 - Simple Summary - “If you can’t explain it simply, you don’t understand it well enough.” Provide a simplified and layman-accessible explanation of the LIP.
-- Abstract - a short (~200 word) description of the technical issue being addressed.
-- Motivation (*optional) - The motivation is critical for LIPs that want to change Lido. It should clearly explain why the existing specification is inadequate to address the problem that the LIP solves. LIP submissions without sufficient motivation may be rejected outright.
-- Specification - The technical specification should describe the syntax and semantics of any new feature.
+- Motivation - The motivation is critical for LIPs that want to change Lido. It should clearly explain why the existing specification is inadequate to address the problem that the LIP solves. LIP submissions without sufficient motivation may be rejected outright.
+- Specification - The technical specification should describe the syntax and semantics of any new feature in enough detail that a competent implementer could build it.
+- Test Cases (*optional in the LIP itself) - Test cases are expected for an implementation but may be included with the implementation PR rather than in the LIP.
 - Rationale - The rationale fleshes out the specification by describing what motivated the design and why particular design decisions were made. It should describe alternate designs that were considered and related work, e.g. how the feature is supported in other languages. The rationale may also provide evidence of consensus within the community, and should discuss important objections or concerns raised during discussion.
-- Test Cases - Test cases may be added during the implementation phase but are required before implementation.
+- Security Considerations - Critical security measures, potential vulnerabilities, and how these threats will be mitigated, including failure modes and monitoring if the optional Failure Modes section is not used.
+- Upgradability (*optional) - Required if the LIP introduces or modifies upgradable contracts.
+- Failure Modes (*optional) - Possible ways the proposed changes could fail, and monitoring or mitigation strategies. If omitted, failure modes and monitoring should be covered under Security Considerations instead.
+- Known Issues (*optional) - Known limitations or vulnerabilities accepted as trade-offs rather than fixed.
+- Links (*optional) - References to related LIPs, forum discussions, external specs, or design docs.
 - Copyright Waiver - All LIPs must be in the public domain. See the bottom of this LIP for an example copyright waiver.
 
 ## LIP Formats and Templates
@@ -68,19 +72,19 @@ Image files should be included in a subdirectory of the `assets` folder for that
 
 Each LIP must begin with an [RFC 822](https://www.ietf.org/rfc/rfc822.txt) style header preamble, preceded and followed by three hyphens (`---`). This header is also termed ["front matter" by Jekyll](https://jekyllrb.com/docs/front-matter/). The headers must appear in the following order. Headers marked with "*" are optional and are described below. All other headers are required.
 
-` Lip:` <LIP number> (this is determined by the LIP editor)
+` lip:` \<LIP number\> (this is determined by the LIP editor)
 
-` title:` <LIP title>
+` title:` \<LIP title\>
+
+` status:` < WIP | Proposed | Approved | Implemented | Rejected | Withdrawn | Deferred | Moribund >
 
 ` author:` <a list of the author's or authors' name(s) and/or username(s), or name(s) and email(s). Details are below.>
 
-` * discussions-to:` \<a url pointing to the official discussion thread at research.lido.fi \>
+` discussions-to:` \<a url pointing to the official discussion thread at research.lido.fi \>
 
-` status:` < WIP | PROPOSED | APPROVED | IMPLEMENTED >
+` created:` \<date created on\>
 
-` created:` <date created on>
-
-` * updated:` <comma separated list of dates>
+` * updated:` \<date of the last substantial change\>
 
 ` * requires:` <LIP number(s)>
 
@@ -101,7 +105,7 @@ The `created` header records the date that the LIP was assigned a number. Both h
 
 #### `updated` header
 
-The `updated` header records the date(s) when the LIP was updated with "substantial" changes. This header is only valid for LIPs of Draft and Active status.
+The `updated` header records the date of the last "substantial" change to the LIP. LIPs of any status may have it.
 
 #### `requires` header
 

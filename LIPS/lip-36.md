@@ -1,16 +1,16 @@
 ---
 lip: 36
 title: NEST — Automated LDO Buyback and Liquidity Provisioning System
-status: Approved
+status: Implemented
 author: Vasiliy Shapovalov, Vitaly Galaichuk, Jen Kopytina, Alexander Belokon, adcv
 discussions-to: https://research.lido.fi/t/liquid-buybacks-nest-execution-with-ldo-wsteth-liquidity/10894
 created: 2026-04-20
-updated: 2026-07-15
+updated: 2026-08-14
 ---
 
 ## Simple Summary
 
-NEST is a deterministic onchain system that creates a direct rule-based economic link between Lido DAO success and LDO. It enables permissionless conversion of an excess share of staking revenue into LDO via CoW Swap and to pair it with wstETH as DAO-owned liquidity in a Curve LDO/wstETH pool. NEST uses explicit spending caps and formulas to determine available surplus. It must be explicitly funded in order to be operational. At launch, it will track staking revenue only; the architecture is designed to accommodate additional revenue sources through future governance votes. NEST launches in treasury-only mode, sending converted LDO directly to the treasury, while LP mode `Stonks` stays deployed and can be switched by a subsequent DAO vote.
+NEST is a deterministic onchain system that creates a direct rule-based economic link between Lido DAO success and LDO. It enables permissionless conversion of an excess share of staking revenue into LDO via CoW Swap and to pair it with wstETH as DAO-owned liquidity in a Curve LDO/wstETH pool. NEST uses explicit spending caps and formulas to determine available surplus. It must be explicitly funded in order to be operational. It tracks staking revenue only; the architecture is designed to accommodate additional revenue sources through future governance votes. NEST launched in treasury-only mode, sending converted LDO directly to the treasury, while LP mode `Stonks` stays deployed and can be switched to by a subsequent DAO vote.
 
 ## Motivation
 
@@ -46,7 +46,7 @@ The active mode is derived from the active Stonks instance's receiver: the execu
 
 `setStonks` **does not** enforce that no Stonks order is in flight: it sweeps an expired tracked order back to the previous Stonks, but a still-live order survives the switch and is **abandoned**, emitting `OrderAbandoned`. Anyone may call its `recoverTokenFrom` after expiry to return the stETH to the previous Stonks. Operationally, allocation should be paused and any live order recovered before switching modes.
 
-This LIP originally proposed deploying NEST in LP mode as the initial operating configuration. Since then, further review surfaced reasons to defer launch-day liquidity provisioning, so NEST launches in **treasury-only mode**. LP mode stays fully deployed and can be enabled by a subsequent DAO vote without redeploying any contracts.
+This LIP originally proposed deploying NEST in LP mode as the initial operating configuration. Further review surfaced reasons to defer launch-day liquidity provisioning, so NEST was released in **treasury-only mode**. LP mode is fully deployed and can be enabled by a subsequent DAO vote without redeploying any contracts.
 
 ### New Contracts
 
@@ -84,9 +84,9 @@ Receives stETH from the `BuybackAllocator` and, in LP mode, settled LDO directly
 
 #### `Stonks v2`
 
-Stonks v2 Specification can be found [here](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw). The NEST implementation uses Stonks v2 as the CoW Swap integration layer for order creation and settlement. The `BuybackExecutor` interacts with Stonks v2 to create orders with the appropriate parameters and to manage order lifecycle events. Two Stonks instances are deployed upfront: one with the receiver set to the treasury (treasury-only mode, active at launch) and one with the receiver set to the executor (LP mode).
+Stonks v2 Specification can be found [here](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw). The NEST implementation uses Stonks v2 as the CoW Swap integration layer for order creation and settlement. The `BuybackExecutor` interacts with Stonks v2 to create orders with the appropriate parameters and to manage order lifecycle events. Two Stonks instances were deployed: one with the receiver set to the treasury (treasury-only mode, active since launch) and one with the receiver set to the executor (LP mode).
 
-The existing contracts will be updated to support a configurable settlement receiver address. A new `receiver` field is added to the constructor's `InitParams` struct. If set to `address(0)`, it defaults to `AGENT`, preserving backward compatibility for non-NEST deployments. The stored receiver is passed through to each Order during initialization.
+The existing contracts were updated to support a configurable settlement receiver address. A new `receiver` field was added to the constructor's `InitParams` struct. If set to `address(0)`, it defaults to `AGENT`, preserving backward compatibility for non-NEST deployments. The stored receiver is passed through to each Order during initialization.
 
 #### `Order`
 
@@ -96,7 +96,7 @@ Updated to support a configurable CoW Swap settlement receiver. The `initialize`
 
 `StakingRevenueSource` depends on the `TokenRateNotifier` contract registered at `LidoLocator.postTokenRebaseReceiver()`, and it expects the **args-bearing observer flavor**: `addObserver` must ERC-165-detect `ITokenRatePusherWithArgs`, and the notifier must forward the full `handlePostTokenRebase` payload, including `reportTimestamp` and `sharesMintedAsFees` to its observers' `pushTokenRate(...)` callback.
 
-The current `TokenRateNotifier` propagates only an arg-less rate push and does not forward this payload, so the system requires upgraded `TokenRateNotifier` that performs the ERC-165 detection and full-payload forwarding to be deployed and wired as `postTokenRebaseReceiver` before `StakingRevenueSource` can record any revenue.
+The previous `TokenRateNotifier` propagated only an arg-less rate push and did not forward this payload. A new `TokenRateNotifier` that performs the ERC-165 detection and full-payload forwarding was deployed and wired as `postTokenRebaseReceiver` by the activation vote.
 
 ---
 
@@ -167,7 +167,7 @@ Excess tokens on the larger side remain in the executor for the next `addLiquidi
 
 #### Pool Deployment
 
-TwoCrypto-NG pools have no pool-level pause, but are not fully immutable: the Curve factory admin can ramp A/gamma and update fee/rebalancing/oracle parameters. Emergency controls are scoped to the NEST contracts (see Emergency Controls). The pool is deployed with the following configuration:
+TwoCrypto-NG pools have no pool-level pause, but are not fully immutable: the Curve factory admin can ramp A/gamma and update fee/rebalancing/oracle parameters. Emergency controls are scoped to the NEST contracts (see Emergency Controls). The pool was deployed with the following configuration:
 
 | Parameter            | Value                                               |
 | -------------------- | --------------------------------------------------- |
@@ -192,7 +192,7 @@ TwoCrypto-NG pools have no pool-level pause, but are not fully immutable: the Cu
 
 #### Pool Bootstrap
 
-The pool launches with zero liquidity. Applying the divergence check before the pool has reached sufficient depth would block `addLiquidity()` at launch; the check is bypassed during bootstrap and engages once the pool crosses a defined depth threshold, set to $250,000 (`poolBootstrapMinTvlUsd`).
+The pool was deployed with zero liquidity and holds none while treasury-only mode is active. Applying the divergence check before the pool has reached sufficient depth would block `addLiquidity()` once LP mode is enabled; the check is bypassed during bootstrap and engages once the pool crosses a defined depth threshold, set to $250,000 (`poolBootstrapMinTvlUsd`).
 
 #### Pool Skew Protection
 
@@ -249,7 +249,7 @@ CoW Protocol requires a matching off-chain order payload submitted to its API be
 
 All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with validation on write where applicable (the `reserveDailyRateUSD` and `minStEthPriceUSD` setters intentionally accept any value, including `0`). Like the rest of DAO treasury operations, this is not under Dual Governance. Invalid configuration reverts and preserves the previous valid state.
 
-### Proposed Initial Values
+### Initial Values
 
 | Parameter                                         | Value                | Notes                                                                                                                           |
 | ------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -270,11 +270,11 @@ All parameters are configurable via Aragon Voting (`DEFAULT_ADMIN_ROLE`) with va
 | -------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DEFAULT_ADMIN_ROLE` | Aragon Voting                       | Full configuration control on both contracts, `activate` / `setExecutor` / `setStonks`, role management. Requires full DAO vote.                         |
 | `MANAGER_ROLE`       | Treasury Management Committee (TMC) | Asset recovery, LP token management (`removeLiquidityAndRecoverToTreasury`, `recoverERC20`), propose EasyTrack motions to fund the allocator with stETH. |
-| `EMERGENCY_ROLE`     | Emergency Committee / Multisig, TMC | Pause/unpause the executor and Stonks creation/signatures. Cannot modify configuration.                                                                  |
-| `ALLOCATOR_ROLE`     | `BuybackAllocator`                  | Calls the executor's allocation hook. Granted to the allocator at deployment.                                                                            |
+| `EMERGENCY_ROLE`     | Emergency Brakes multisig, TMC      | Pause/unpause the executor and Stonks creation/signatures. Cannot modify configuration.                                                                  |
+| `ALLOCATOR_ROLE`     | `BuybackAllocator`                  | Calls the executor's allocation hook. Granted to the allocator at activation.                                                                            |
 | —                    | Permissionless Callers              | `allocate()`, `placeOrder()`, `addLiquidity()`, `convertPendingRevenueToUSD()`                                                                           |
 
-At construction the deploying admin holds `DEFAULT_ADMIN_ROLE`; `MANAGER_ROLE`, `EMERGENCY_ROLE`, and `ALLOCATOR_ROLE` are granted explicitly as part of the deployment governance vote. EasyTrack is used exclusively for funding operations (stETH transfers to the allocator). All parameter changes require a full Aragon Voting DAO vote.
+At construction the deploying admin held `DEFAULT_ADMIN_ROLE`; `MANAGER_ROLE`, `EMERGENCY_ROLE`, and `ALLOCATOR_ROLE` were granted explicitly as part of the activation vote. EasyTrack is used exclusively for funding operations (stETH transfers to the allocator). All parameter changes require a full Aragon Voting DAO vote.
 
 TMC may unwind LP positions and return underlying assets to treasury, but cannot reassign LP ownership or change system configuration without a full DAO vote.
 
@@ -369,6 +369,8 @@ If an AccountingOracle report is delayed or skipped, no rebase fires and Staking
 ## References
 
 - Forum discussion: [Liquid Buybacks: NEST Execution with LDO/wstETH Liquidity](https://research.lido.fi/t/liquid-buybacks-nest-execution-with-ldo-wsteth-liquidity/10894)
+- Snapshot: [DAO approval of the cumulative surplus model](https://snapshot.box/#/s:lido-snapshot.eth/proposal/0x022e901a6368573d18b150eecda563dd2ee17ad2aa6a0ef9772151cc7ba55187)
+- [Ack3 Lido NEST audit report (07-2026)](https://github.com/lidofinance/audits/blob/main/Ack3%20Lido%20NEST%20Audit%20Report%2007-2026.pdf)
 - [Stonks Repository](https://github.com/lidofinance/stonks)
 - [Stonks v2 working branch](https://github.com/lidofinance/stonks/tree/feature/dao-781-develop-stonks-v2-poc)
 - [Stonks v2 Specification](https://hackmd.io/p_ZC5s9tRAOMavh5nVOerw)
