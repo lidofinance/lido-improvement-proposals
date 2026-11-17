@@ -5,7 +5,7 @@ status: Proposed
 author: Raman Siamionau (@F4ever), Dmitry Gusakov (@dgusakov), Maksim Kuraian (@mkurayan)
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: 2026-06-26
-updated: 2026-11-05
+updated: 2026-11-17
 ---
 
 ## Simple Summary
