@@ -5,7 +5,7 @@ status: WIP
 author: Lidos Community
 discussions-to: https://research.lido.fi/t/lido-improvement-proposal-process/16
 created: 2020-07-22
-updated: 2020-09-03
+updated: 2026-11-17
 ---
 
 ## What is an LIP?
@@ -72,19 +72,19 @@ Image files should be included in a subdirectory of the `assets` folder for that
 
 Each LIP must begin with an [RFC 822](https://www.ietf.org/rfc/rfc822.txt) style header preamble, preceded and followed by three hyphens (`---`). This header is also termed ["front matter" by Jekyll](https://jekyllrb.com/docs/front-matter/). The headers must appear in the following order. Headers marked with "*" are optional and are described below. All other headers are required.
 
-` Lip:` <LIP number> (this is determined by the LIP editor)
+` lip:` \<LIP number\> (this is determined by the LIP editor)
 
-` title:` <LIP title>
+` title:` \<LIP title\>
 
-` status:` < WIP | PROPOSED | APPROVED | IMPLEMENTED | REJECTED | WITHDRAWN | DEFERRED | MORIBUND >
+` status:` < WIP | Proposed | Approved | Implemented | Rejected | Withdrawn | Deferred | Moribund >
 
 ` author:` <a list of the author's or authors' name(s) and/or username(s), or name(s) and email(s). Details are below.>
 
 ` discussions-to:` \<a url pointing to the official discussion thread at research.lido.fi \>
 
-` created:` <date created on>
+` created:` \<date created on\>
 
-` * updated:` <comma separated list of dates>
+` * updated:` \<date of the last substantial change\>
 
 ` * requires:` <LIP number(s)>
 
@@ -105,7 +105,7 @@ The `created` header records the date that the LIP was assigned a number. Both h
 
 #### `updated` header
 
-The `updated` header records the date(s) when the LIP was updated with "substantial" changes. This header is only valid for LIPs of Draft and Active status.
+The `updated` header records the date of the last "substantial" change to the LIP. LIPs of any status may have it.
 
 #### `requires` header
 
