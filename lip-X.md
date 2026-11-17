@@ -5,7 +5,7 @@ status: WIP
 author: "<a list of the author's or authors' name(s), optionally with GitHub username(s) and/or email(s), e.g.: FirstName LastName, FirstName LastName (@GitHubUsername), FirstName LastName <foo@bar.com>>"
 discussions-to: <Create a new thread on https://research.lido.fi/ and drop the link here>
 created: <date created on, in ISO 8601 (yyyy-mm-dd) format>
-updated (*optional): <date last substantively updated on, in ISO 8601 (yyyy-mm-dd) format>
+updated: <date last substantively updated on, in ISO 8601 (yyyy-mm-dd) format> # Optional
 ---
 
 <!--You can leave these HTML comments in your merged LIP and delete the visible duplicate text guides, they will not appear and may be helpful to refer to if you edit it again. This is the suggested template for new LIPs. Note that an LIP number will be assigned by an editor. When opening a pull request to submit your LIP, please use an abbreviated title in the filename, `LIP-draft_title_abbrev.md`. The title should be 44 characters or less. See the "LIP Statuses" section in the repo README for the full list of valid `status` values.-->
