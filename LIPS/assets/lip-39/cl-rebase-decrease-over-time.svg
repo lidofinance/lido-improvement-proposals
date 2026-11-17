@@ -1,23 +1,39 @@
-<svg width="700" height="144" viewBox="0 0 700 144" fill="none" xmlns="http://www.w3.org/2000/svg" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
-<rect width="700" height="144" fill="white"/>
-<rect x="90.0" y="16" width="523.4" height="12" fill="#FF383C"/>
-<rect x="615.4" y="16" width="44.6" height="12" fill="#FFCC00"/>
-<text x="80.0" y="25.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="end">≤ 1 day</text>
-<text x="609.4" y="25" font-size="9" font-weight="600" fill="white" text-anchor="end">−20 BP</text>
-<rect x="90.0" y="40" width="341.0" height="12" fill="#FF383C"/>
-<rect x="433.0" y="40" width="227.0" height="12" fill="#FFCC00"/>
-<text x="80.0" y="49.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="end">5 days</text>
-<text x="427.0" y="49" font-size="9" font-weight="600" fill="white" text-anchor="end">−100 BP</text>
-<rect x="90.0" y="64" width="113.0" height="12" fill="#FF383C"/>
-<rect x="205.0" y="64" width="455.0" height="12" fill="#FFCC00"/>
-<text x="80.0" y="73.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="end">10 days</text>
-<text x="199.0" y="73" font-size="9" font-weight="600" fill="white" text-anchor="end">−200 BP</text>
-<rect x="90.0" y="88" width="113.0" height="12" fill="#FF383C"/>
-<rect x="205.0" y="88" width="455.0" height="12" fill="#FFCC00"/>
-<text x="80.0" y="97.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="end">15 days</text>
-<text x="199.0" y="97" font-size="9" font-weight="600" fill="white" text-anchor="end">−200 BP</text>
-<text x="204.0" y="120.0" font-size="10" fill="black" text-anchor="middle">Decrease</text>
-<text x="204.0" y="132.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">hard limit</text>
-<text x="660.0" y="120.0" font-size="10" fill="black" text-anchor="middle">Decrease</text>
-<text x="660.0" y="132.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">soft limit</text>
+<svg width="700" height="412" viewBox="0 0 700 412" fill="none" xmlns="http://www.w3.org/2000/svg" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+<rect width="700" height="412" fill="white"/>
+<polygon points="64.0,28.0 560.0,28.0 560.0,226.0 394.7,226.0 97.1,47.8 64.0,47.8" fill="#FFCC00"/>
+<polygon points="64.0,47.8 97.1,47.8 394.7,226.0 560.0,226.0 560.0,325.0 64.0,325.0" fill="#FF383C"/>
+<line x1="64" x2="560" y1="127.0" y2="127.0" stroke="white" stroke-opacity="0.4"/>
+<line x1="64" x2="560" y1="226.0" y2="226.0" stroke="white" stroke-opacity="0.4"/>
+<line x1="97.1" x2="97.1" y1="28" y2="325" stroke="white" stroke-opacity="0.4"/>
+<line x1="229.3" x2="229.3" y1="28" y2="325" stroke="white" stroke-opacity="0.4"/>
+<line x1="394.7" x2="394.7" y1="28" y2="325" stroke="white" stroke-opacity="0.4"/>
+<polyline points="64.0,47.8 97.1,47.8 394.7,226.0 560.0,226.0" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+<text x="56.0" y="31.5" font-size="10" fill="black" fill-opacity="0.5" text-anchor="end">0</text>
+<text x="56.0" y="130.5" font-size="10" fill="black" fill-opacity="0.5" text-anchor="end">−100</text>
+<text x="56.0" y="229.5" font-size="10" fill="black" fill-opacity="0.5" text-anchor="end">−200</text>
+<text x="56.0" y="328.5" font-size="10" fill="black" fill-opacity="0.5" text-anchor="end">−300</text>
+<text x="64.0" y="341.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">0</text>
+<text x="97.1" y="341.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">1</text>
+<text x="229.3" y="341.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">5</text>
+<text x="394.7" y="341.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">10</text>
+<text x="560.0" y="341.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">15</text>
+<line x1="64.0" x2="96.1" y1="351" y2="351" stroke="black" stroke-opacity="0.2" stroke-width="2"/>
+<line x1="98.1" x2="393.7" y1="351" y2="351" stroke="black" stroke-opacity="0.2" stroke-width="2"/>
+<line x1="395.7" x2="560.0" y1="351" y2="351" stroke="black" stroke-opacity="0.2" stroke-width="2"/>
+<text x="80.5" y="366.0" font-size="10" fill="black" text-anchor="middle">Counts as</text>
+<text x="80.5" y="378.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">1 day</text>
+<text x="245.9" y="366.0" font-size="10" fill="black" text-anchor="middle">+20 BP</text>
+<text x="245.9" y="378.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">per elapsed day</text>
+<text x="477.3" y="366.0" font-size="10" fill="black" text-anchor="middle">Ceiling</text>
+<text x="477.3" y="378.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">200 BP</text>
+<text x="312.0" y="400.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle">Days since the last processed report</text>
+<text x="20.0" y="176.5" font-size="10" fill="black" fill-opacity="0.5" text-anchor="middle" transform="rotate(-90.00 20.0 176.5)">CL accounting rebase, BP of preCLBalance</text>
+<text x="570.0" y="26.0" font-size="10" fill="black" text-anchor="start">Decrease</text>
+<text x="570.0" y="38.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="start">soft limit</text>
+<text x="570.0" y="119.0" font-size="12" font-weight="600" fill="#CCA300" text-anchor="start">Second Opinion</text>
+<text x="570.0" y="133.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="start">any decrease needs</text>
+<text x="570.0" y="145.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="start">the committee</text>
+<text x="570.0" y="224.0" font-size="10" fill="black" text-anchor="start">Decrease</text>
+<text x="570.0" y="236.0" font-size="10" fill="black" fill-opacity="0.5" text-anchor="start">hard limit</text>
+<text x="570.0" y="280.0" font-size="12" font-weight="600" fill="#CC2D30" text-anchor="start">Revert</text>
 </svg>
