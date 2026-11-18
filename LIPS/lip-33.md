@@ -238,6 +238,7 @@ These contracts are paused using `CircuitBreaker` with [CMC](#CMC) being the pau
 - The management system for the NodeOperators address has been changed to allow custom role members to set both rewardAddress and managerAddress in an emergency.
 - Stake distribution is done via a ["greedy" weighted stake allocation strategy](#Allocation-Strategy).
 - Withdrawn validator and slashing reporting is done via [`CuratedVerifier.sol`](#CuratedVerifiersol) instead of [`Verifier.sol`](#Verifier), see [Withdrawal reporting](#Withdrawal-reporting-1).
+- A per-operator [top-up allocation switch](#Top-up-allocation-switch) is added to exclude a Node Operator from top-up allocation.
 
 ##### `CuratedGate.sol`
 
@@ -387,6 +388,21 @@ Next, stake is allocated as follows:
 - Then we move to the next most imbalanced Node Operator
 
 ![Allocation step 3](./assets/lip-33/allocation_step_3.png)
+
+##### Top-up allocation switch
+
+[`CuratedModule.sol`](#CuratedModulesol) calculates each Node Operator's top-up capacity from its deposited keys and tracked balances, but it has no visibility into validators' CL status. As a result, capacity can be overstated in two cases see [LIP-35](./lip-35.md#validator-state-validation):
+- A validator has received its initial `32 ETH` deposit but is not yet activated on the CL, so it cannot accept a top-up yet.
+- A validator has exited or been fully withdrawn on the CL, but the withdrawal has not yet been proven to [`CuratedModule.sol`](#CuratedModulesol) via [`CuratedVerifier.sol`](#CuratedVerifiersol).
+
+A Node Operator with many such validators can be far below its target stake and, as a result, absorb most of the top-up allocation budget while being unable to actually use it, leaving ETH stuck in the protocol buffer while other, more capable Node Operators have unused capacity. Simply excluding these validators from the `StakingRouter`'s top-up request does not reassign their share of the allocation to other Node Operators.
+
+To mitigate this, each Node Operator has a boolean "top-up allocation enabled" flag. When the flag is disabled for a Node Operator, its weight and stake (including external stake accounted for via [Meta Operators Registry](#Meta-Operators-Registry)) are excluded from the top-up allocation calculation entirely, and the remaining target shares are recalculated across the other eligible Node Operators. The flag only affects **top-up** allocation: initial `32 ETH` deposits to the Node Operator's new keys remain unaffected regardless of the flag's state, and `MetaRegistry.sol` weights and tracked stake are not changed by it.
+
+- `disableTopUpAllocation(nodeOperatorId)` can only be called by the Node Operator's owner (the `managerAddress` if `extendedManagerPermissions` is set for the Node Operator, otherwise the `rewardAddress`).
+- `enableTopUpAllocation(nodeOperatorId)` can only be called by `ENABLE_TOP_UP_ALLOCATION_ROLE` members, assigned to [CMC](#CMC). CMC cannot disable the flag, only enable it, and is expected to do so once it assesses that a Node Operator has enough usable (active) capacity.
+- New Node Operators start with the flag disabled, and it is expected to stay disabled until CMC assesses that the Node Operator has enough active validators providing usable capacity.
+- During the CM v2 upgrade, `finalizeUpgradeV2()` enables the flag for every already-existing Node Operator that has deposited keys not yet reported as withdrawn. Node Operators with no deposited keys, or with all deposited keys already reported as withdrawn, stay disabled.
 
 ### CSM v3 main flows
 
@@ -569,6 +585,7 @@ To become eligible for deposits, a Node Operator should be a part of an Operator
 > 
 > - FIFO queues are replaced with a "greedy" weighted stake allocation strategy [described above](#Allocation-Strategy).
 > - Unlike CSM v3 that can have deployments supporting either `0x01` or `0x02` validator WC, CM v2 only supports `0x02`.
+> - A per-operator [top-up allocation switch](#Top-up-allocation-switch) can exclude a Node Operator from top-up allocation.
 
 ##### Initial `32 ETH` deposits
 
@@ -584,7 +601,7 @@ Once uploaded, deposit data becomes available for allocation of the initial `32 
 - [Initial `32 ETH` deposit](#Initial-32-ETH-deposits).
 - Top-ups up to `2048 ETH`.
 
-The top-up phase involves a call from the `StakingRouter` to [`CuratedModule.sol`](#CuratedModulesol), providing information about the keys planned for top-up and top-up limits calculated using CL proofs. [`CuratedModule.sol`](#CuratedModulesol) calculates the stake allocation using the `maxDepositAmount` provided and allocates the stake among the provided keys, respecting the calculated allocation and the `topUpLimits` supplied by the `StakingRouter`. [`CuratedModule.sol`](#CuratedModulesol) also verifies that the keys provided belong to the corresponding Node Operators for security reasons.
+The top-up phase involves a call from the `StakingRouter` to [`CuratedModule.sol`](#CuratedModulesol), providing information about the keys planned for top-up and top-up limits calculated using CL proofs. [`CuratedModule.sol`](#CuratedModulesol) calculates the stake allocation using the `maxDepositAmount` provided and allocates the stake among the provided keys, respecting the calculated allocation and the `topUpLimits` supplied by the `StakingRouter`. [`CuratedModule.sol`](#CuratedModulesol) also verifies that the keys provided belong to the corresponding Node Operators for security reasons. Node Operators with a disabled [top-up allocation switch](#Top-up-allocation-switch) are excluded from this calculation and receive no top-up targets.
 
 ##### Deposits order and priority
 
@@ -811,6 +828,7 @@ This contract does not have roles.
 | `RECOVERER_ROLE`                           | Not assigned by default                           |
 | `CREATE_NODE_OPERATOR_ROLE`                | Instances of [`CuratedGate.sol`](#CuratedGatesol) |
 | `OPERATOR_ADDRESSES_ADMIN_ROLE`            | Not assigned by default                           |
+| `ENABLE_TOP_UP_ALLOCATION_ROLE`            | [CMC](#CMC)                                       |
 
 #### [`Accounting.sol`](#Accountingsol)
 
@@ -1012,4 +1030,4 @@ Given all facts above it is proposed to:
 - 2026-04-22: LIP proposed
 - 2026-06-29: LIP approved
 - 2026-08-13: LIP implemented
-- 2026-11-18: New withdrawal reporting process via `CuratedVerifier.sol` introduced for CMv2
+- 2026-11-18: New withdrawal reporting process via `CuratedVerifier.sol` introduced for CMv2 + Per-operator top-up allocation switch introduced for CMv2
