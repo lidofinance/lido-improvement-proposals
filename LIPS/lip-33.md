@@ -5,7 +5,7 @@ status: Implemented
 author: Dmitry Gusakov (@dgusakov), Sergey Khomutinin (@skhomuti), Dmitry Chernukhin (@madlabman), Vladimir Gorkavenko (@vgorkavenko)
 discussions-to: https://research.lido.fi/t/community-staking-module/5917, https://research.lido.fi/t/future-of-the-curated-module-cmv2-landscape/10929
 created: 2026-03-18
-updated: 2026-08-13
+updated: 2026-11-18
 ---
 
 # LIP-33. Community Staking Module v3 and Curated Module v2
@@ -83,15 +83,16 @@ The scheme above depicts CM v2's smart contracts architecture and changes made c
 
 *Verifier on the scheme*
 
-> Changed in CSM v3 and CM v2
+> Changed in CSM v3
 
-[`Verifier.sol`](#Verifier) is a utility contract responsible for validating the CL data proofs using [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788). It accepts proof of the validator withdrawals, consolidations, or slashings, and reports these facts to the [`CSModule.sol`](#CSModulesol)/[`CuratedModule.sol`](#CuratedModulesol) if the proof is valid.
+[`Verifier.sol`](#Verifier) is a utility contract responsible for validating the CL data proofs using [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788). It accepts proof of the validator withdrawals, consolidations, or slashings, and reports these facts to the [`CSModule.sol`](#CSModulesol) if the proof is valid.
 
-**Changes in CSM v3 and CM v2:**
+**Changes in CSM v3:**
 - A special method is added to account for validator consolidations (via balance proof and update).
-- A special method is added to prove and report validator slashings to [`CSModule.sol`](#CSModulesol)/[`CuratedModule.sol`](#CuratedModulesol).
+- A special method is added to prove and report validator slashings to [`CSModule.sol`](#CSModulesol).
 - `processWithdrawalProof` method no longer accepts proofs for slashed validators.
 
+> CM v2 uses a dedicated [`CuratedVerifier.sol`](#CuratedVerifiersol) contract instead of [`Verifier.sol`](#Verifier), see [below](#CuratedVerifiersol).
 
 ##### `FeeDistributor.sol`
 
@@ -200,7 +201,7 @@ The list of sealable contracts for CM v2 includes:
 - [`CuratedModule.sol`](#CuratedModulesol)
 - [`Accounting.sol`](#Accountingsol)
 - [`FeeOracle.sol`](#FeeOraclesol)
-- [`Verifier.sol`](#Verifiersol)
+- [`CuratedVerifier.sol`](#CuratedVerifiersol)
 - [`Ejector.sol`](#Ejectorsol)
 
 These contracts are paused using `CircuitBreaker` with [CMC](#CMC) being the pause committee (caller of the pause method on `CircuitBreaker` for these contracts).
@@ -236,6 +237,7 @@ These contracts are paused using `CircuitBreaker` with [CMC](#CMC) being the pau
 **Changes compared to CSM v3:**
 - The management system for the NodeOperators address has been changed to allow custom role members to set both rewardAddress and managerAddress in an emergency.
 - Stake distribution is done via a ["greedy" weighted stake allocation strategy](#Allocation-Strategy).
+- Withdrawn validator and slashing reporting is done via [`CuratedVerifier.sol`](#CuratedVerifiersol) instead of [`Verifier.sol`](#Verifier), see [Withdrawal reporting](#Withdrawal-reporting-1).
 
 ##### `CuratedGate.sol`
 
@@ -254,6 +256,15 @@ These contracts are paused using `CircuitBreaker` with [CMC](#CMC) being the pau
 `MetaRegistry.sol` is a supplementary contract that stores information about `OperatorGroups` and operator weights (see [Meta Operators Registry](#Meta-Operators-Registry)).
 
 It also stores Node Operator names and descriptions. Both Node Operators and CMC multisig can edit the values.
+
+##### `CuratedVerifier.sol`
+
+*Verifier on the scheme*
+
+> New in CM v2
+
+`CuratedVerifier.sol` is a modified copy of [`Verifier.sol`](#Verifier) used by CM v2 instead of [`Verifier.sol`](#Verifier) and uses `withdrawableEpoch` to determine validator withdrawal status. It is needed because validators that leave CL as the result of the validator consolidation never produce a full CL withdrawal and, hence, cannot be proved withdrawn the way [`Verifier.sol`](#Verifier) does it for CSM.
+
 
 #### Off-chain tools for CSM
 
@@ -602,6 +613,20 @@ Node Operators in CM v2 can manage their addresses in the same way as CSM Node O
 
 To streamline Node Operator operations, it is proposed to set `extendedManagerPermissions = true` for all Node Operators in CM v2. This will allow for flexibility in address management.
 
+#### Withdrawal reporting
+
+> Changed in CM v2
+>
+> - Reporting is done via [`CuratedVerifier.sol`](#CuratedVerifiersol) instead of [`Verifier.sol`](#Verifier).
+> - A validator is reported as withdrawn based on `validator.withdrawableEpoch < currentEpoch`, not on a withdrawal proof.
+> - `keyConfirmedBalance + MIN_ACTIVATION_BALANCE` is reported as the exit balance instead of the balance from the withdrawal proof.
+
+Unlike CSM, where `CSM Bot` proves the validator's actual withdrawal via a `Withdrawal` CL event (see [Non-slashed validators](#Non-slashed-validators)), validators consolidated into CM v2 via `ConsolidationMigrator` never produce such an event. Hence, `CM Bot` reports a CM v2 validator as withdrawn to [`CuratedVerifier.sol`](#CuratedVerifiersol) once it proves that the validator has reached its `withdrawableEpoch` and is not slashed. This single condition covers both validators exited in the regular way and consolidated validators.
+
+Since no withdrawal proof is used, [`CuratedVerifier.sol`](#CuratedVerifiersol) cannot deliver the validator's actual exit balance to [`CuratedModule.sol`](#CuratedModulesol). Instead, it reports the Node Operator's latest `keyConfirmedBalance` for the key plus `MIN_ACTIVATION_BALANCE` as the exit balance. Because this value is always at least the expected validator balance, [`CuratedModule.sol`](#CuratedModulesol) does not automatically confiscate a bond for a withdrawal balance deficit on withdrawal, unlike CSM. Any such deficit for a CM v2 Node Operator is instead expected to be identified off-chain and settled via the [General penalty with confirmation](#General-penalty-with-confirmation) flow.
+
+Slashed validators are still proved and reported via [`CuratedVerifier.sol`](#CuratedVerifiersol) the same way as in CSM (see [Slashed validators](#Slashed-validators)).
+
 ### Common contract specifications
 
 #### [`Accounting.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/Accounting.sol)
@@ -611,8 +636,6 @@ To streamline Node Operator operations, it is proposed to set `extendedManagerPe
 #### [`FeeOracle.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/FeeOracle.sol)
 
 #### [`HashConsensus.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/lib/base-oracle/HashConsensus.sol)
-
-#### [`Verifier.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/Verifier.sol)
 
 #### [`ParametersRegistry.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/ParametersRegistry.sol)
 
@@ -629,6 +652,7 @@ To streamline Node Operator operations, it is proposed to set `extendedManagerPe
 #### [`PermissionlessGate.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/PermissionlessGate.sol)
 
 #### [`VettedGate.sol`]([#VettedGatesol](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/VettedGate.sol))
+#### [`Verifier.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/Verifier.sol)
 
 ### CM-only contract specifications
 
@@ -637,6 +661,8 @@ To streamline Node Operator operations, it is proposed to set `extendedManagerPe
 #### [`CuratedGate.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/CuratedGate.sol)
 
 #### [`MetaRegistry.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/MetaRegistry.sol)
+
+#### [`CuratedVerifier.sol`](https://github.com/lidofinance/staking-modules/tree/develop/src/CuratedVerifier.sol)
 
 ### Administrative actions
 
@@ -779,8 +805,8 @@ This contract does not have roles.
 | `STAKING_ROUTER_ROLE`                      | `StakingRouter` contract                          |
 | `REPORT_GENERAL_DELAYED_PENALTY_ROLE`      | [CMC](#CMC)                                       |
 | `SETTLE_GENERAL_DELAYED_PENALTY_ROLE`      | `EasyTrackEVMScriptExecutor`                      |
-| `VERIFIER_ROLE`                            | [`Verifier.sol`](#Verifier)                       |
-| `REPORT_REGULAR_WITHDRAWN_VALIDATORS_ROLE` | [`Verifier.sol`](#Verifier)                       |
+| `VERIFIER_ROLE`                            | [`CuratedVerifier.sol`](#CuratedVerifiersol)      |
+| `REPORT_REGULAR_WITHDRAWN_VALIDATORS_ROLE` | [`CuratedVerifier.sol`](#CuratedVerifiersol)      |
 | `REPORT_SLASHED_WITHDRAWN_VALIDATORS_ROLE` | `EasyTrackEVMScriptExecutor`                      |
 | `RECOVERER_ROLE`                           | Not assigned by default                           |
 | `CREATE_NODE_OPERATOR_ROLE`                | Instances of [`CuratedGate.sol`](#CuratedGatesol) |
@@ -827,7 +853,7 @@ This contract does not have roles.
 | `MANAGE_FAST_LANE_CONFIG_ROLE`   | Not assigned by default |
 | `MANAGE_REPORT_PROCESSOR_ROLE`   | Not assigned by default |
 
-#### [`Verifier.sol`](#Verifiersol)
+#### [`CuratedVerifier.sol`](#CuratedVerifiersol)
 
 | Role                 | Assignee                                             |
 | -------------------- | ---------------------------------------------------- |
@@ -892,7 +918,7 @@ This contract does not have roles.
 
 [`CSModule.sol`](#CSModulesol), [`CuratedModule.sol`](#CuratedModulesol), [`Accounting.sol`](#Accountingsol),  [`FeeOracle.sol`](#FeeOraclesol), [`FeeDistributor.sol`](#FeeDistributorsol), [`ParametersRegistry.sol`](#ParametersRegistrysol), [`ValidatorStrikes.sol`](#ValidatorStrikessol), [`ExitPenalties.sol`](#ExitPenaltiessol), [`VettedGate.sol`](#VettedGatesol), [`CuratedGate.sol`](#CuratedGatesol), and [`MetaRegistry.sol`](#MetaRegistrysol) are upgradable using [OssifiableProxy](https://github.com/lidofinance/community-staking-module/blob/main/src/lib/proxy/OssifiableProxy.sol) contracts.
 
-[`Verifier.sol`](#Verifier), [`HashConsensus.sol`](#HashConsensussol),  [`Ejector.sol`](#Ejectorsol), and [`PermissionlessGate.sol`](#PermissionlessGatesol) are not upgradable and should be redeployed if needed.
+[`Verifier.sol`](#Verifier), [`CuratedVerifier.sol`](#CuratedVerifiersol), [`HashConsensus.sol`](#HashConsensussol),  [`Ejector.sol`](#Ejectorsol), and [`PermissionlessGate.sol`](#PermissionlessGatesol) are not upgradable and should be redeployed if needed.
 
 ### Security considerations
 
@@ -906,6 +932,8 @@ To mitigate this situation CSM v3 features a permissioned service method to roll
 CSM v3 and CM v2 share all of the known issues mentioned for CSM v2 in [LIP-29. Community Staking Module v2](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-29.md#known-issues), but [Permissionless withdrawal reporting vulnerability](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-29.md#permissionless-withdrawal-reporting-vulnerability) which has changed and is described below.
 
 #### Permissionless withdrawal reporting vulnerability
+
+> The analysis below applies to [`Verifier.sol`](#Verifier) (used by CSM) only. CM v2's [`CuratedVerifier.sol`](#CuratedVerifiersol) does not verify a withdrawal proof or rely on a permissionlessly supplied withdrawal amount at all (see [Withdrawal reporting](#Withdrawal-reporting-1)), so it is not affected by this vulnerability.
 
 One of the existing issues, namely [Permissionless withdrawal reporting vulnerability](https://github.com/lidofinance/lido-improvement-proposals/blob/develop/LIPS/lip-29.md#permissionless-withdrawal-reporting-vulnerability) has a broader scope because top-ups are now an expected operation in the protocol, despite the old vector being almost fully mitigated.
 
@@ -925,9 +953,9 @@ Hence, with the updated condition in place, the attacker will have to make a dep
 
 ##### New issue
 
-In the updated versions of CSM and CM v2, we compare the withdrawal balance to the `max_reported_validator_balance` that is permissionlesly delivered by prover-bot to correctly account for the top-ups that were not applied on CL yet.
+In the updated version of CSM, we compare the withdrawal balance to the `max_reported_validator_balance` that is permissionlesly delivered by prover-bot to correctly account for the top-ups that were not applied on CL yet.
 
-Since top-ups are now the essential part of the deposit flow in the protocol, it is possible for `0x02` modules that:
+Since top-ups are now the essential part of the deposit flow in the protocol, it is possible for the `0x02` CSM instance that:
 1. The deposit queue on the Ethereum network is long enough
 2. A top-up is made to the validator
 3. This validator exits soon after the deposit and gets withdrawn before the deposit is applied on CL
@@ -954,19 +982,19 @@ While it might seem that the value for `MIN_WITHDRAWAL_RATIO` is based on a blin
 
 In CSM, we have bad performance strikes that ensure any systematic bad performer is ejected after ~3 months of poor performance. Even with a very long exit queue, it is reasonable to assume that such validators will not be offline and not exited for more than 6 months.
 
-In the Curated Module, the situation is even tighter. While we do not expect to see bad performance strikes in this module, the NOM team conducts thorough performance monitoring to ensure that Node Operators do not allow their validators to be offline for any prolonged period. In case of Node Operators being unresponsive, a `targetLimit` will be imposed, and the Node Operator will be removed from the module well before 6 or even 3 months of downtime.
-
 It is also worth noting that a meaningful drop in the validator's balance might occur due to unfavourable network conditions, such as an inactivity leak. However, such a case was observed only once on the Ethereum mainnet. Should it happen again at scale, Lido DAO will always be able to deploy an instance of `Verifier.sol` with the increased `MIN_WITHDRAWAL_RATIO` to serve withdrawals for the validators affected by this situation.
 
-The final consideration is the impact of the maximum possible withdrawal penalty on validators' bonding, especially its chain effects. In CSM, the 1% threshold means that, in the worst case, the penalty will be ~20 ETH. Given the expected bond of ~30 ETH per validator in 0x02 CSM, it will not cause any chain effects. **In the Curated Module, we recommend setting `MIN_WITHDRAWAL_RATIO` to 0.5%** or 3 months of offline due to the reasons above. This will cause a chain effect, but of a limited scale (up to 15 additional validators can be requested to exit in case of a max penalty).
+The final consideration is the impact of the maximum possible withdrawal penalty on validators' bonding, especially its chain effects. In CSM, the 1% threshold means that, in the worst case, the penalty will be ~20 ETH. Given the expected bond of ~30 ETH per validator in 0x02 CSM, it will not cause any chain effects.
+
+> The reasoning above does not apply to the Curated Module. As described in [`CuratedVerifier.sol`](#CuratedVerifiersol), CM v2 does not report a permissionlessly supplied withdrawal amount at all: the exit balance reported to [`CuratedModule.sol`](#CuratedModulesol) is derived from the Oracle-confirmed `keyConfirmedBalance`, and any resulting deficit is handled off-chain and settled via [CMC](#CMC)'s [General penalty with confirmation](#General-penalty-with-confirmation) flow instead of an automated bond confiscation.
 
 ##### Summary
 
 Given all facts above it is proposed to:
 - Set `MIN_WITHDRAWAL_RATIO = 1%` for 0x02 CSM for permissionless withdrawals
-- Set `MIN_WITHDRAWAL_RATIO = 0.5%` for CM v2 for permissionless withdrawals
 - Handle any extraordinary cases with a separate instance of `Verifier.sol` or direct governance vote if needed
-- Require/recommend that Node Operators in CM v2 and 0x02 CSM run their own copy of prover-tool to serve their operators' withdrawals timely
+- Require/recommend that Node Operators in 0x02 CSM run their own copy of prover-tool to serve their operators' withdrawals timely
+- For CM v2, rely on [`CuratedVerifier.sol`](#CuratedVerifiersol)'s `withdrawableEpoch`-based reporting instead of `MIN_WITHDRAWAL_RATIO`, and have [CMC](#CMC) settle any withdrawal balance deficit via the [General penalty with confirmation](#General-penalty-with-confirmation) flow
 
 ## Links
 
@@ -978,3 +1006,10 @@ Given all facts above it is proposed to:
 - [CSM Research Post](https://research.lido.fi/t/community-staking-module/5917)
 - [CSM Docs](https://docs.lido.fi/staking-modules/csm/intro)
 - [CSM page on the Operators Portal](https://operatorportal.lido.fi/modules/community-staking-module)
+
+## Change log
+- 2026-03-18: Initial draft
+- 2026-04-22: LIP proposed
+- 2026-06-29: LIP approved
+- 2026-08-13: LIP implemented
+- 2026-11-18: New withdrawal reporting process via `CuratedVerifier.sol` introduced for CMv2
