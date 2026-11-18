@@ -264,8 +264,7 @@ It also stores Node Operator names and descriptions. Both Node Operators and CMC
 
 > New in CM v2
 
-`CuratedVerifier.sol` is a modified copy of [`Verifier.sol`](#Verifier) used by CM v2 instead of [`Verifier.sol`](#Verifier) and uses `withdrawableEpoch` to determine validator withdrawal status. It is needed because validators that leave CL as the result of the validator consolidation never produce a full CL withdrawal and, hence, cannot be proved withdrawn the way [`Verifier.sol`](#Verifier) does it for CSM.
-
+`CuratedVerifier.sol` is a modified copy of [`Verifier.sol`](#Verifier) used by CM v2 instead of [`Verifier.sol`](#Verifier). Instead of verifying a withdrawal proof, it considers a validator withdrawn once `validator.withdrawableEpoch < currentEpoch` and the validator is not slashed. It is needed because validators that reach [`CuratedModule.sol`](#CuratedModulesol) via consolidation never produce a full CL withdrawal and, hence, cannot be proved withdrawn the way [`Verifier.sol`](#Verifier) does it for CSM. See [Withdrawal reporting](#Withdrawal-reporting-1) for the full flow, including how the exit balance is derived.
 
 #### Off-chain tools for CSM
 
@@ -391,7 +390,7 @@ Next, stake is allocated as follows:
 
 ##### Top-up allocation switch
 
-[`CuratedModule.sol`](#CuratedModulesol) calculates each Node Operator's top-up capacity from its deposited keys and tracked balances, but it has no visibility into validators' CL status. As a result, capacity can be overstated in two cases see [LIP-35](./lip-35.md#validator-state-validation):
+[`CuratedModule.sol`](#CuratedModulesol) calculates each Node Operator's top-up capacity from its deposited keys and tracked balances, but it has no visibility into validators' CL status. As a result, capacity can be overstated in two cases (see `TopUpGateway` checks in [LIP-35](./lip-35.md#validator-state-validation)):
 - A validator has received its initial `32 ETH` deposit but is not yet activated on the CL, so it cannot accept a top-up yet.
 - A validator has exited or been fully withdrawn on the CL, but the withdrawal has not yet been proven to [`CuratedModule.sol`](#CuratedModulesol) via [`CuratedVerifier.sol`](#CuratedVerifiersol).
 
@@ -403,6 +402,8 @@ To mitigate this, each Node Operator has a boolean "top-up allocation enabled" f
 - `enableTopUpAllocation(nodeOperatorId)` can only be called by `ENABLE_TOP_UP_ALLOCATION_ROLE` members, assigned to [CMC](#CMC). CMC cannot disable the flag, only enable it, and is expected to do so once it assesses that a Node Operator has enough usable (active) capacity.
 - New Node Operators start with the flag disabled, and it is expected to stay disabled until CMC assesses that the Node Operator has enough active validators providing usable capacity.
 - During the CM v2 upgrade, `finalizeUpgradeV2()` enables the flag for every already-existing Node Operator that has deposited keys not yet reported as withdrawn. Node Operators with no deposited keys, or with all deposited keys already reported as withdrawn, stay disabled.
+
+> This is a temporary, fully manual mitigation: the flag is not automatically updated when a Node Operator's validators activate, exit, or get their withdrawal reported, and it applies to the whole Node Operator rather than to individual validators, so active validators that could still accept a top-up are excluded while the flag is disabled. It does not itself verify CL status or guarantee that the full top-up budget will be deposited if the remaining enabled Node Operators also lack usable capacity. It is intended to be superseded by a more automated mechanism that tracks validators' CL status, planned for Q1 2027.
 
 ### CSM v3 main flows
 
@@ -669,6 +670,7 @@ Slashed validators are still proved and reported via [`CuratedVerifier.sol`](#Cu
 #### [`PermissionlessGate.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/PermissionlessGate.sol)
 
 #### [`VettedGate.sol`]([#VettedGatesol](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/VettedGate.sol))
+
 #### [`Verifier.sol`](https://github.com/lidofinance/community-staking-module/tree/develop/docs/src/src/Verifier.sol)
 
 ### CM-only contract specifications
@@ -1030,4 +1032,5 @@ Given all facts above it is proposed to:
 - 2026-04-22: LIP proposed
 - 2026-06-29: LIP approved
 - 2026-08-13: LIP implemented
-- 2026-11-18: New withdrawal reporting process via `CuratedVerifier.sol` introduced for CMv2 + Per-operator top-up allocation switch introduced for CMv2
+- 2026-11-18: New withdrawal reporting process via `CuratedVerifier.sol` introduced for CMv2
+- 2026-11-18: Per-operator top-up allocation switch introduced for CMv2
