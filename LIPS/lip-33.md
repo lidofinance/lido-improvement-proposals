@@ -264,7 +264,7 @@ It also stores Node Operator names and descriptions. Both Node Operators and CMC
 
 > New in CM v2
 
-`CuratedVerifier.sol` is a modified copy of [`Verifier.sol`](#Verifier) used by CM v2 instead of [`Verifier.sol`](#Verifier). Instead of verifying a withdrawal proof, it considers a validator withdrawn once `validator.withdrawableEpoch < currentEpoch` and the validator is not slashed. It is needed because validators that reach [`CuratedModule.sol`](#CuratedModulesol) via consolidation never produce a full CL withdrawal and, hence, cannot be proved withdrawn the way [`Verifier.sol`](#Verifier) does it for CSM. See [Withdrawal reporting](#Withdrawal-reporting-1) for the full flow, including how the exit balance is derived.
+`CuratedVerifier.sol` is a modified copy of [`Verifier.sol`](#Verifier) used by CM v2 instead of [`Verifier.sol`](#Verifier). Instead of verifying a withdrawal proof, it considers a validator withdrawn once `validator.withdrawableEpoch < currentEpoch` and the validator is not slashed. It is needed because CM v2 validators used as sources of outgoing consolidations never produce a full CL withdrawal and, hence, cannot be proved withdrawn the way [`Verifier.sol`](#Verifier) does it for CSM. See [Withdrawal reporting](#Withdrawal-reporting-1) for the full flow, including how the exit balance is derived.
 
 #### Off-chain tools for CSM
 
