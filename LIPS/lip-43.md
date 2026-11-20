@@ -174,7 +174,7 @@ This proposal switches the oracles to the v2 proposer-duties endpoint and suppor
   - `ValidatorExitDelayVerifier`.
   - Shared libraries: `contracts/common/lib/CLGIndices.sol` and `GIndex.sol`.
 - **Modules:**
-  - `src/Verifier.sol`, which verifies validator slashing, withdrawals and balances.
+  - `src/Verifier.sol` and `src/CuratedVerifier.sol`, which verifies validator slashing, withdrawals and balances.
   - Shared libraries: `src/lib/GIndices.sol` and `src/lib/GIndex.sol`.
 
 #### Forward-compatible structures and fixed GIndices
@@ -291,14 +291,14 @@ checks the `parent(slot, proposerIndex)` node and anchors through EIP-4788; `CLP
 
 ##### Modules
 
-- `Verifier` drops the constructor's `GIndices` struct. It retains chain/module settings, including
+- `Verifier` and `CuratedVerifier` drop the constructor's `GIndices` struct. They retain chain/module settings, including
   `FIRST_SUPPORTED_SLOT`, `CAPELLA_SLOT` and the new `GLOAS_SLOT`, with
   `CAPELLA_SLOT <= FIRST_SUPPORTED_SLOT <= GLOAS_SLOT`.
-- Field-root getters are `GI_VALIDATORS`, `GI_BALANCES`, `GI_WITHDRAWALS`, `GI_BLOCK_ROOTS` and
+- Field-root getters are `GI_VALIDATORS`, `GI_BALANCES`, `GI_WITHDRAWALS` (not applicable to `CuratedVerifier`), `GI_BLOCK_ROOTS` and
   `GI_HISTORICAL_SUMMARIES`, each with a `*_PRE_GLOAS` counterpart. `GI_BLOCK_ROOT_IN_SUMMARY` identifies the summary's
   block-root vector root, not its first leaf.
 - `ProcessWithdrawalInput` now contains both `recentBlock` and `withdrawalBlock` (header plus proof). Both withdrawal
-  methods use this input; the separate `ProcessHistoricalWithdrawalInput` type is removed.
+  methods use this input; the separate `ProcessHistoricalWithdrawalInput` type is removed (not applicable to `CuratedVerifier`).
 - `ProcessBalanceProofInput` adds `balanceBlock` (header plus proof). The historical balance input retains its
   `recentBlock` and `historicalBlock` witnesses. Integrations must update calldata encoding for the changed tuples.
 - `bytes32 withdrawalCredentials` / `WITHDRAWAL_CREDENTIALS` replaces the address-only constructor input/getter.
