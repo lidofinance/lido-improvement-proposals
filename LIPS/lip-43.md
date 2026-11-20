@@ -350,6 +350,17 @@ EIP-8061 changes the **network exit churn** and the **consolidation churn**; ent
 | `consolidationEthAmountPerDayLimit`     | 93,375  | **205,875 ETH/day**    | The network consolidation churn, with headroom up to 60M                      |
 | `appearedEthAmountPerDayLimit`          | 57,600  | **57,600** (no change) | Activation churn is capped (256), entry does not speed up                     |
 
+## Security Considerations
+
+### Stale `payload_expected_withdrawals` in withdrawal proofs
+
+`Verifier` treats a withdrawal proven from a block at or past the validator's `withdrawableEpoch` as its full withdrawal, provided the amount passes the `MIN_WITHDRAWAL_RATIO` check. After Gloas, this assumption can break. While payloads are withheld, `process_withdrawals` returns early and `payload_expected_withdrawals` carries over unchanged into later blocks. A partial withdrawal computed by the sweep before `withdrawableEpoch` can therefore appear in the state of a block after it and be proven as the full withdrawal.
+
+This is not considered a new risk:
+
+- It does not apply to `CuratedVerifier`, which does not process withdrawal proofs.
+- The effect is the same as the known [permissionless withdrawal reporting vulnerability](./lip-33.md#permissionless-withdrawal-reporting-vulnerability): a withdrawal other than the real full one is reported for the key. The same `MIN_WITHDRAWAL_RATIO` check bounds it, and the same mitigations apply.
+
 ## Links
 
 - [Gloas consensus specification](https://github.com/ethereum/consensus-specs/tree/master/specs/gloas)
