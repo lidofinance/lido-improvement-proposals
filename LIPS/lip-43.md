@@ -47,7 +47,7 @@ Two Beacon API changes are not tied to the Gloas activation slot:
 - **[consensus-specs#4926](https://github.com/ethereum/consensus-specs/pull/4926)** renames `SECONDS_PER_SLOT` to `SLOT_DURATION_MS` in the node config.
   - *Impact:* current oracles fail to parse the config of any node that drops the old field, stopping all oracle reports.
 
-**These changes must be live before the Gloas activation slot.** The oracle release must be deployed, and the on-chain vote (verifier redeployments, consensus version bumps, and sanity-checker parameters) must be enacted, ahead of activation. Both can be deployed in advance: oracles keep the legacy path for pre-Gloas `ref_slot`s, and verifiers switch paths at the configured `GLOAS_SLOT`. Missing this deadline would halt or corrupt oracle reports and block every proof-based flow from the first post-Gloas slot.
+**These changes must be live before the Gloas activation slot.** The oracle release must be deployed, and the on-chain vote (verifier redeployments with the dependent contract upgrades, consensus version bumps, and sanity-checker parameters) must be enacted, ahead of activation. Both can be deployed in advance: oracles keep the legacy path for pre-Gloas `ref_slot`s, and verifiers switch paths at the configured `GLOAS_SLOT`. Missing this deadline would halt or corrupt oracle reports and block every proof-based flow from the first post-Gloas slot.
 
 ## Specification
 
@@ -288,6 +288,11 @@ checks the `parent(slot, proposerIndex)` node and anchors through EIP-4788; `CLP
   `GI_HISTORICAL_SUMMARIES_PRE_GLOAS`, `GI_HISTORICAL_SUMMARIES` and `GI_BLOCK_ROOT_IN_SUMMARY`.
 - Public write-method signatures of `TopUpGateway`, `ConsolidationGateway`, `PredepositGuarantee` and
   `ValidatorExitDelayVerifier` remain unchanged.
+- Consumers inherit the verifiers, so each gets new bytecode. `TopUpGateway` and `PredepositGuarantee` are proxied and
+  keep their addresses; only their implementations are upgraded. `ConsolidationGateway` and
+  `ValidatorExitDelayVerifier` are not upgradeable and are redeployed at new addresses. Contracts that store these
+  addresses as immutables therefore get new implementations as well: `LidoLocator` (both), `ConsolidationBus` and
+  `WithdrawalVault` (`ConsolidationGateway`).
 
 ##### Modules
 
