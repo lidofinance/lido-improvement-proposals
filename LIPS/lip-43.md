@@ -5,7 +5,7 @@ status: draft
 author: Dmitry Gusakov (@dgusakov), Dmitry Chernukhin (@madlabman), Raman Siamionau (@F4ever), Alexander H (@hweawer)
 discussions-to: <create a thread on https://research.lido.fi/ and drop the link here>
 created: 2026-10-01
-updated: 2026-10-08
+updated: 2026-11-20
 ---
 
 # LIP-43: Ensuring Compatibility with Ethereum’s Glamsterdam Upgrade
@@ -40,6 +40,7 @@ Glamsterdam changes the beacon state layout, payload delivery, churn rules, and 
   - *Impact:* every generalized index configured in the current verifiers becomes invalid, and all proofs against post-Gloas states revert: validator top-ups, consolidations, predeposit guarantees, exit-delay reports, and CSM/CM withdrawal, slashing, and balance proofs.
 - **[EIP-8061](https://eips.ethereum.org/EIPS/eip-8061)** removes the cap on the exit churn limit and raises the consolidation churn.
   - *Impact:* the current Validator Exit Bus Oracle drains new exits at the old 256 ETH/epoch rate instead of the actual one (about 1,335 ETH/epoch at 43.75M ETH active), so it overestimates withdrawal epochs and requests fewer exits than needed, delaying withdrawal finalization. Sanity-checker limits tuned for the old churn reject reports with legitimate exit volumes the network now allows.
+
 Two Beacon API changes are not tied to the Gloas activation slot:
 
 - **[EIP-7917](https://eips.ethereum.org/EIPS/eip-7917)**, active since Fulu, changes the `dependent_root` semantics of proposer duties. The v2 proposer-duties endpoint returns the new value, while the deprecated v1 endpoint is not consistent across clients.
@@ -73,7 +74,7 @@ In the child state, validator balances already have the expected withdrawals ded
 
 #### Technical Specification
 
-- The algorithm is selected from the fork version of `ref_slot`. 
+- The algorithm is selected from the fork version of `ref_slot`.
   - A report with a pre-Gloas `ref_slot` uses the legacy path even when it is built or submitted after activation.
   - For a report with a post-Gloas `ref_slot`, the read slot is the first non-missed slot after `ref_slot`.
 - The oracle waits for the read slot to be finalized before building a report.
@@ -85,7 +86,7 @@ In the child state, validator balances already have the expected withdrawals ded
 
 It is proposed to:
 
-- Identify bunker-mode samples by CL state root;
+- Identify bunker-mode samples by CL state root.
 
 #### Rationale
 
@@ -114,15 +115,15 @@ It is proposed to:
 
 ##### Exit Churn Limit
 
-EIP-8061 replaces the capped exit churn limit (256 ETH/epoch) with an uncapped one, which gives about 1311 ETH/epoch at ~43M ETH staked. With the old formula, the oracle overestimates withdrawal epochs and predicted liquidity, so it requests fewer exits than needed.
+EIP-8061 replaces the capped exit churn limit (256 ETH/epoch) with an uncapped one, which gives about 1,312 ETH/epoch at ~43M ETH staked. With the old formula, the oracle overestimates withdrawal epochs and predicted liquidity, so it requests fewer exits than needed.
 
 ##### Sweep Cycle Prediction
 
 The validator sweep is not the only consumer of the per-payload withdrawal capacity. Builder pending withdrawals, pending partial withdrawals and the builder sweep are processed before it.
 
-Of these consumers, only the validator sweep is predictable: it walks the validator set in a fixed order at a known rate. The others are periodical. Their load depends on external actors and comes in bursts, so a snapshot of the current queues does not predict a future load.
+Of these consumers, only the validator sweep is predictable: it walks the validator set in a fixed order at a known rate. The others are irregular. Their load depends on external actors and comes in bursts, so a snapshot of the current queues does not predict a future load.
 
-The Validator Exit Bus Oracle does not try to emulate the consensus layer; it only needs a reasonable estimate of when Lido validators will be swept. Therefore, after the hardfork, the sweep cycle prediction counts only validator withdrawals and ignores all other consumers. As a result, the predicted sweep delay can be short and VEBO may request more few exits.
+The Validator Exit Bus Oracle does not try to emulate the consensus layer; it only needs a reasonable estimate of when Lido validators will be swept. Therefore, after the hardfork, the sweep cycle prediction counts only validator withdrawals and ignores all other consumers. As a result, the predicted sweep delay can be shorter than the actual one, and VEBO may request fewer exits than needed.
 
 ##### Max Exit Requests per Report
 
@@ -131,7 +132,7 @@ This proposal also closes technical debt from a hotfix. Gas limit issues were fo
 #### Technical Specification
 
 - If the beacon state read for the report (see [§1](#1-report-read-slot-in-oracles)) is at or after Gloas activation, the per-epoch exit churn is `max(MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA, total_active_balance // CHURN_LIMIT_QUOTIENT_GLOAS)`, rounded down to `EFFECTIVE_BALANCE_INCREMENT`, with no upper cap. Otherwise, the Electra formula is used.
-- At the fork boundary, exits requested by the last pre-Gloas report may be first processed after activation, under the Gloas rule. For that report, the oracle overestimates the exit queue wait and may request fewer exits than needed. This is accepted to keep the implementation simple: the rule is selected only from the state the report reads, without predicting when each exit will be processed.
+- At the fork boundary, exits requested by the last pre-Gloas report may first be processed after activation, under the Gloas rule. For that report, the oracle overestimates the exit queue wait and may request fewer exits than needed. This is accepted to keep the implementation simple: the rule is selected only from the state the report reads, without predicting when each exit will be processed.
 - After the hardfork, the sweep cycle prediction counts only validator withdrawals. Pending partial withdrawals, builder pending withdrawals, the builder sweep, and empty parent payloads are not modeled.
 - In-flight withdrawals are counted once, through the CL balances restored by the add-back from [§1](#in-flight-withdrawal-add-back). Predicted EL liquidity does not add them again as a separate EL inflow.
 - The maximum number of validators per report is set to `500` in the `ValidatorsExitBusOracle` contract by calling `setMaxValidatorsPerReport(500)` as part of the on-chain vote.
@@ -155,16 +156,16 @@ This proposal switches the oracles to the v2 proposer-duties endpoint and suppor
 
 #### Rationale
 
-- **Proposer duties.** EIP-7917 introduced deterministic proposer lookahead. The Beacon API v2 proposer-duties endpoint defines the `dependent_root` that matches this lookahead; the v1 endpoint is deprecated and implementations do not uniformly provide the required semantics. EIP-7917 is already active since Fulu, so the v2 semantics also apply to pre-Gloas epochs. The oracle treats a `dependent_root` mismatch as fatal, so this affects the performance collector shared by the CSM, CSM `0x02`, and CM v2 oracles.
+- **Proposer duties.** EIP-7917 introduced deterministic proposer lookahead. The Beacon API v2 proposer-duties endpoint defines the `dependent_root` that matches this lookahead; the v1 endpoint is deprecated and implementations do not uniformly provide the required semantics. EIP-7917 has been active since Fulu, so the v2 semantics also apply to pre-Gloas epochs. The oracle treats a `dependent_root` mismatch as fatal, so this affects the performance collector shared by the CSM, CSM `0x02`, and CM v2 oracles.
 - **Slot duration.** [consensus-specs#4926](https://github.com/ethereum/consensus-specs/pull/4926) renames `SECONDS_PER_SLOT` to `SLOT_DURATION_MS`. The oracle will fail to parse the config of any node that drops the old field.
 
 #### Technical Specification
 
 - For all duties, use `GET /eth/v2/validator/duties/proposer/{epoch}`, starting with the oracle release that enables the new consensus version. Its `dependent_root` is `get_block_root_at_slot(state, compute_start_slot_at_epoch(epoch - 1) - 1)` (or the genesis block root on underflow). A `dependent_root` mismatch is fatal. There is no fallback to v1, so the oracle requires consensus nodes that support v2 from the moment the release is deployed.
-- Accept either `SLOT_DURATION_MS` or `SECONDS_PER_SLOT`. Raise an error when the two are missing or inconsistent or when the duration is not a whole number of seconds.
+- Accept either `SLOT_DURATION_MS` or `SECONDS_PER_SLOT`. Raise an error when both are missing, when they are inconsistent, or when the duration is not a whole number of seconds.
 - Read the churn parameters for §3 from the same node config.
 
-### 5. On-chain Verifiers changes
+### 5. On-chain Verifier Changes
 
 #### Scope
 
@@ -174,7 +175,7 @@ This proposal switches the oracles to the v2 proposer-duties endpoint and suppor
   - `ValidatorExitDelayVerifier`.
   - Shared libraries: `contracts/common/lib/CLGIndices.sol` and `GIndex.sol`.
 - **Modules:**
-  - `src/Verifier.sol` and `src/CuratedVerifier.sol`, which verifies validator slashing, withdrawals and balances.
+  - `src/Verifier.sol` and `src/CuratedVerifier.sol`, which verify validator slashing, withdrawals and balances.
   - Shared libraries: `src/lib/GIndices.sol` and `src/lib/GIndex.sol`.
 
 #### Forward-compatible structures and fixed GIndices
@@ -309,15 +310,15 @@ checks the `parent(slot, proposerIndex)` node and anchors through EIP-4788; `CLP
 - `bytes32 withdrawalCredentials` / `WITHDRAWAL_CREDENTIALS` replaces the address-only constructor input/getter.
   Withdrawal proofs check the validator's full credentials and the withdrawal recipient against their address portion.
 
-## 6. Protocol parameters changes
+### 6. Protocol Parameter Changes
 
-**EIP-8061 in Ethereum.** EIP-8061 ("Increase exit and consolidation churn", Glamsterdam / [Gloas]) splits Electra's single balance-based churn function into three separate ones:
+**EIP-8061 in Ethereum.** EIP-8061 ("Increase exit and consolidation churn", Glamsterdam / [Gloas](https://github.com/ethereum/consensus-specs/tree/master/specs/gloas)) splits Electra's single balance-based churn function into three separate ones:
 
 - **activation** — still **capped** at `MAX_PER_EPOCH_ACTIVATION_CHURN_LIMIT` = 256 ETH/epoch (**57,600 ETH/day**);
 - **exit** — **dynamic cap**, grows with the stake: `exit_churn = max(128, total_active_balance // 2^15)`; at ~43M ≈ **1,312 ETH/epoch** = **295,200 ETH/day**;
-- **consolidation** — its own quota `total_active_balance // 2^16`; at ~43M ≈ **656 ETH/epoch** = **147,600 ETH/day**;
+- **consolidation** — its own quota `total_active_balance // 2^16`; at ~43M ≈ **656 ETH/epoch** = **147,600 ETH/day**.
 
-### Entry and Exit Churn imbalance problem
+#### Entry and Exit Churn Imbalance Problem
 
 With the introduction of EIP-8061, the exit churn can grow significantly while the entry churn remains capped. This opens up a potential attack vector on a permissionless liquid staking protocol like Lido. If the attacker controls a significant portion of the protocol's stake (stETH in Lido's case), they can submit withdrawal requests for the entire stake they hold and stake it all immediately after the withdrawal requests finalize. If the protocol follows the updated limits for exits, the time for the stake to be withdrawn can be significantly shorter than the time for this stake to be re-staked, potentially allowing the attacker to dilute protocol APR, or even put the majority of the protocol's stake into the entry queue.
 
@@ -325,14 +326,14 @@ At the current ETH TVL of the Lido protocol, any meaningful attack of this type 
 
 Despite the low probability of such an attack occurring, it is proposed to limit the amount of ETH VEBO can request for exit within a day to match the network activation churn of **57,600 ETH/day**.
 
-### Proposed limit values
+#### Proposed Limit Values
 
 The values for items 1 and 2 are sized for **staking growth up to 60M ETH of active balance**: at that balance they match the network churn allowed by EIP-8061, so the limits do not have to be revisited until the network reaches it.
 
 The 60M figure balances two risks. A limit below the network churn can reject legitimate reports during a mass exit, while a limit far above it weakens the sanity check against incorrect reports. 60M ETH gives about 37% headroom over the current ~43.75M ETH of active balance and is roughly half of the total ETH supply, a level not expected to be reached soon. If the active balance approaches 60M ETH, the limits should be revisited.
 
 1. **`exitedEthAmountPerDayLimit` = 411,975 ETH/day** — the network exit churn at
-   a 60M active balance. 
+   a 60M active balance.
 
 2. **`consolidationEthAmountPerDayLimit` = 205,875 ETH/day** — the network
    consolidation churn at a 60M active balance.
@@ -342,7 +343,7 @@ The 60M figure balances two risks. A limit below the network churn can reject le
 4. **`ConsolidationGateway`** — the limits configured in this service are left
    unchanged at this stage.
 
-### SRv3 vs Glamsterdam (EIP-8061): what changes
+#### SRv3 vs Glamsterdam (EIP-8061): What Changes
 
 The baseline is the **SRv3 ([LIP-35](./lip-35.md))** parameters. SRv3 sanity limits are set in ETH and were tuned for pre-Glamsterdam churn (entry = exit = 256 ETH/epoch).
 
@@ -350,7 +351,7 @@ EIP-8061 changes the **network exit churn** and the **consolidation churn**; ent
 
 | SRv3 parameter                          | Current | After Glamsterdam      | Why                                                                           |
 |-----------------------------------------|---------|------------------------|-------------------------------------------------------------------------------|
-| `exitedEthAmountPerDayLimit`            | 57,600  | **~411,975 ETH/day**   | The network releases this much; otherwise a legitimate mass exit hits the cap |
+| `exitedEthAmountPerDayLimit`            | 57,600  | **411,975 ETH/day**    | The network releases this much; otherwise a legitimate mass exit hits the cap |
 | `maxBalanceExitRequestedPerReportInEth` | 19,200  | **11,520**             | See rationale above                                                           |
 | `consolidationEthAmountPerDayLimit`     | 93,375  | **205,875 ETH/day**    | The network consolidation churn, with headroom up to 60M                      |
 | `appearedEthAmountPerDayLimit`          | 57,600  | **57,600** (no change) | Activation churn is capped (256), entry does not speed up                     |
