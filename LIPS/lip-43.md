@@ -65,7 +65,7 @@ The state at `ref_slot` itself is not used because it would miss deposits from t
 This change has three consequences:
 
 - **Finality wait.** The child is finalized together with `ref_slot` when the first slot of the next epoch has a block. If that slot is missed, the oracle waits one more epoch (~6.4 minutes).
-- **One-time rebase shift.** The first report after the switch covers one additional epoch. For a daily report, its rebase is therefore about `1/225 ≈ 0.44%` higher. This positive rebase is within the sanity-checker limits; later reports return to their normal span.
+- **One-time rebase shift.** The first report after the switch covers one additional epoch. For a daily report, its rebase is therefore about `1/225 ≈ 0.44%` higher. This positive rebase is within the sanity-checker limits; later reports return to their normal span. The extra epoch also adds to the activated balance of the report; see [First Gloas report can exceed the activated balance limit](#first-gloas-report-can-exceed-the-activated-balance-limit).
 - **Time reference.** All derived timestamps (event lookback windows and staking vault report metadata) must stay tied to `ref_slot`. If they used the read slot instead, the lookback window would widen by at least one slot and skew reward-rate averages.
 
 ##### In-Flight Withdrawal Add-Back
@@ -338,10 +338,14 @@ The 60M figure balances two risks. A limit below the network churn can reject le
 2. **`consolidationEthAmountPerDayLimit` = 205,875 ETH/day** — the network
    consolidation churn at a 60M active balance.
 
-3. **`maxBalanceExitRequestedPerReportInEth` = 11,520 ETH** — reduced from 19,200 ETH based on the note above.
+3. **`maxBalanceExitRequestedPerReportInEth` = 11,520 ETH** — reduced from 19,200 ETH based on the note above. With 5 VEBO reports per day, 5 × 11,520 = 57,600 ETH/day, the network activation churn.
 
 4. **`ConsolidationGateway`** — the limits configured in this service are left
    unchanged at this stage.
+
+5. **`appearedEthAmountPerDayLimit` = 57,600 ETH/day** — unchanged. The extra epoch of
+   the first Gloas report is not covered, see
+   [First Gloas report can exceed the activated balance limit](#first-gloas-report-can-exceed-the-activated-balance-limit).
 
 #### SRv3 vs Glamsterdam (EIP-8061): What Changes
 
@@ -366,6 +370,15 @@ This is not considered a new risk:
 
 - It does not apply to `CuratedVerifier`, which does not process withdrawal proofs.
 - The effect is the same as the known [permissionless withdrawal reporting vulnerability](./lip-33.md#permissionless-withdrawal-reporting-vulnerability): a withdrawal other than the real full one is reported for the key. The same `MIN_WITHDRAWAL_RATIO` check bounds it, and the same mitigations apply.
+
+### First Gloas report can exceed the activated balance limit
+
+The [activated balance limit](https://github.com/lidofinance/core/blob/1440c830eb1d0916a436468a71cd73bc8b8deffb/contracts/0.8.9/sanity_checks/OracleReportSanityChecker.sol#L928-L942) of a report is the daily activation churn (225 × 256 = 57,600 ETH) plus 2,048 ETH for a large deposit that moved from the previous frame. The first Gloas report covers one extra epoch (see [§1](#1-report-read-slot-in-oracles)), so it can activate up to 226 × 256 = 57,856 ETH plus the moved deposit. If Lido deposits take the whole activation churn of the network for the whole day and a top-up of more than 1,792 ETH moves into the frame, the report reverts with `IncorrectTotalActivatedBalance`.
+
+This is accepted, and `appearedEthAmountPerDayLimit` is not changed:
+
+- Both conditions must hold in the one report after the fork. Lido rarely takes the whole activation churn, since the churn is shared by the whole network, and a top-up of more than 1,792 ETH moving into the frame at the same time is almost impossible.
+- Raising the limit would weaken the check for every later report to cover this one case.
 
 ## Links
 
