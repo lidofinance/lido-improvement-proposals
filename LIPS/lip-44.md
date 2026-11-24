@@ -26,7 +26,7 @@ In the flow of [LIP-35](./lip-35.md), `TopUpGateway` accepts a top-up only with 
 
 Optimistic top-ups have these benefits:
 
-- **Allocation stays correct.** This is the most important point. The stake goes to its target key, so later designs that depend on the stake distribution (VEBO, active rebalancing) need no special case.
+- **Allocation stays correct.** The stake goes to its target key, so later designs that depend on the stake distribution (VEBO, active rebalancing) need no special case.
 - **The stake reaches its target key early.** The top-up waits at least the block distance after the seed deposit, not the whole deposit queue.
 - **The stake always has a destination.** An optimistic top-up does not need free capacity on other keys. It also works when Lido directs stake to a new module or to new operators.
 - **Less code.** TopUpGateway and its proofs are removed. The proof code depends on the layout of the beacon state, so each consensus-layer fork needs a review of it.
@@ -51,7 +51,7 @@ The top-up depositor sends a top-up through a new DSM function. A top-up goes ou
 4. The DSM checks the caller, the pause and the block distance, and calls `StakingRouter.topUp`.
 5. The module checks that each key is deposited and returns its public key and an amount. StakingRouter deposits the ETH to the returned public keys. StakingRouter and the DSM store the block as the last deposit block.
 
-The module limits each amount by the balance and the status of the key that it learns from consensus-layer proofs. [LIP-42](./lip-42.md) specifies these proofs.
+The module limits each amount by the balance and the status of the key that it learns from consensus-layer proofs. [LIP-42](./lip-42.md#updated-verifier-contract-for-cmv2-to-support-partial-withdrawals-balance-tracking-and-top-up-limits) specifies these proofs.
 
 ### Rationale
 
@@ -68,12 +68,6 @@ The module limits each amount by the balance and the status of the key that it l
 **Why the top-up depositor sets a limit for each key.** The module does not see every balance on the consensus layer. An [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) consolidation moves the balance of the source validator to the target key, and the module counts this balance only after a balance proof. The depositor bot reads the consensus layer and lowers the limit. The limit can only lower the amount.
 
 **Why the call is permissioned.** The top-up depositor selects the keys and the limits. In CSM the top-up queue removes a key when its allocation equals its limit, so an open call with a zero limit could remove any key from the queue.
-
-**Alternatives considered.**
-
-- *Relax the proof to "the validator is in the registry with Lido's withdrawal credentials".* This keeps the proof but saves almost no time. Since [EIP-6110](https://eips.ethereum.org/EIPS/eip-6110) and EIP-7251, a deposit for a new key enters the pending deposit queue, and the consensus layer adds the validator to the registry only when it processes this deposit under the churn limit. The long wait is before the registry, not between the registry and activation. The proof code and its review on each fork would also stay.
-- *A separate protocol-wide cap for top-ups instead of the DSM-wide distance.* Seed deposits would not wait for top-ups, but the ETH that can leave the buffer per block distance would be the seed limit plus the top-up cap. A compromised quorum would gain this extra rate.
-- *A guardian signature for each top-up.* See the first point above.
 
 ### Technical Specification
 
@@ -120,8 +114,6 @@ interface IDepositSecurityModule {
 | 2 | `isDepositsPaused` is false                                                                                       | `DepositsArePaused()`            | One pause for seed deposits and top-ups. One guardian can set it                            |
 | 3 | `_isMinDepositDistancePassed(stakingModuleId)`: the larger of the module and DSM-wide last deposit blocks is at least `minDepositBlockDistance` of the module in the past | `DepositTooFrequent()`           | The same check as for a seed deposit. Every deposited key of the module is at least this old |
 
-The DSM stores the top-up depositor as `topUpDepositor`. The constructor takes its initial value as a new argument and accepts the zero address: top-ups are then blocked until the owner sets a top-up depositor. Only the owner of the DSM can change it, and `setTopUpDepositor` reverts with `ZeroAddress` for the zero address.
-
 `VERSION` changes from `5` to `6`, because the interface of the contract changes.
 
 #### StakingRouter
@@ -148,17 +140,10 @@ interface IStakingRouter {
 Changes in `topUp`:
 
 1. **Caller.** `topUp` accepts a call only from the address that `LidoLocator.depositSecurityModule()` returns, as `deposit` does.
-2. **Last deposit block.** `topUp` stores the current block and timestamp as the last deposit of the module before it calls the module, also when the amount of the call is zero. `depositBufferedEther` already reads the block. The timestamp (`lastDepositAt`) is informational: StakingRouter exposes it in the module state, and no contract reads it.
+2. **Last deposit block.** `topUp` stores the current block and timestamp as the last deposit of the module before it calls the module. `depositBufferedEther` already reads the block.
 3. **ETH limit of a call.** The amount of a call is at most the smaller of the module allocation and `maxDepositsPerBlock × 32 ETH` of the module. This is the limit of a seed deposit call.
-4. **Public keys.** `topUp` does not take public keys from the caller. It calls `allocateDeposits` of the module without them and deposits to the public keys that the module returns (see [Staking modules](#staking-modules)). `topUp` reverts with `ArraysLengthMismatch()` if the module returns a number of public keys or amounts different from the number of keys in the call. `BeaconChainDepositor` reverts with `InvalidPublicKeysBatchLength` for a public key that is not 48 bytes long.
-5. **Removed.** `maxTopUpPerBlockGwei`, `setMaxTopUpPerBlockGwei`, `getMaxTopUpPerBlockGwei`, the event `MaxTopUpPerBlockGweiSet`, the error `InvalidMaxTopUpPerBlockGwei` and the `_maxTopUpPerBlockGwei` argument of `initialize`. The storage slot of `maxTopUpPerBlockGwei` stays reserved and keeps its old value.
-
-These parts of `topUp` do not change:
-
-- It reverts with `StakingModuleUnregistered()` for an unknown module, `StakingModuleNotActive()` for a module that is not active, `WrongWithdrawalCredentialsType()` for a module without `0x02` credentials, `EmptyKeysList()` for an empty call and `ArraysLengthMismatch()` if `_keyIndices`, `_operatorIds` and `_topUpLimits` differ in length.
-- It checks the amounts that the module returns, pulls the ETH from Lido and calls the module also with a zero amount, so CSM can advance its top-up queue.
-- It does not check for duplicate keys. The module handles them (see [Staking modules](#staking-modules)).
-- It does not limit the number of keys in a call. Only the top-up depositor can call it, and the block gas limit bounds a call.
+4. **Public keys.** `topUp` does not take public keys from the caller. It calls `allocateDeposits` of the module without them and deposits to the public keys that the module returns (see [Staking modules](#staking-modules)).
+5. **Removed.** `maxTopUpPerBlockGwei`, `setMaxTopUpPerBlockGwei`, `getMaxTopUpPerBlockGwei`, the event `MaxTopUpPerBlockGweiSet`, the error `InvalidMaxTopUpPerBlockGwei` and the `_maxTopUpPerBlockGwei` argument of `initialize`.
 
 #### LidoLocator
 
@@ -166,20 +151,20 @@ We propose a new `LidoLocator` implementation. `depositSecurityModule()` returns
 
 #### TopUpGateway
 
-After the upgrade StakingRouter no longer accepts calls from TopUpGateway, and the contract has no function in the protocol. Its checks have no on-chain replacement: the [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788) proof that the validator is active, `minTopUpBlockDistance` and `maxRootAgeSec`. `maxValidatorsPerTopUp` has no replacement either (see the number of keys above). `targetBalanceGwei` and `minTopUpGwei` move to the depositor bot.
+After the upgrade StakingRouter no longer accepts calls from TopUpGateway, and the contract has no function in the protocol.
 
-The upgrade removes TopUpGateway from CircuitBreaker with `registerPauser(topUpGateway, address(0))`. This removes it from the enumerable set of pausables of CircuitBreaker ([LIP-34](./lip-34.md)) and ends the heartbeat of its pauser if the pauser has no other pausables. The roles on TopUpGateway (`PAUSE_ROLE` of CircuitBreaker and ResealManager, `RESUME_ROLE` of ResealManager, `TOP_UP_ROLE` of the top-up depositor) stay: a call of the gateway reverts in StakingRouter, so a pause or a resume of the gateway has no effect.
+The upgrade removes TopUpGateway from CircuitBreaker with `registerPauser(topUpGateway, address(0))`. This removes it from the enumerable set of pausables of CircuitBreaker ([LIP-34](./lip-34.md)).
 
 #### Staking modules
 
-A staking module that receives optimistic top-ups must meet these requirements. The status column describes Curated Module v2 and the `0x02` version of CSM at staking-modules revision `8df41d65`, together with the changes of LIP-42.
+A staking module that receives optimistic top-ups must meet these requirements. The status column describes Curated Module v2 and the `0x02` version of CSM, together with the changes of LIP-42.
 
 | # | Requirement                                                                                                                                                                                  | Status                                                                                                                                                                                                                                                                                             |
 |---|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1 | `allocateDeposits` accepts only a deposited key                                                                                                                                              | Exists. Curated Module v2 reverts with `SigningKeysInvalidOffset` when `keyIndex >= totalDepositedKeys`. CSM requires each key to be the head of its top-up queue and reverts with `InvalidTopUpOrder` otherwise. A key enters this queue in a seed deposit. This check is now a security boundary |
 | 2 | `allocateDeposits` takes no public keys and returns the public key and the amount of each key from the storage of the module, in the order of the call, also when `maxDepositAmount` is zero | New. Today the modules take the public keys from the caller and compare them with the storage (`SigningKeys.verifySigningKey`), and Curated Module v2 returns an empty array for a zero `maxDepositAmount`                                                                                         |
 | 3 | A key becomes deposited only in `obtainDepositData`, which StakingRouter calls from `deposit`. No other function marks a key as deposited                                                    | Exists for the deposit path. Each module must confirm it for its migration and administrative functions                                                                                                                                                                                            |
-| 4 | The module limits the amount for a key to the smaller of the limit from the top-up depositor and `2,016 ETH − keyAllocatedBalance`. Duplicate keys in one call share this headroom           | Exists (`capTopUpLimitsByKeyBalance`). In CSM a duplicate key reverts, because only the head of the queue is accepted                                                                                                                                                                              |
+| 4 | The module limits the amount for a key to the smaller of the limit from the top-up depositor and `2,016 ETH − keyAllocatedBalance`.           | Exists (`capTopUpLimitsByKeyBalance`). In CSM a duplicate key reverts, because only the head of the queue is accepted                                                                                                                                                                              |
 | 5 | The module gives a zero amount to a withdrawn, slashed or exited key, without a revert                                                                                                       | Withdrawn and slashed: exists. Exited: [LIP-42](./lip-42.md#proof-based-exit-accounting). The zero amount keeps the cleanup of the CSM top-up queue working                                                                                                                                        |
 | 6 | After a partial withdrawal, `keyAllocatedBalance` decreases, so the key can receive top-ups again                                                                                            | Curated Module v2: [LIP-42](./lip-42.md#new-balance-tracking-mechanism-for-cmv2). CSM `0x02`: not needed, because [LIP-38](./lip-38.md) disables partial withdrawals for it                                                                                                                        |
 
@@ -210,19 +195,13 @@ The two returned arrays have the same length and the same order as the input, al
 
 #### Guardian check
 
-The guardians sign nothing for a top-up. Their duty is the check that the council daemon already runs in each block: for every key that a module has deposited, the first deposit with a valid signature in the deposit contract log carries Lido's withdrawal credentials. If the check fails for a key, the guardian pauses the DSM.
-
-A key that passes this check after its seed deposit is safe for all later top-ups. Under EIP-6110 the consensus layer processes deposits in the order of the deposit contract log, so a later deposit cannot move ahead of the seed deposit.
+The guardians sign nothing for a top-up. In each block the council daemon checks, as today, that the first valid deposit of every deposited key carries Lido's withdrawal credentials, and pauses the DSM if it does not.
 
 #### Off-chain components
 
 **Depositor bot.** It operates the top-up depositor. It waits for the block distance and calls `DSM.topUpBufferedEther` with the node operator and the index of each key. It no longer builds proofs. Before each call it runs its own front-run check of the deposited keys and does not top up a module that fails it. This check is implemented in the depositor bot codebase, separately from the council daemon. It computes each limit from the consensus layer: the target balance minus the current balance, the pending deposits and the pending consolidations to the key. It skips exiting keys and keys with a limit below the minimum top-up.
 
-**Prover.** It delivers the proofs of LIP-42 to the module. It must deliver a balance proof when the balance of a key grows by a path that the module does not count, for example a consolidation.
-
-**Council daemon.** No new check and no new message. The daemon reads the DSM address from `LidoLocator` in each block, so it follows the new DSM without a configuration change. It selects its signing logic by `VERSION` and accepts only `5` today (`getDsmStrategy`, council daemon `3db0f71`). It needs a release that uses the same logic for `6`.
-
-**Independent monitoring.** Lido already runs independent deposit monitoring. It gets the front-run check for deposited keys, implemented separately from the council daemon and the depositor bot, and alerts the guardians to pause.
+**Council daemon.** It needs a release that accepts DSM `VERSION` `6` and uses the same signing logic as for `5`.
 
 #### Parameters
 
@@ -241,23 +220,11 @@ A key that passes this check after its seed deposit is safe for all later top-up
 
 | Contract                                        | Change                                                                                                    |
 |-------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
-| `DepositSecurityModule`                         | Not upgradable. Redeployed at a new address with the current guardians, quorum and parameters and the top-up depositor. Ownership goes to the Aragon Agent. `STAKING_MODULE_UNVETTING_ROLE` on StakingRouter moves from the old DSM to the new one |
+| `DepositSecurityModule`                         | Not upgradable. Redeployed at a new address with the current guardians, quorum and parameters and the top-up depositor. `STAKING_MODULE_UNVETTING_ROLE` on StakingRouter moves from the old DSM to the new one |
 | `StakingRouter`                                 | New implementation: `topUp` as described above                                                            |
 | `LidoLocator`                                   | New implementation: the new DSM address, no `topUpGateway`                                                |
 | `0x02` staking modules (Curated Module v2, CSM) | New implementations with the new `allocateDeposits`. Same vote as `StakingRouter`, because both use the same interface |
-| `TopUpGateway`                                  | Removed from CircuitBreaker and from `LidoLocator`. The contract stays deployed with no function          |
-
-`STAKING_MODULE_UNVETTING_ROLE` is the only role tied to the DSM address. Other contracts find the DSM through `LidoLocator`: StakingRouter checks the caller of `deposit` and `topUp`, and `ConsolidationGateway` reads `isDepositsPaused`. They follow the new DSM with the new `LidoLocator` implementation.
-
-Rollout:
-
-1. Release the council daemon with support for `VERSION` `6`, the depositor bot and the prover. Add the front-run check to the independent monitoring.
-2. Deploy the `StakingRouter`, `LidoLocator` and staking module implementations and the new DSM. The deployer adds the guardians and the quorum of the live DSM to the new DSM and transfers its ownership to the Aragon Agent before the vote.
-3. The DAO vote of the StakingRouter phase 2 upgrade ([LIP-38](./lip-38.md)) also upgrades `StakingRouter`, `LidoLocator` and the `0x02` staking modules, moves `STAKING_MODULE_UNVETTING_ROLE` to the new DSM and removes TopUpGateway from CircuitBreaker. The vote checks that the new DSM has the guardians, quorum and parameters of the live one, the Agent as its owner and the expected top-up depositor. It reverts while the live DSM is paused, so the switch cannot lift a pause.
-
-The daemon from step 1 reads the DSM address from `LidoLocator` in each block, so the guardians sign for the new DSM from the first block after the vote. There is no gap in seed deposits.
-
-LIP-42 is a prerequisite. Its module release ships before this vote or in it.
+| `TopUpGateway`                                  | Removed from CircuitBreaker and from `LidoLocator`       |
 
 ## Security Considerations
 
@@ -265,13 +232,12 @@ LIP-42 is a prerequisite. Its module release ships before this vote or in it.
 
 This is the risk that the proposal changes. If the guardians miss the front-run of a key, Lido loses its 32 ETH seed deposit today. With optimistic top-ups the same key can then receive up to 2,016 ETH of top-ups, the cap of the module. The top-up depositor's target balance does not bound this: a compromised or faulty top-up depositor can send up to the cap. The loss on one key therefore grows from 32 ETH to up to 2,048 ETH.
 
-A top-up to such a key requires all of these to miss the front-run:
+A top-up to such a key requires both of these to miss the front-run or to be compromised:
 
 - **Every guardian.** The key can receive a top-up only after the block distance since its seed deposit. In this window each guardian checks the deposit log with the seed deposit in it, and one guardian is enough to pause. The check takes the list of deposited keys from the Keys API, so a delay in the Keys API shortens the window.
-- **The depositor bot.** It runs its own check before each call.
-- **The independent monitoring.** It runs a third check and alerts the guardians.
+- **The depositor bot.** It runs its own check before each call. All guardians run the same daemon, so one error in the daemon keeps every guardian silent. The check of the depositor bot is a separate implementation for this reason.
 
-All guardians run the same daemon, so one error in the daemon keeps every guardian silent. The checks of the depositor bot and the monitoring are separate implementations for this reason.
+If both fail, the last protection is the Execution Delegation Framework: the owner of the `DelegationContract`, currently a multisig, can revoke the delegate key of the top-up depositor at once, without a DAO vote (see [The top-up depositor](#the-top-up-depositor)).
 
 ### No extra leverage for a compromised quorum
 
@@ -295,21 +261,9 @@ A reorg cannot put another deposit before the seed deposit. The seed deposit bin
 ## Known Issues
 
 - **Seed deposits and top-ups share one sequence of deposit calls.** The protocol makes at most one deposit call per block distance, for all modules and both paths together. Today top-ups have a separate protocol-wide cap. A top-up, also one with a zero amount, delays seed deposits to every module, and a top-up can wait longer than the block distance when other deposits use the slots. The depositor bot orders the calls. Governance can change `maxDepositsPerBlock` and `minDepositBlockDistance` of the modules.
-- **A missed front-run costs up to 2,048 ETH per key instead of 32 ETH.** See [Security Considerations](#a-missed-front-run-costs-more).
 - **The module learns about an exit or a slashing only from a proof.** Until the proof of LIP-42 arrives, a top-up can go to an exiting or slashed validator. The ETH is not lost, but it returns only after the validator is withdrawable. The depositor bot skips exiting keys.
 - **The cap is as fresh as the last proof.** When the balance that the module records is stale, a top-up can lift a key above 2,048 ETH. The excess is not lost: the withdrawal sweep returns it to Lido.
 - **The CircuitBreaker Committee can no longer pause top-ups.** The DSM pause replaces the TopUpGateway pause. One guardian can set it, but it also stops seed deposits, and only the owner of the DSM can remove it with a DAO vote.
-
-## Failure Modes
-
-| Failure                                                                                                    | Effect                                                                                   | Detection and response                                                                                                                                  |
-|------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| The guardians do not detect the front-run of a key, for example because of an error in the council daemon | The key can receive top-ups. The loss for the key grows from 32 ETH to up to 2,048 ETH   | The depositor bot and the independent monitoring run separate checks. Any guardian then pauses the DSM                                                  |
-| The Keys API is late                                                                                       | The reaction window is shorter than the block distance                                   | Governance keeps `minDepositBlockDistance` of a `0x02` module long enough for a guardian to detect a front-run and pause, with a margin for this delay |
-| The top-up depositor is compromised                                                                        | See [The top-up depositor](#the-top-up-depositor). It cannot send ETH to a key without a seed deposit | The owner of the `DelegationContract` revokes the delegate key. A guardian can pause the DSM                                                            |
-| The balance in the module is stale and the limit from the top-up depositor is too high                    | A top-up lifts the balance of the key above 2,048 ETH. The excess returns to Lido        | Anyone can deliver a balance proof to the module. The depositor bot lowers the limit from consensus-layer data                                          |
-| The DSM is paused                                                                                          | Seed deposits and top-ups stop until a DAO vote removes the pause                        | Expected behavior                                                                                                                                       |
-| The depositor bot is offline                                                                               | No top-ups go out. The ETH stays in the buffer. No loss                                  | Top-ups continue when the bot is back                                                                                                                   |
 
 ## Links
 
@@ -319,11 +273,6 @@ A reorg cannot put another deposit before the seed deposit. The seed deposit bin
 - [LIP-37. Execution Delegation Framework](./lip-37.md)
 - [LIP-38. Withdrawals Oracle and Active Rebalancing](./lip-38.md)
 - [LIP-42. Curated Module v2 Phase 2. ValMart](./lip-42.md)
-- Implementation: [lidofinance/core#2045](https://github.com/lidofinance/core/pull/2045)
-- Core repository (`lidofinance/core`, contains `DepositSecurityModule`, `StakingRouter` and `TopUpGateway`): https://github.com/lidofinance/core — the code references of this proposal use release [`v4.1.0`](https://github.com/lidofinance/core/tree/v4.1.0)
-- Staking modules (`lidofinance/staking-modules`): https://github.com/lidofinance/staking-modules — revision [`8df41d65`](https://github.com/lidofinance/staking-modules/tree/8df41d65)
-- Council daemon (`lidofinance/lido-council-daemon`): https://github.com/lidofinance/lido-council-daemon — revision [`3db0f71`](https://github.com/lidofinance/lido-council-daemon/tree/3db0f71)
-- Depositor bot (`lidofinance/depositor-bot`): https://github.com/lidofinance/depositor-bot
 
 ## Copyright
 
