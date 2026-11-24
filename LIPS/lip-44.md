@@ -35,7 +35,7 @@ Optimistic top-ups have these benefits:
 
 ### Overview
 
-An optimistic top-up is safe only if Lido's seed deposit is the first deposit with a valid signature for the key. That deposit fixes the withdrawal credentials. The guardians sign a seed deposit only when its keys are not front-run, and they keep checking every deposited key in each block. The risk that this proposal changes is a front-run that the guardians miss: the key then can receive top-ups.
+An optimistic top-up is safe only if Lido's seed deposit is the first deposit with a valid signature for the key. That deposit fixes the withdrawal credentials. The guardians sign a seed deposit only when its keys are not front-run, and they keep checking every deposited key in each block. The risk that this proposal changes is a front-run that the guardians miss: the key can then receive top-ups.
 
 The top-up depositor sends a top-up through a new DSM function. A top-up goes out only if all of these conditions are true:
 
@@ -131,9 +131,9 @@ We propose a new `StakingRouter` implementation. `topUp` loses the `_pubkeys` ar
 ```solidity
 interface IStakingRouter {
   /// @notice Performs top-up calls to the official Deposit contract.
-  /// @param _stakingModuleId Id of the staking module to be deposited.
-  /// @param _keyIndices List of keys' indices
-  /// @param _operatorIds List of operator indices
+  /// @param _stakingModuleId ID of the staking module to be deposited.
+  /// @param _keyIndices List of keys' indices.
+  /// @param _operatorIds List of node operator IDs.
   /// @param _topUpLimits Maximum amount (in wei) that can be deposited per key, set by the top-up depositor.
   /// @dev Only the DepositSecurityModule is allowed to call this method.
   function topUp(
@@ -241,7 +241,7 @@ A key that passes this check after its seed deposit is safe for all later top-up
 
 | Contract                                        | Change                                                                                                    |
 |-------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
-| `DepositSecurityModule`                         | Not upgradeable. Redeployed at a new address with the current guardians, quorum and parameters and the top-up depositor. Ownership goes to the Aragon Agent. `STAKING_MODULE_UNVETTING_ROLE` on StakingRouter moves from the old DSM to the new one |
+| `DepositSecurityModule`                         | Not upgradable. Redeployed at a new address with the current guardians, quorum and parameters and the top-up depositor. Ownership goes to the Aragon Agent. `STAKING_MODULE_UNVETTING_ROLE` on StakingRouter moves from the old DSM to the new one |
 | `StakingRouter`                                 | New implementation: `topUp` as described above                                                            |
 | `LidoLocator`                                   | New implementation: the new DSM address, no `topUpGateway`                                                |
 | `0x02` staking modules (Curated Module v2, CSM) | New implementations with the new `allocateDeposits`. Same vote as `StakingRouter`, because both use the same interface |
@@ -308,7 +308,7 @@ A reorg cannot put another deposit before the seed deposit. The seed deposit bin
 | The Keys API is late                                                                                       | The reaction window is shorter than the block distance                                   | Governance keeps `minDepositBlockDistance` of a `0x02` module long enough for a guardian to detect a front-run and pause, with a margin for this delay |
 | The top-up depositor is compromised                                                                        | See [The top-up depositor](#the-top-up-depositor). It cannot send ETH to a key without a seed deposit | The owner of the `DelegationContract` revokes the delegate key. A guardian can pause the DSM                                                            |
 | The balance in the module is stale and the limit from the top-up depositor is too high                    | A top-up lifts the balance of the key above 2,048 ETH. The excess returns to Lido        | Anyone can deliver a balance proof to the module. The depositor bot lowers the limit from consensus-layer data                                          |
-| The DSM is paused                                                                                          | Seed deposits and top-ups stop until a DAO vote removes the pause                        | Expected behaviour                                                                                                                                      |
+| The DSM is paused                                                                                          | Seed deposits and top-ups stop until a DAO vote removes the pause                        | Expected behavior                                                                                                                                       |
 | The depositor bot is offline                                                                               | No top-ups go out. The ETH stays in the buffer. No loss                                  | Top-ups continue when the bot is back                                                                                                                   |
 
 ## Links
@@ -317,7 +317,7 @@ A reorg cannot put another deposit before the seed deposit. The seed deposit bin
 - [LIP-34. CircuitBreaker](./lip-34.md)
 - [LIP-35. Staking Router v3](./lip-35.md)
 - [LIP-37. Execution Delegation Framework](./lip-37.md)
-- [LIP-38](./lip-38.md)
+- [LIP-38. Withdrawals Oracle and Active Rebalancing](./lip-38.md)
 - [LIP-42. Curated Module v2 Phase 2. ValMart](./lip-42.md)
 - Implementation: [lidofinance/core#2045](https://github.com/lidofinance/core/pull/2045)
 - Core repository (`lidofinance/core`, contains `DepositSecurityModule`, `StakingRouter` and `TopUpGateway`): https://github.com/lidofinance/core — the code references of this proposal use release [`v4.1.0`](https://github.com/lidofinance/core/tree/v4.1.0)
