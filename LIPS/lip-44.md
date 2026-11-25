@@ -102,7 +102,7 @@ interface IDepositSecurityModule {
 
     event TopUpDepositorChanged(address newValue);
 
-    error NotATopUpDepositor(address caller);
+    error NotTopUpDepositor(address caller);
 }
 ```
 
