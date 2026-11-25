@@ -24,7 +24,7 @@ We propose to deploy a new `DepositSecurityModule` with a function `topUpBuffere
 
 In the flow of [LIP-35](./lip-35.md), `TopUpGateway` accepts a top-up only with a consensus-layer proof that the validator is active. A new key gets its 32 ETH seed deposit and then waits in the deposit queue. The top-up amount sits in the buffer for this whole time. An optimistic top-up sends it to the target key early.
 
-Optimistic top-ups have these benefits:
+Optimistic top-ups have the following benefits:
 
 - **Allocation stays correct.** The stake goes to its target key, so later designs that depend on the stake distribution (VEBO, active rebalancing) need no special case.
 - **The stake reaches its target key early.** The top-up waits at least the block distance after the seed deposit, not the whole deposit queue.
