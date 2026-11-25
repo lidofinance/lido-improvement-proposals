@@ -26,7 +26,7 @@ In the flow of [LIP-35](./lip-35.md), `TopUpGateway` accepts a top-up only with 
 
 Optimistic top-ups have the following benefits:
 
-- **Allocation stays correct.** The stake goes to its target key, so later designs that depend on the stake distribution (VEBO, active rebalancing) need no special case.
+- **Allocation stays correct.** The stake goes to its target key, so later designs that depend on the stake distribution (the new VEBO and active rebalancing introduced in [LIP-38](./lip-38.md)) need no special case.
 - **The stake reaches its target key early.** The top-up waits at least the block distance after the seed deposit, not the whole deposit queue.
 - **The stake always has a destination.** An optimistic top-up does not need free capacity on other keys. It also works when Lido directs stake to a new module or to new operators.
 - **Less code.** TopUpGateway and its proofs are removed. The proof code depends on the layout of the beacon state, so each consensus-layer fork needs a review of it.
