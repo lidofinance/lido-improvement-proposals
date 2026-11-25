@@ -49,7 +49,7 @@ The top-up depositor sends a top-up through a new DSM function. A top-up goes ou
 2. Each guardian checks the deposited keys in each block, as today. On a front-run, the guardian pauses the DSM.
 3. After the block distance, the depositor bot calls `DSM.topUpBufferedEther` through the top-up depositor with the node operator and the index of each key and a limit for each key.
 4. The DSM checks the caller, the pause and the block distance, and calls `StakingRouter.topUp`.
-5. The module checks that each key is deposited and returns its public key and an amount. StakingRouter deposits the ETH to the returned public keys. StakingRouter and the DSM store the block as the last deposit block.
+5. The module checks that each key is deposited and not started exit process. Then the module returns the corresponding public key and an amount. StakingRouter deposits the ETH to the returned public keys. StakingRouter and the DSM store the block as the last deposit block.
 
 The module limits each amount by the balance and the status of the key (requirements 4 and 5 in [Staking modules](#staking-modules)). It learns them from consensus-layer proofs: [LIP-42](./lip-42.md#new-balance-tracking-mechanism-for-cmv2) specifies how they update `keyAllocatedBalance`, and [proof-based exit accounting](./lip-42.md#proof-based-exit-accounting) covers exits.
 
@@ -199,7 +199,7 @@ The guardians sign nothing for a top-up. In each block the council daemon checks
 
 #### Off-chain components
 
-**Depositor bot.** It operates the top-up depositor. It waits for the block distance and calls `DSM.topUpBufferedEther` with the node operator and the index of each key. It no longer builds proofs. Before each call it runs its own front-run check of the deposited keys and does not top up a module that fails it. This check is implemented in the depositor bot codebase, separately from the council daemon. It computes each limit from the consensus layer: the target balance minus the current balance, the pending deposits and the pending consolidations to the key. It skips exiting keys and keys with a limit below the minimum top-up.
+**Depositor bot.** It operates the top-up depositor. It waits for the block distance and calls `DSM.topUpBufferedEther` with the node operator and the index of each key. It no longer builds proofs. Before each call it runs its own front-run check of the deposited keys and does not top up a module that fails it. This check is implemented in the depositor bot codebase, separately from the council daemon. It computes each limit from the consensus layer: the target balance minus the current balance, the pending deposits and the pending consolidations to the key. It skips exiting keys and keys with a limit below the minimum top-up. For the `0x02` CSM it still includes such keys with a zero limit when they are at the head of the top-up queue, so that the module removes them and the queue progresses.
 
 **Council daemon.** It needs a release that accepts DSM `VERSION` `6` and uses the same signing logic as for `5`.
 
@@ -212,8 +212,6 @@ The guardians sign nothing for a top-up. In each block the council daemon checks
 | `topUpDepositor`                                                                 | The `DelegationContract` that holds `TOP_UP_ROLE` on TopUpGateway today     | DSM, new parameter                                      |
 | Owner of the DSM                                                                 | Aragon Agent                                                                | DSM, unchanged                                          |
 | Guardians, quorum, `pauseIntentValidityPeriodBlocks`, `maxOperatorsPerUnvetting` | The values of the current DSM                                               | DSM, unchanged                                          |
-| Target balance of a key                                                          | 2,046.75 ETH                                                                | Depositor bot, from `targetBalanceGwei` of TopUpGateway |
-| Minimum top-up of a key                                                          | 2 ETH                                                                       | Depositor bot, from `minTopUpGwei` of TopUpGateway      |
 | Hard cap for a key                                                               | 2,016 ETH above the seed, for the balance that the module records           | Module constant, unchanged                              |
 
 ### Upgradability
@@ -237,7 +235,7 @@ A top-up to such a key requires both of these to miss the front-run or to be com
 - **Every guardian.** The key can receive a top-up only after the block distance since its seed deposit. In this window each guardian checks the deposit log with the seed deposit in it, and one guardian is enough to pause. The check takes the list of deposited keys from the Keys API, so a delay in the Keys API shortens the window.
 - **The depositor bot.** It runs its own check before each call. All guardians run the same daemon, so one error in the daemon keeps every guardian silent. The check of the depositor bot is a separate implementation for this reason.
 
-If both fail, the last protection is the Execution Delegation Framework: the owner of the `DelegationContract`, currently a multisig, can revoke the delegate key of the top-up depositor at once, without a DAO vote (see [The top-up depositor](#the-top-up-depositor)).
+If both fail, two protections remain. Any guardian can still pause the DSM manually with its key, without the daemon. The owner of the `DelegationContract`, currently a multisig, can revoke the delegate key of the top-up depositor at once, without a DAO vote (see [The top-up depositor](#the-top-up-depositor)).
 
 ### No extra leverage for a compromised quorum
 
@@ -249,7 +247,7 @@ The top-up depositor selects the keys and the limits. It cannot redirect ETH: it
 
 - send top-ups to an exiting or slashed validator before the module learns about the event;
 - lift a key above 2,048 ETH when the balance that the module records is stale;
-- use every block distance, which delays seed deposits to all modules;
+- send a top-up, also one with a zero amount, as soon as each block distance passes. Every call resets the DSM-wide last deposit block, so the attacker can take the slot before each seed deposit and stall seed deposits to all modules while the attack lasts;
 - remove keys from the CSM top-up queue with zero limits.
 
 The top-up depositor is an Execution Delegation Framework `DelegationContract` ([LIP-37](./lip-37.md)). Its owner can revoke a compromised delegate key at once, without a DAO vote. The DSM pause also stops it.
