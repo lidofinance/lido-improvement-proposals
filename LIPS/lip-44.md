@@ -18,7 +18,7 @@ This proposal lets Lido send a top-up soon after the seed deposit, before the va
 
 ## Abstract
 
-We propose to deploy a new `DepositSecurityModule` with a function `topUpBufferedEther` that sends a top-up to the deposited keys of a staking module without a consensus-layer proof. Only the top-up depositor can call it, and it uses the same pause, block distance and ETH limit per call as a seed deposit. We propose to upgrade `StakingRouter` and the `0x02` staking modules to support this flow and to remove `TopUpGateway`. The proposal requires [LIP-42](./lip-42.md).
+We propose to deploy a new `DepositSecurityModule` with a function `topUpBufferedEther` that sends a top-up to the deposited keys of a staking module without a consensus-layer proof of validator state. Only the holder of the top-up role can call it, and it uses the same pause, block distance, and ETH limit per call as a seed deposit. We propose to upgrade `StakingRouter` and the `0x02` staking modules to support this flow and to remove `TopUpGateway`. The proposal requires [LIP-42](./lip-42.md).
 
 ## Motivation
 
