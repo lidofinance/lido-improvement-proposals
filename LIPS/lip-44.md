@@ -106,11 +106,11 @@ interface IDepositSecurityModule {
 }
 ```
 
-`topUpBufferedEther` makes these checks in order, calls `STAKING_ROUTER.topUp` with the same arguments and then stores the current block as the DSM-wide last deposit block, as `depositBufferedEther` does:
+`topUpBufferedEther` makes the following checks in order, calls `STAKING_ROUTER.topUp` with the same arguments, and then stores the current block as the DSM-wide last deposit block, as `depositBufferedEther` does:
 
 | # | Check                                                                                                             | Revert                           | Purpose                                                                                     |
 |---|-------------------------------------------------------------------------------------------------------------------|----------------------------------|---------------------------------------------------------------------------------------------|
-| 1 | `msg.sender` is the top-up depositor                                                                              | `NotATopUpDepositor(msg.sender)` | The top-up depositor selects the keys and the limits, so the call is not open to anyone     |
+| 1 | `msg.sender` is the top-up depositor                                                                              | `NotTopUpDepositor(msg.sender)` | The top-up depositor selects the keys and the limits, so the call is not open to anyone     |
 | 2 | `isDepositsPaused` is false                                                                                       | `DepositsArePaused()`            | One pause for seed deposits and top-ups. One guardian can set it                            |
 | 3 | `_isMinDepositDistancePassed(stakingModuleId)`: the larger of the module and DSM-wide last deposit blocks is at least `minDepositBlockDistance` of the module in the past | `DepositTooFrequent()`           | The same check as for a seed deposit. Every deposited key of the module is at least this old |
 
