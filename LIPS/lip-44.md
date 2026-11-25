@@ -51,7 +51,7 @@ The top-up depositor sends a top-up through a new DSM function. A top-up goes ou
 4. The DSM checks the caller, the pause and the block distance, and calls `StakingRouter.topUp`.
 5. The module checks that each key is deposited and returns its public key and an amount. StakingRouter deposits the ETH to the returned public keys. StakingRouter and the DSM store the block as the last deposit block.
 
-The module limits each amount by the balance and the status of the key that it learns from consensus-layer proofs. [LIP-42](./lip-42.md#updated-verifier-contract-for-cmv2-to-support-partial-withdrawals-balance-tracking-and-top-up-limits) specifies these proofs.
+The module limits each amount by the balance and the status of the key (requirements 4 and 5 in [Staking modules](#staking-modules)). It learns them from consensus-layer proofs: [LIP-42](./lip-42.md#new-balance-tracking-mechanism-for-cmv2) specifies how they update `keyAllocatedBalance`, and [proof-based exit accounting](./lip-42.md#proof-based-exit-accounting) covers exits.
 
 ### Rationale
 

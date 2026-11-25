@@ -230,7 +230,7 @@ Due to the transition to the new balance tracking mechanism in CMv2, the exit ba
 
 Since CMv2 already assumes an overseeing committee (CMC) for reliable operation, it is assumed that a balance deficit that occurred due to validator underperformance is penalized manually using [General Delayed Penalty mechanism](./lip-33.md#general-penalty-with-confirmation). Balance deficit due to slashing is already handled using [dedicated Easy Track flow](./lip-33.md#slashed-validators).
 
-#### Updated `Verifier` contract for CMv2 to support partial withdrawals, balance tracking and top-up limits
+#### Updated `Verifier` contract for CMv2 to support partial withdrawals and new balance tracking mechanism
 
 > This feature applies to CMv2 only. CSM keeps the version of `Verifier` covered in [LIP-33](./lip-33.md).
 
