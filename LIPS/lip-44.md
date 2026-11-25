@@ -14,7 +14,7 @@ updated: 2026-11-24
 
 Lido stakes ETH on a `0x02` validator in two steps. The first deposit of 32 ETH, the seed deposit, creates the validator. Later deposits, the top-ups, raise its balance up to 2,048 ETH. Today a top-up waits until the validator is active, so the ETH for it waits in the Lido buffer during the whole deposit queue.
 
-This proposal lets Lido send a top-up soon after the seed deposit, before the validator is active. The top-up goes through the Deposit Security Module ([DSM](https://docs.lido.fi/contracts/deposit-security-module)) and uses the protections of a seed deposit: the guardians check every new key, and one guardian can pause all deposits. The proposal removes TopUpGateway and its consensus-layer proofs.
+This proposal lets Lido send a top-up soon after the seed deposit, before the validator is active. The top-up goes through the Deposit Security Module ([DSM](https://docs.lido.fi/contracts/deposit-security-module)) and inherits the protections of a seed deposit: the guardians check every new key used for a seed deposit, one guardian can pause all deposits, and ETH limits are shared between seed deposits and top-ups. The proposal removes TopUpGateway and its consensus-layer proofs.
 
 ## Abstract
 
