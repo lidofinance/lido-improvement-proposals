@@ -55,7 +55,7 @@ The module limits each amount by the balance and the status of the key (requirem
 
 ### Rationale
 
-**Why a top-up needs no guardian signature.** The guardians attest to one fact about a key: Lido's seed deposit is its first valid deposit. This fact does not change after the seed deposit, and the guardians keep checking it in each block. A signature for each top-up would attest to the same fact again. It would add a new guardian message and a new check in the council daemon, and top-ups would stop when the quorum is offline.
+**Why a top-up needs no guardian signature.** The guardians attest to one fact about a key: Lido's seed deposit is its first valid deposit. This fact does not change after the seed deposit, and the guardians keep checking it in each block to catch potential front-running. A signature for each top-up would attest to the same fact again. It would add a new guardian message and a new check in the council daemon, and top-ups would stop when the quorum is offline. Since the seed deposit was already attested, a simple DSM pause in case of a front-run is sufficient to prevent invalid top-ups.
 
 **Why the delay is the block distance.** StakingRouter already stores the last deposit block of each module, and the DSM already reads it. A key of a module becomes deposited only in a seed deposit to that module, so no deposited key of the module is newer than this block.
 
