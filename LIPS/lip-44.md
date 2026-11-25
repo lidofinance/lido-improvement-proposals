@@ -14,19 +14,19 @@ updated: 2026-11-24
 
 Lido stakes ETH on a `0x02` validator in two steps. The first deposit of 32 ETH, the seed deposit, creates the validator. Later deposits, the top-ups, raise its balance up to 2,048 ETH. Today a top-up waits until the validator is active, so the ETH for it waits in the Lido buffer during the whole deposit queue.
 
-This proposal lets Lido send a top-up soon after the seed deposit, before the validator is active. The top-up goes through the Deposit Security Module ([DSM](https://docs.lido.fi/contracts/deposit-security-module)) and uses the protections of a seed deposit: the guardians check every new key, and one guardian can pause all deposits. The proposal removes TopUpGateway and its consensus-layer proofs.
+This proposal lets Lido send a top-up soon after the seed deposit, before the validator is active. The top-up goes through the Deposit Security Module ([DSM](https://docs.lido.fi/contracts/deposit-security-module)) and inherits the protections of a seed deposit: the guardians check every new key used for a seed deposit, one guardian can pause all deposits, and ETH limits are shared between seed deposits and top-ups. The proposal removes TopUpGateway and its consensus-layer proofs.
 
 ## Abstract
 
-We propose to deploy a new `DepositSecurityModule` with a function `topUpBufferedEther` that sends a top-up to the deposited keys of a staking module without a consensus-layer proof. Only the top-up depositor can call it, and it uses the same pause, block distance and ETH limit per call as a seed deposit. We propose to upgrade `StakingRouter` and the `0x02` staking modules to support this flow and to remove `TopUpGateway`. The proposal requires [LIP-42](./lip-42.md).
+We propose to deploy a new `DepositSecurityModule` with a function `topUpBufferedEther` that sends a top-up to the deposited keys of a staking module without a consensus-layer proof of validator state. Only the holder of the top-up role can call it, and it uses the same pause, block distance, and ETH limit per call as a seed deposit. We propose to upgrade `StakingRouter` and the `0x02` staking modules to support this flow and to remove `TopUpGateway`. The proposal requires [LIP-42](./lip-42.md).
 
 ## Motivation
 
 In the flow of [LIP-35](./lip-35.md), `TopUpGateway` accepts a top-up only with a consensus-layer proof that the validator is active. A new key gets its 32 ETH seed deposit and then waits in the deposit queue. The top-up amount sits in the buffer for this whole time. An optimistic top-up sends it to the target key early.
 
-Optimistic top-ups have these benefits:
+Optimistic top-ups have the following benefits:
 
-- **Allocation stays correct.** The stake goes to its target key, so later designs that depend on the stake distribution (VEBO, active rebalancing) need no special case.
+- **Allocation stays correct.** The stake goes to its target key, so later designs that depend on the stake distribution (the new VEBO and active rebalancing introduced in [LIP-38](./lip-38.md)) need no special case.
 - **The stake reaches its target key early.** The top-up waits at least the block distance after the seed deposit, not the whole deposit queue.
 - **The stake always has a destination.** An optimistic top-up does not need free capacity on other keys. It also works when Lido directs stake to a new module or to new operators.
 - **Less code.** TopUpGateway and its proofs are removed. The proof code depends on the layout of the beacon state, so each consensus-layer fork needs a review of it.
@@ -55,7 +55,7 @@ The module limits each amount by the balance and the status of the key (requirem
 
 ### Rationale
 
-**Why a top-up needs no guardian signature.** The guardians attest to one fact about a key: Lido's seed deposit is its first valid deposit. This fact does not change after the seed deposit, and the guardians keep checking it in each block. A signature for each top-up would attest to the same fact again. It would add a new guardian message and a new check in the council daemon, and top-ups would stop when the quorum is offline.
+**Why a top-up needs no guardian signature.** The guardians attest to one fact about a key: Lido's seed deposit is its first valid deposit. This fact does not change after the seed deposit, and the guardians keep checking it in each block to catch potential front-running. A signature for each top-up would attest to the same fact again. It would add a new guardian message and a new check in the council daemon, and top-ups would stop when the quorum is offline. Since the seed deposit was already attested, a simple DSM pause in case of a front-run is sufficient to prevent invalid top-ups.
 
 **Why the delay is the block distance.** StakingRouter already stores the last deposit block of each module, and the DSM already reads it. A key of a module becomes deposited only in a seed deposit to that module, so no deposited key of the module is newer than this block.
 
@@ -63,7 +63,7 @@ The module limits each amount by the balance and the status of the key (requirem
 
 **Why top-ups use the DSM-wide distance.** The DSM resets the distance on a seed deposit to any module, so colluding guardians cannot deposit to several modules in one window. Top-ups join the same sequence of deposit calls. The ETH that can leave the buffer per block distance is therefore the same with and without top-ups, across all modules (see [Security Considerations](#security-considerations)).
 
-**Why every call uses the distance.** `topUp` stores the last deposit block also when the call deposits no ETH, as `deposit` does when the module returns no keys. One rule for all calls keeps the bound on deposit calls simple. A call with a zero amount still changes the module: CSM removes keys from its top-up queue in it. The depositor bot puts these keys into calls that also deposit ETH, so the cleanup alone rarely uses a slot.
+**Why every call uses the distance.** `topUp` stores the last deposit block also when the call deposits no ETH, as `deposit` does when the module returns no keys. One rule for all calls keeps the bound on deposit calls simple. A call with a zero amount can still change the module: CSM may remove some keys from its top-up queue. The depositor bot puts these keys into calls that also deposit ETH, so the cleanup alone rarely uses a slot.
 
 **Why the top-up depositor sets a limit for each key.** The module does not see every balance on the consensus layer. An [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) consolidation moves the balance of the source validator to the target key, and the module counts this balance only after a balance proof. The depositor bot reads the consensus layer and lowers the limit. The limit can only lower the amount.
 
@@ -102,15 +102,15 @@ interface IDepositSecurityModule {
 
     event TopUpDepositorChanged(address newValue);
 
-    error NotATopUpDepositor(address caller);
+    error NotTopUpDepositor(address caller);
 }
 ```
 
-`topUpBufferedEther` makes these checks in order, calls `STAKING_ROUTER.topUp` with the same arguments and then stores the current block as the DSM-wide last deposit block, as `depositBufferedEther` does:
+`topUpBufferedEther` makes the following checks in order, calls `STAKING_ROUTER.topUp` with the same arguments, and then stores the current block as the DSM-wide last deposit block, as `depositBufferedEther` does:
 
 | # | Check                                                                                                             | Revert                           | Purpose                                                                                     |
 |---|-------------------------------------------------------------------------------------------------------------------|----------------------------------|---------------------------------------------------------------------------------------------|
-| 1 | `msg.sender` is the top-up depositor                                                                              | `NotATopUpDepositor(msg.sender)` | The top-up depositor selects the keys and the limits, so the call is not open to anyone     |
+| 1 | `msg.sender` is the top-up depositor                                                                              | `NotTopUpDepositor(msg.sender)` | The top-up depositor selects the keys and the limits, so the call is not open to anyone     |
 | 2 | `isDepositsPaused` is false                                                                                       | `DepositsArePaused()`            | One pause for seed deposits and top-ups. One guardian can set it                            |
 | 3 | `_isMinDepositDistancePassed(stakingModuleId)`: the larger of the module and DSM-wide last deposit blocks is at least `minDepositBlockDistance` of the module in the past | `DepositTooFrequent()`           | The same check as for a seed deposit. Every deposited key of the module is at least this old |
 
