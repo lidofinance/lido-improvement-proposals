@@ -49,7 +49,7 @@ The top-up depositor sends a top-up through a new DSM function. A top-up goes ou
 2. Each guardian checks the deposited keys in each block, as today. On a front-run, the guardian pauses the DSM.
 3. After the block distance, the depositor bot calls `DSM.topUpBufferedEther` through the top-up depositor with the node operator and the index of each key and a limit for each key.
 4. The DSM checks the caller, the pause and the block distance, and calls `StakingRouter.topUp`.
-5. The module checks that each key is deposited and not started exit process. Then the module returns the corresponding public key and an amount. StakingRouter deposits the ETH to the returned public keys. StakingRouter and the DSM store the block as the last deposit block.
+5. The module checks that each key is deposited and returns its public key and an amount. The amount is zero for a withdrawn, slashed or exited key and for a key with less than 2 ETH of headroom. StakingRouter deposits the ETH to the returned public keys. StakingRouter and the DSM store the block as the last deposit block.
 
 The module limits each amount by the balance and the status of the key (requirements 4 and 5 in [Staking modules](#staking-modules)). It learns them from consensus-layer proofs: [LIP-42](./lip-42.md#new-balance-tracking-mechanism-for-cmv2) specifies how they update `keyAllocatedBalance`, and [proof-based exit accounting](./lip-42.md#proof-based-exit-accounting) covers exits.
 
@@ -66,6 +66,8 @@ The module limits each amount by the balance and the status of the key (requirem
 **Why every call uses the distance.** `topUp` stores the last deposit block also when the call deposits no ETH, as `deposit` does when the module returns no keys. One rule for all calls keeps the bound on deposit calls simple. A call with a zero amount can still change the module: CSM may remove some keys from its top-up queue. The depositor bot puts these keys into calls that also deposit ETH, so the cleanup alone rarely uses a slot.
 
 **Why the top-up depositor sets a limit for each key.** The module does not see every balance on the consensus layer. An [EIP-7251](https://eips.ethereum.org/EIPS/eip-7251) consolidation moves the balance of the source validator to the target key, and the module counts this balance only after a balance proof. The depositor bot reads the consensus layer and lowers the limit. The limit can only lower the amount.
+
+**Why the top-up step is 2 ETH.** The deposit contract accepts any deposit of 1 ETH or more, so 2 ETH is a choice of the modules. A top-up raises the rewards of a key only when it raises the effective balance. Because of the hysteresis of the consensus layer, the effective balance grows only when the balance is at least 1.25 ETH above it. A top-up of 2 ETH always crosses this threshold, also for a key whose balance is up to 0.25 ETH below its effective balance. Each deposit also costs gas and takes a place in the pending deposit queue of the consensus layer, so the step keeps small, low-value top-ups out of calls. The cap of 2,016 ETH is a multiple of 2 ETH, so a key can still reach it.
 
 **Why the call is permissioned.** The top-up depositor selects the keys and the limits. In CSM the top-up queue removes a key when its allocation equals its limit, so an open call with a zero limit could remove any key from the queue.
 
@@ -142,7 +144,7 @@ Changes in `topUp`:
 1. **Caller.** `topUp` accepts a call only from the address that `LidoLocator.depositSecurityModule()` returns, as `deposit` does.
 2. **Last deposit block.** `topUp` stores the current block and timestamp as the last deposit of the module before it calls the module. `depositBufferedEther` already reads the block.
 3. **ETH limit of a call.** The amount of a call is at most the smaller of the module allocation and `maxDepositsPerBlock × 32 ETH` of the module. This is the limit of a seed deposit call.
-4. **Public keys.** `topUp` does not take public keys from the caller. It calls `allocateDeposits` of the module without them and deposits to the public keys that the module returns (see [Staking modules](#staking-modules)).
+4. **Public keys.** `topUp` does not take public keys from the caller. The caller selects the keys by node operator and key index. `topUp` passes them to `allocateDeposits`, and the module returns it with the amount (see [Staking modules](#staking-modules)). StakingRouter deposits to these public keys. The module returns one public key and one amount to allocate for each key.
 5. **Removed.** `maxTopUpPerBlockGwei`, `setMaxTopUpPerBlockGwei`, `getMaxTopUpPerBlockGwei`, the event `MaxTopUpPerBlockGweiSet`, the error `InvalidMaxTopUpPerBlockGwei` and the `_maxTopUpPerBlockGwei` argument of `initialize`.
 
 #### LidoLocator
@@ -157,16 +159,16 @@ The upgrade removes TopUpGateway from CircuitBreaker with `registerPauser(topUpG
 
 #### Staking modules
 
-A staking module that receives optimistic top-ups must meet these requirements. The status column describes Curated Module v2 and the `0x02` version of CSM, together with the changes of LIP-42.
+A staking module that receives optimistic top-ups must meet these requirements. The last two columns show the status in Curated Module v2 and in the `0x02` version of CSM, together with the changes of LIP-42.
 
-| # | Requirement                                                                                                                                                                                  | Status                                                                                                                                                                                                                                                                                             |
-|---|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1 | `allocateDeposits` accepts only a deposited key                                                                                                                                              | Exists. Curated Module v2 reverts with `SigningKeysInvalidOffset` when `keyIndex >= totalDepositedKeys`. CSM requires each key to be the head of its top-up queue and reverts with `InvalidTopUpOrder` otherwise. A key enters this queue in a seed deposit. This check is now a security boundary |
-| 2 | `allocateDeposits` takes no public keys and returns the public key and the amount of each key from the storage of the module, in the order of the call, also when `maxDepositAmount` is zero | New. Today the modules take the public keys from the caller and compare them with the storage (`SigningKeys.verifySigningKey`), and Curated Module v2 returns an empty array for a zero `maxDepositAmount`                                                                                         |
-| 3 | A key becomes deposited only in `obtainDepositData`, which StakingRouter calls from `deposit`. No other function marks a key as deposited                                                    | Exists for the deposit path. Each module must confirm it for its migration and administrative functions                                                                                                                                                                                            |
-| 4 | The module limits the amount for a key to the smaller of the limit from the top-up depositor and `2,016 ETH − keyAllocatedBalance`.           | Exists (`capTopUpLimitsByKeyBalance`). In CSM a duplicate key reverts, because only the head of the queue is accepted                                                                                                                                                                              |
-| 5 | The module gives a zero amount to a withdrawn, slashed or exited key, without a revert                                                                                                       | Withdrawn and slashed: exists. Exited: [LIP-42](./lip-42.md#proof-based-exit-accounting). The zero amount keeps the cleanup of the CSM top-up queue working                                                                                                                                        |
-| 6 | After a partial withdrawal, `keyAllocatedBalance` decreases, so the key can receive top-ups again                                                                                            | Curated Module v2: [LIP-42](./lip-42.md#new-balance-tracking-mechanism-for-cmv2). CSM `0x02`: not needed, because [LIP-38](./lip-38.md) disables partial withdrawals for it                                                                                                                        |
+| # | Requirement | Curated Module v2 | CSM `0x02` |
+|---|-------------|-------------------|------------|
+| 1 | `allocateDeposits` accepts only a deposited key. This check is the security boundary of optimistic top-ups | Exists: reverts with `SigningKeysInvalidOffset` when `keyIndex >= totalDepositedKeys` | Exists: accepts only the head of the top-up queue and reverts with `InvalidTopUpOrder` otherwise. A key enters this queue in a seed deposit |
+| 2 | A key becomes deposited only in `obtainDepositData`, which StakingRouter calls from `deposit` | Exists for the deposit path. To confirm for migration and administrative functions | Exists for the deposit path. To confirm for migration and administrative functions |
+| 3 | `allocateDeposits` returns the public key of each key from its storage together with the amount, in the order of the call| New. Today it takes the public keys from the caller and checks them with `SigningKeys.verifySigningKey`. The early return of an empty array for a zero `maxDepositAmount` is removed | New. Same as Curated Module v2. It already returns one amount for each key |
+| 4 | The amount for a key is at most the smaller of the limit from the top-up depositor and `2,016 ETH − keyAllocatedBalance`, rounded down to a multiple of 2 ETH. A key with less than 2 ETH of headroom gets zero. Duplicate keys in one call share this headroom | Exists: `capTopUpLimitsByKeyBalance` and `TOP_UP_STEP` of 2 ETH | Exists: `capTopUpLimitsByKeyBalance` and `TOP_UP_STEP` of 2 ETH. A duplicate key reverts, because only the head of the queue is accepted |
+| 5 | A zero amount is not an error. The module gives a zero amount without a revert to a withdrawn, slashed or exited key and to a key with less than 2 ETH of headroom (requirement 4). In the `0x02` CSM a key whose limit is zero after requirement 4 leaves its top-up queue, so a call that only cleans the queue does not revert (requirement 3) | Withdrawn and slashed: exists. Exited: [LIP-42](./lip-42.md#proof-based-exit-accounting) | Withdrawn and slashed: exists. Exited: [LIP-42](./lip-42.md#proof-based-exit-accounting) |
+| 6 | After a partial withdrawal, `keyAllocatedBalance` decreases, so the key can receive top-ups again | [LIP-42](./lip-42.md#new-balance-tracking-mechanism-for-cmv2) | Not needed: [LIP-38](./lip-38.md) disables partial withdrawals for it |
 
 **The new `allocateDeposits`.** The function loses the `pubkeys` argument and returns the public keys with the amounts:
 
@@ -180,6 +182,7 @@ interface IStakingModuleV2 {
     /// @return pubkeys Public keys of the given keys, from the storage of the module.
     /// @return allocations Amount (in wei) for each key.
     /// @dev Reverts if a key is not a deposited key of the module.
+    ///      Returns one public key and one amount for each key.
     function allocateDeposits(
         uint256 maxDepositAmount,
         uint256[] calldata keyIndices,
@@ -189,7 +192,7 @@ interface IStakingModuleV2 {
 }
 ```
 
-The two returned arrays have the same length and the same order as the input, also for a zero `maxDepositAmount`. The module reads each public key from its storage at the node operator and the index of the key.
+The two returned arrays always have the same length and the same order as the input.
 
 `keyAllocatedBalance`, the balance of a key above its seed as the module records it, and its update rules are specified in LIP-42. LIP-42 also gives StakingRouter the top-up capacity of a module (`getTopUpCapacity`), which counts keys that are not active yet.
 
@@ -199,7 +202,7 @@ The guardians sign nothing for a top-up. In each block the council daemon checks
 
 #### Off-chain components
 
-**Depositor bot.** It operates the top-up depositor. It waits for the block distance and calls `DSM.topUpBufferedEther` with the node operator and the index of each key. It no longer builds proofs. Before each call it runs its own front-run check of the deposited keys and does not top up a module that fails it. This check is implemented in the depositor bot codebase, separately from the council daemon. It computes each limit from the consensus layer: the target balance minus the current balance, the pending deposits and the pending consolidations to the key. It skips exiting keys and keys with a limit below the minimum top-up. For the `0x02` CSM it still includes such keys with a zero limit when they are at the head of the top-up queue, so that the module removes them and the queue progresses.
+**Depositor bot.** It operates the top-up depositor. It waits for the block distance and calls `DSM.topUpBufferedEther` with the node operator and the index of each key. It no longer builds proofs. Before each call it runs its own front-run check of the deposited keys and does not top up a module that fails it. This check is implemented in the depositor bot codebase, separately from the council daemon. It computes each limit from the consensus layer: `MAX_EFFECTIVE_BALANCE_ELECTRA` (2,048 ETH) minus the current balance, the pending deposits and the pending consolidations to the key. The bot skips exiting and slashed keys and keys with a limit below the 2 ETH step of the module. For the `0x02` CSM it still includes such keys with a zero limit when they are at the head of the top-up queue, so that the module removes them and the queue progresses. It does not send a call in which every amount is zero, unless the call cleans the CSM top-up queue, because such a call still uses the block distance.
 
 **Council daemon.** It needs a release that accepts DSM `VERSION` `6` and uses the same signing logic as for `5`.
 
@@ -213,6 +216,7 @@ The guardians sign nothing for a top-up. In each block the council daemon checks
 | Owner of the DSM                                                                 | Aragon Agent                                                                | DSM, unchanged                                          |
 | Guardians, quorum, `pauseIntentValidityPeriodBlocks`, `maxOperatorsPerUnvetting` | The values of the current DSM                                               | DSM, unchanged                                          |
 | Hard cap for a key                                                               | 2,016 ETH above the seed, for the balance that the module records           | Module constant, unchanged                              |
+| Top-up step                                                                      | 2 ETH                                                                       | Module constant `TOP_UP_STEP`, unchanged                |
 
 ### Upgradability
 
@@ -259,7 +263,7 @@ A reorg cannot put another deposit before the seed deposit. The seed deposit bin
 ## Known Issues
 
 - **Seed deposits and top-ups share one sequence of deposit calls.** The protocol makes at most one deposit call per block distance, for all modules and both paths together. Today top-ups have a separate protocol-wide cap. A top-up, also one with a zero amount, delays seed deposits to every module, and a top-up can wait longer than the block distance when other deposits use the slots. The depositor bot orders the calls. Governance can change `maxDepositsPerBlock` and `minDepositBlockDistance` of the modules.
-- **The module learns about an exit or a slashing only from a proof.** Until the proof of LIP-42 arrives, a top-up can go to an exiting or slashed validator. The ETH is not lost, but it returns only after the validator is withdrawable. The depositor bot skips exiting keys.
+- **The module learns about an exit or a slashing only from a proof.** Until the proof of LIP-42 arrives, a top-up can go to an exiting or slashed validator. The ETH is not lost, but it returns only after the validator is withdrawable. TopUpGateway checked the exit epoch and the slashed flag on chain with a proof in each call. Now the depositor bot is the primary check: it reads the same fields from the consensus layer before each call and skips exiting and slashed keys. A dedicated monitoring alerts on a top-up to an exiting or slashed key, so that a fault in the bot is found and fixed quickly.
 - **The cap is as fresh as the last proof.** When the balance that the module records is stale, a top-up can lift a key above 2,048 ETH. The excess is not lost: the withdrawal sweep returns it to Lido.
 - **The CircuitBreaker Committee can no longer pause top-ups.** The DSM pause replaces the TopUpGateway pause. One guardian can set it, but it also stops seed deposits, and only the owner of the DSM can remove it with a DAO vote.
 
